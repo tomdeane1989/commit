@@ -1,0 +1,343 @@
+// Sales Commission SaaS - AI-Ready Database Schema
+// Optimized for sales rep pipeline clarity and management forecasting
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model companies {
+  id              String    @id @default(cuid())
+  name            String
+  domain          String?   @unique
+  subscription    String    @default("trial") // trial, basic, premium
+  fiscal_year_start Int     @default(1) // 1-12, month when fiscal year starts
+  default_commission_rate Decimal @db.Decimal(5, 4) @default(0.0500) // 5%
+  created_at      DateTime  @default(now())
+  updated_at      DateTime  @updatedAt
+  
+  // AI Metadata
+  ai_insights     Json?     // AI-generated company insights
+  forecasting_model String? // Model version used for forecasting
+  
+  // Relations
+  users           users[]
+  deals           deals[]
+  targets         targets[]
+  commissions     commissions[]
+  crm_integrations crm_integrations[]
+  activity_log    activity_log[]
+  forecasts       forecasts[]
+}
+
+model users {
+  id              String    @id @default(cuid())
+  email           String    @unique
+  password        String
+  first_name      String
+  last_name       String
+  role            String    @default("rep") // rep, manager, admin
+  is_active       Boolean   @default(true)
+  hire_date       DateTime?
+  territory       String?   // For geographic/vertical segmentation
+  manager_id      String?   // For org hierarchy
+  created_at      DateTime  @default(now())
+  updated_at      DateTime  @updatedAt
+  
+  // AI Metadata
+  performance_profile Json? // AI-generated performance insights
+  prediction_accuracy Decimal? @db.Decimal(5, 2) // How accurate their forecasts are
+  
+  // Foreign Keys
+  company_id      String
+  
+  // Relations
+  company         companies @relation(fields: [company_id], references: [id])
+  manager         users?    @relation("UserManager", fields: [manager_id], references: [id])
+  reports         users[]   @relation("UserManager")
+  deals           deals[]
+  targets         targets[]
+  commissions     commissions[]
+  activity_log    activity_log[]
+  deal_categorizations deal_categorizations[]
+  forecasts       forecasts[]
+  
+  @@index([company_id])
+  @@index([manager_id])
+  @@index([role])
+}
+
+model deals {
+  id              String    @id @default(cuid())
+  deal_name       String
+  account_name    String
+  amount          Decimal   @db.Decimal(12, 2)
+  probability     Int       @default(0) // 0-100, from CRM
+  status          String    @default("open") // open, closed_won, closed_lost
+  stage           String?   // CRM stage name
+  close_date      DateTime  // Expected close date from CRM
+  closed_date     DateTime? // Actual close date
+  created_date    DateTime  // When deal was created in CRM
+  
+  // CRM Integration
+  crm_id          String?   // External CRM ID
+  crm_type        String    @default("manual") // salesforce, hubspot, pipedrive, sheets, manual
+  crm_url         String?   // Deep link to CRM record
+  last_sync       DateTime? // When last synced from CRM
+  
+  // AI-Enhanced Fields
+  ai_probability  Int?      // AI-predicted probability (0-100)
+  ai_close_date   DateTime? // AI-predicted close date
+  ai_insights     Json?     // AI analysis of deal
+  similar_deals   Json?     // Historical similar deals for comparison
+  
+  // Metadata for AI Learning
+  deal_age_days   Int?      // Days since deal creation
+  stage_history   Json?     // Progression through stages
+  amount_changes  Json?     // Historical amount changes
+  
+  created_at      DateTime  @default(now())
+  updated_at      DateTime  @updatedAt
+  
+  // Foreign Keys
+  user_id         String
+  company_id      String
+  
+  // Relations
+  user            users     @relation(fields: [user_id], references: [id])
+  company         companies @relation(fields: [company_id], references: [id])
+  commission_details commission_details[]
+  deal_categorizations deal_categorizations[]
+  
+  @@index([user_id])
+  @@index([company_id])
+  @@index([status])
+  @@index([close_date])
+  @@index([crm_id])
+  @@index([amount])
+  @@index([probability])
+}
+
+// Separate table for deal categorizations - tracks rep decisions for AI learning
+model deal_categorizations {
+  id              String    @id @default(cuid())
+  category        String    // commit, best_case, pipeline
+  confidence_note String?   // Why rep chose this category
+  created_at      DateTime  @default(now())
+  
+  // For AI learning - track outcome vs prediction
+  actual_outcome  String?   // closed_won, closed_lost, moved_to_next_period
+  outcome_date    DateTime?
+  
+  // Foreign Keys
+  deal_id         String
+  user_id         String    // Who made the categorization
+  
+  // Relations
+  deal            deals     @relation(fields: [deal_id], references: [id])
+  user            users     @relation(fields: [user_id], references: [id])
+  
+  @@index([deal_id])
+  @@index([user_id])
+  @@index([category])
+  @@index([created_at])
+}
+
+model targets {
+  id              String    @id @default(cuid())
+  period_type     String    // monthly, quarterly, annual
+  period_start    DateTime
+  period_end      DateTime
+  quota_amount    Decimal   @db.Decimal(12, 2)
+  commission_rate Decimal   @db.Decimal(5, 4) // 0.0000 to 1.0000 (0% to 100%)
+  is_active       Boolean   @default(true)
+  
+  // AI Forecasting
+  ai_forecast_amount Decimal? @db.Decimal(12, 2) // AI predicted attainment
+  ai_confidence   Decimal?  @db.Decimal(5, 2) // AI confidence in forecast (0-100)
+  ai_updated_at   DateTime? // When AI last updated forecast
+  
+  created_at      DateTime  @default(now())
+  updated_at      DateTime  @updatedAt
+  
+  // Foreign Keys
+  user_id         String
+  company_id      String
+  
+  // Relations
+  user            users     @relation(fields: [user_id], references: [id])
+  company         companies @relation(fields: [company_id], references: [id])
+  commissions     commissions[]
+  forecasts       forecasts[]
+  
+  @@index([user_id])
+  @@index([period_start, period_end])
+  @@index([period_type])
+}
+
+model commissions {
+  id              String    @id @default(cuid())
+  period_start    DateTime
+  period_end      DateTime
+  quota_amount    Decimal   @db.Decimal(12, 2)
+  actual_amount   Decimal   @db.Decimal(12, 2)
+  attainment_pct  Decimal   @db.Decimal(5, 2) // 0.00 to 999.99
+  commission_rate Decimal   @db.Decimal(5, 4)
+  commission_earned Decimal @db.Decimal(12, 2)
+  
+  // Commission breakdown for clarity
+  base_commission Decimal   @db.Decimal(12, 2) // Base commission earned
+  bonus_commission Decimal  @db.Decimal(12, 2) @default(0) // Bonus for over-attainment
+  
+  status          String    @default("calculated") // calculated, approved, paid
+  calculated_at   DateTime  @default(now())
+  approved_at     DateTime?
+  approved_by     String?
+  paid_at         DateTime?
+  
+  // AI Insights
+  ai_insights     Json?     // AI analysis of commission performance
+  
+  created_at      DateTime  @default(now())
+  updated_at      DateTime  @updatedAt
+  
+  // Foreign Keys
+  user_id         String
+  company_id      String
+  target_id       String
+  
+  // Relations
+  user            users     @relation(fields: [user_id], references: [id])
+  company         companies @relation(fields: [company_id], references: [id])
+  target          targets   @relation(fields: [target_id], references: [id])
+  commission_details commission_details[]
+  
+  @@index([user_id])
+  @@index([period_start, period_end])
+  @@index([status])
+}
+
+model commission_details {
+  id              String    @id @default(cuid())
+  commission_amount Decimal @db.Decimal(12, 2)
+  created_at      DateTime  @default(now())
+  
+  // Foreign Keys
+  commission_id   String
+  deal_id         String
+  
+  // Relations
+  commission      commissions @relation(fields: [commission_id], references: [id])
+  deal            deals     @relation(fields: [deal_id], references: [id])
+  
+  @@index([commission_id])
+  @@index([deal_id])
+}
+
+// Weekly/Monthly forecasting snapshots for trend analysis
+model forecasts {
+  id              String    @id @default(cuid())
+  forecast_date   DateTime  @default(now())
+  forecast_type   String    // weekly, monthly, quarterly
+  
+  // Forecast amounts by category
+  pipeline_amount Decimal   @db.Decimal(12, 2) @default(0)
+  commit_amount   Decimal   @db.Decimal(12, 2) @default(0)
+  best_case_amount Decimal  @db.Decimal(12, 2) @default(0)
+  closed_amount   Decimal   @db.Decimal(12, 2) @default(0)
+  
+  // AI Predictions
+  ai_predicted_close Decimal @db.Decimal(12, 2) @default(0)
+  ai_confidence   Decimal   @db.Decimal(5, 2) @default(0)
+  
+  // Actual outcomes (populated after period ends)
+  actual_closed   Decimal?  @db.Decimal(12, 2)
+  forecast_accuracy Decimal? @db.Decimal(5, 2) // How accurate this forecast was
+  
+  created_at      DateTime  @default(now())
+  
+  // Foreign Keys
+  user_id         String
+  company_id      String
+  target_id       String
+  
+  // Relations
+  user            users     @relation(fields: [user_id], references: [id])
+  company         companies @relation(fields: [company_id], references: [id])
+  target          targets   @relation(fields: [target_id], references: [id])
+  
+  @@index([user_id])
+  @@index([forecast_date])
+  @@index([forecast_type])
+  @@index([target_id])
+}
+
+model crm_integrations {
+  id              String    @id @default(cuid())
+  crm_type        String    // salesforce, hubspot, pipedrive, sheets
+  access_token    String?
+  refresh_token   String?
+  instance_url    String?
+  is_active       Boolean   @default(true)
+  last_sync       DateTime?
+  sync_frequency  String    @default("daily") // daily, hourly, manual
+  
+  // AI Integration
+  ai_enabled      Boolean   @default(false)
+  ai_model_version String?
+  
+  // Sync Statistics
+  total_deals_synced Int    @default(0)
+  last_sync_deals_count Int @default(0)
+  sync_errors     Json?     // Track sync issues
+  
+  created_at      DateTime  @default(now())
+  updated_at      DateTime  @updatedAt
+  
+  // Foreign Keys
+  company_id      String
+  
+  // Relations
+  company         companies @relation(fields: [company_id], references: [id])
+  
+  @@index([company_id])
+  @@index([crm_type])
+}
+
+// Comprehensive activity logging for AI learning and audit
+model activity_log {
+  id              String    @id @default(cuid())
+  action          String    // deal_categorized, forecast_updated, commission_calculated, etc.
+  entity_type     String    // deal, target, commission, forecast, etc.
+  entity_id       String
+  
+  // Rich context for AI learning
+  before_state    Json?     // State before action
+  after_state     Json?     // State after action
+  context         Json?     // Additional context (user agent, source, etc.)
+  
+  // Performance tracking
+  response_time_ms Int?     // How long action took
+  success         Boolean   @default(true)
+  error_message   String?
+  
+  created_at      DateTime  @default(now())
+  
+  // Foreign Keys
+  user_id         String
+  company_id      String
+  
+  // Relations
+  user            users     @relation(fields: [user_id], references: [id])
+  company         companies @relation(fields: [company_id], references: [id])
+  
+  @@index([user_id])
+  @@index([company_id])
+  @@index([created_at])
+  @@index([action])
+  @@index([entity_type, entity_id])
+}
