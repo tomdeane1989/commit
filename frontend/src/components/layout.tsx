@@ -1,5 +1,6 @@
 // src/components/Layout.tsx
 import React from 'react';
+import { useRouter } from 'next/router';
 import { useAuth } from '@/hooks/useAuth';
 import { 
   Home, 
@@ -45,11 +46,12 @@ const DateDisplay = () => {
 
 const Layout: React.FC<LayoutProps> = ({ children }) => {
   const { user, logout } = useAuth();
+  const router = useRouter();
   const [currentPath, setCurrentPath] = React.useState('/dashboard');
 
   React.useEffect(() => {
-    setCurrentPath(window.location.pathname);
-  }, []);
+    setCurrentPath(router.pathname);
+  }, [router.pathname]);
 
   const navigation = [
     { name: 'Dashboard', href: '/dashboard', icon: Home },
@@ -59,13 +61,19 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
     { name: 'Settings', href: '/settings', icon: Settings },
   ];
 
-  const filteredNavigation = navigation.filter(item => 
-    !item.adminOnly || (user?.role === 'admin' || user?.role === 'manager')
-  );
+  const filteredNavigation = navigation.filter(item => {
+    // Always show non-admin items
+    if (!item.adminOnly) return true;
+    
+    // For admin-only items, check if user has proper role
+    // If user is not loaded yet, temporarily show the item to prevent flashing
+    if (!user) return true;
+    
+    return user.role === 'admin' || user.role === 'manager';
+  });
 
   const handleNavigation = (href: string) => {
-    setCurrentPath(href);
-    window.location.href = href;
+    router.push(href);
   };
 
   return (

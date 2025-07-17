@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import Layout from '../components/layout';
+import ProtectedRoute from '../components/ProtectedRoute';
 import { useAuth } from '../hooks/useAuth';
 import { 
   DollarSign, 
@@ -46,25 +47,12 @@ const DashboardPage = () => {
   useEffect(() => {
     const fetchDashboardData = async () => {
       try {
-        const token = localStorage.getItem('token');
-        console.log('Dashboard: Token exists?', !!token);
         console.log('Dashboard: User exists?', !!user);
         
-        const response = await fetch('http://localhost:3002/api/dashboard/sales-rep', {
-          headers: {
-            'Authorization': `Bearer ${token}`
-          }
-        });
+        // Use the API client which includes Authorization header
+        const { dashboardApi } = await import('../lib/api');
+        const data = await dashboardApi.getDashboardData();
         
-        console.log('Dashboard: Response status', response.status);
-        
-        if (!response.ok) {
-          const errorText = await response.text();
-          console.error('Dashboard: API Error', errorText);
-          throw new Error(`Failed to fetch dashboard data: ${response.status} ${errorText}`);
-        }
-        
-        const data = await response.json();
         console.log('Dashboard: Data received', data);
         console.log('Dashboard: Metrics:', data.metrics);
         console.log('Dashboard: Quota Progress:', data.quota_progress);
@@ -120,7 +108,8 @@ const DashboardPage = () => {
   const { metrics, quota_progress, deals } = dashboardData || {};
 
   return (
-    <Layout>
+    <ProtectedRoute>
+      <Layout>
       <div className="max-w-7xl mx-auto space-y-8">
         {/* Header */}
         <div className="flex items-center justify-between">
@@ -457,6 +446,7 @@ const DashboardPage = () => {
         </div>
       </div>
     </Layout>
+    </ProtectedRoute>
   );
 };
 

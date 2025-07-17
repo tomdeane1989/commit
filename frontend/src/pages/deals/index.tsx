@@ -90,7 +90,7 @@ const DealsPage = () => {
         from_category: fromCategory,
         to_category: toCategory,
         timestamp: new Date().toISOString(),
-        user_id: localStorage.getItem('user') ? JSON.parse(localStorage.getItem('user')!).id : null,
+        user_id: user?.id || null,
         session_metadata: {
           user_agent: navigator.userAgent,
           screen_resolution: `${window.screen.width}x${window.screen.height}`,

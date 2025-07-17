@@ -15,54 +15,88 @@ const AuthContext = createContext<AuthContextType | undefined>(undefined);
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
+  const [mounted, setMounted] = useState(false);
   const router = useRouter();
 
   useEffect(() => {
+    setMounted(true);
+  }, []);
+
+  useEffect(() => {
+    if (!mounted) return;
+    
     const initializeAuth = async () => {
-      const token = localStorage.getItem('token');
-      console.log('Auth: Token exists?', !!token);
-      
-      if (token) {
-        try {
-          console.log('Auth: Calling me() API');
-          const response = await authApi.me();
-          console.log('Auth: me() response:', response);
-          // The /auth/me endpoint returns the user object directly, not wrapped in data
-          setUser(response);
-        } catch (error) {
-          console.error('Auth: me() failed:', error);
-          localStorage.removeItem('token');
-          localStorage.removeItem('user');
+      try {
+        const token = localStorage.getItem('token');
+        if (!token) {
+          setUser(null);
+          setLoading(false);
+          return;
         }
-      } else {
-        console.log('Auth: No token found');
+
+        console.log('Auth: Checking authentication with localStorage token');
+        const response = await authApi.me();
+        console.log('Auth: me() response:', response);
+        
+        // Handle new response format
+        if (response.success && response.user) {
+          setUser(response.user);
+        } else {
+          // Handle legacy format
+          setUser(response.data || response);
+        }
+      } catch (error) {
+        console.error('Auth: Authentication check failed:', error);
+        localStorage.removeItem('token');
+        setUser(null);
+      } finally {
+        setLoading(false);
       }
-      setLoading(false);
     };
 
     initializeAuth();
-  }, []);
+  }, [mounted]);
 
   const login = async (email: string, password: string) => {
     try {
       const response = await authApi.login({ email, password });
       
-      localStorage.setItem('token', response.token);
-      localStorage.setItem('user', JSON.stringify(response.user));
-      
-      setUser(response.user);
-      router.push('/dashboard');
+      // Store token in localStorage
+      if (response.success && response.token && response.user) {
+        localStorage.setItem('token', response.token);
+        setUser(response.user);
+        router.push('/dashboard');
+      } else {
+        throw new Error('Login failed - invalid response format');
+      }
     } catch (error: any) {
-      throw new Error(error.response?.data?.error || 'Login failed');
+      const errorMsg = error.response?.data?.error || 'Login failed';
+      console.error('Login error:', errorMsg);
+      throw new Error(errorMsg);
     }
   };
 
-  const logout = () => {
-    localStorage.removeItem('token');
-    localStorage.removeItem('user');
-    setUser(null);
-    router.push('/login');
+  const logout = async () => {
+    try {
+      // Clear token from localStorage
+      localStorage.removeItem('token');
+      setUser(null);
+      if (router.pathname !== '/login') {
+        router.push('/login');
+      }
+    } catch (error) {
+      console.error('Logout error:', error);
+    }
   };
+
+  // Prevent hydration mismatches by not rendering until mounted
+  if (!mounted) {
+    return (
+      <AuthContext.Provider value={{ user: null, login, logout, loading: true }}>
+        {children}
+      </AuthContext.Provider>
+    );
+  }
 
   return (
     <AuthContext.Provider value={{ user, login, logout, loading }}>

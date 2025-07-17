@@ -66,9 +66,7 @@ const LoginPage = () => {
             <span>{error}</span>
           </div>
         )}
-<div className="text-green-500 bg-yellow-100 p-4 font-bold">
-  If this is styled, Tailwind is working.
-</div>
+
         {/* Form */}
         <form className="space-y-4" onSubmit={handleSubmit}>
           <div className="space-y-2">

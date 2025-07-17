@@ -11,7 +11,7 @@ import type {
   Commission 
 } from '../types';
 
-const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001';
+const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3002';
 
 // Create axios instance with default config
 const api = axios.create({
@@ -22,7 +22,7 @@ const api = axios.create({
   },
 });
 
-// Request interceptor to add auth token
+// Request interceptor to add JWT token from localStorage
 api.interceptors.request.use(
   (config) => {
     const token = localStorage.getItem('token');
@@ -39,8 +39,8 @@ api.interceptors.response.use(
   (response) => response,
   (error) => {
     if (error.response?.status === 401) {
+      // Clear token and redirect to login
       localStorage.removeItem('token');
-      localStorage.removeItem('user');
       window.location.href = '/login';
     }
     return Promise.reject(error);
@@ -61,6 +61,11 @@ export const authApi = {
 
   me: async (): Promise<ApiResponse<any>> => {
     const response = await api.get('/auth/me');
+    return response.data;
+  },
+
+  logout: async (): Promise<void> => {
+    const response = await api.post('/auth/logout');
     return response.data;
   },
 };
@@ -167,6 +172,43 @@ export const crmApi = {
 
   syncDeals: async (integrationId: string): Promise<any> => {
     const response = await api.post(`/crm/sync/${integrationId}`);
+    return response.data;
+  },
+};
+
+// Team API
+export const teamApi = {
+  getTeam: async (): Promise<ApiResponse<any[]>> => {
+    const response = await api.get('/team');
+    return response.data;
+  },
+
+  inviteTeamMember: async (memberData: {
+    email: string;
+    first_name: string;
+    last_name: string;
+    role: string;
+    territory?: string;
+    manager_id?: string;
+  }): Promise<any> => {
+    const response = await api.post('/team/invite', memberData);
+    return response.data;
+  },
+
+  updateTeamMember: async (userId: string, memberData: {
+    first_name?: string;
+    last_name?: string;
+    role?: string;
+    territory?: string;
+    manager_id?: string;
+    is_active?: boolean;
+  }): Promise<any> => {
+    const response = await api.patch(`/team/${userId}`, memberData);
+    return response.data;
+  },
+
+  deactivateTeamMember: async (userId: string): Promise<any> => {
+    const response = await api.delete(`/team/${userId}`);
     return response.data;
   },
 };
