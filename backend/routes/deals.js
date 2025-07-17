@@ -53,16 +53,35 @@ router.get('/', async (req, res) => {
       take: parseInt(limit)
     });
 
+    // Add deal_type field based on categorization or status
+    const dealsWithCategory = deals.map(deal => {
+      let deal_type = 'pipeline'; // CRM deals default to pipeline (uncategorized)
+      
+      if (deal.status === 'closed_won') {
+        deal_type = 'closed_won';
+      } else if (deal.deal_categorizations.length > 0) {
+        // User has manually categorized this deal
+        deal_type = deal.deal_categorizations[0].category;
+      }
+
+      return {
+        ...deal,
+        deal_type,
+        current_category: deal_type
+      };
+    });
+
     const total = await prisma.deals.count({ where });
 
     res.json({
-      deals,
+      deals: dealsWithCategory,
       pagination: {
         page: parseInt(page),
         limit: parseInt(limit),
         total,
         pages: Math.ceil(total / limit)
-      }
+      },
+      success: true
     });
   } catch (error) {
     console.error('Get deals error:', error);
@@ -90,10 +109,12 @@ router.post('/', async (req, res) => {
     await prisma.activity_log.create({
       data: {
         user_id: req.user.id,
+        company_id: req.user.company_id,
         action: 'deal_created',
         entity_type: 'deal',
         entity_id: deal.id,
-        details: { deal_name: deal.deal_name, amount: deal.amount }
+        context: { deal_name: deal.deal_name, amount: deal.amount },
+        success: true
       }
     });
 
@@ -134,10 +155,12 @@ router.put('/:id', async (req, res) => {
     await prisma.activity_log.create({
       data: {
         user_id: req.user.id,
+        company_id: req.user.company_id,
         action: 'deal_updated',
         entity_type: 'deal',
         entity_id: deal.id,
-        details: { deal_name: deal.deal_name }
+        context: { deal_name: deal.deal_name },
+        success: true
       }
     });
 
@@ -173,16 +196,95 @@ router.delete('/:id', async (req, res) => {
     await prisma.activity_log.create({
       data: {
         user_id: req.user.id,
+        company_id: req.user.company_id,
         action: 'deal_deleted',
         entity_type: 'deal',
         entity_id: id,
-        details: { deal_name: existingDeal.deal_name }
+        context: { deal_name: existingDeal.deal_name },
+        success: true
       }
     });
 
     res.json({ message: 'Deal deleted successfully' });
   } catch (error) {
     console.error('Delete deal error:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// Deal categorization update
+router.patch('/:dealId/categorize', async (req, res) => {
+  try {
+    const { dealId } = req.params;
+    const { deal_type, previous_category, categorization_timestamp, user_context } = req.body;
+
+    // Validate that user owns this deal
+    const deal = await prisma.deals.findFirst({
+      where: { 
+        id: dealId,
+        user_id: req.user.id 
+      }
+    });
+
+    if (!deal) {
+      return res.status(404).json({ error: 'Deal not found' });
+    }
+
+    // If moving to pipeline, remove any existing categorization
+    if (deal_type === 'pipeline') {
+      await prisma.deal_categorizations.deleteMany({
+        where: { 
+          deal_id: dealId,
+          user_id: req.user.id 
+        }
+      });
+    } else {
+      // Remove any existing categorization for this deal by this user
+      await prisma.deal_categorizations.deleteMany({
+        where: { 
+          deal_id: dealId,
+          user_id: req.user.id 
+        }
+      });
+
+      // Create new categorization
+      await prisma.deal_categorizations.create({
+        data: {
+          deal_id: dealId,
+          user_id: req.user.id,
+          category: deal_type,
+          confidence_note: `Categorized via ${user_context?.categorization_method || 'manual'}`
+        }
+      });
+    }
+
+    // Log the change for ML training
+    await prisma.activity_log.create({
+      data: {
+        user_id: req.user.id,
+        company_id: req.user.company_id,
+        action: 'deal_categorized',
+        entity_type: 'deal',
+        entity_id: dealId,
+        before_state: { category: previous_category },
+        after_state: { category: deal_type },
+        context: {
+          categorization_method: user_context?.categorization_method,
+          session_id: user_context?.session_id,
+          timestamp: categorization_timestamp
+        },
+        success: true
+      }
+    });
+
+    res.json({ 
+      id: dealId,
+      current_category: deal_type,
+      previous_category,
+      message: 'Deal categorization updated successfully'
+    });
+  } catch (error) {
+    console.error('Update deal categorization error:', error);
     res.status(500).json({ error: 'Internal server error' });
   }
 });

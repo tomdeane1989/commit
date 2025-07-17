@@ -38,7 +38,7 @@ async function seedDatabase() {
           password: hashedPassword,
           first_name: 'Sarah',
           last_name: 'Mitchell',
-          role: 'rep',
+          role: 'admin',
           company_id: testCompany.id,
           hire_date: new Date('2024-01-15'),
           territory: 'UK North'

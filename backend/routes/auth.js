@@ -1,9 +1,19 @@
-// routes/auth.js
+// routes/auth.js - Secure authentication routes
 import express from 'express';
 import bcrypt from 'bcrypt';
 import jwt from 'jsonwebtoken';
 import { PrismaClient } from '@prisma/client';
 import Joi from 'joi';
+import { 
+  authRateLimit,
+  authCheckRateLimit,
+  generateSecureToken,
+  generateRefreshToken,
+  setSecureTokenCookie,
+  setRefreshTokenCookie,
+  clearAuthCookies,
+  authenticateToken
+} from '../middleware/secureAuth.js';
 
 const router = express.Router();
 const prisma = new PrismaClient();
@@ -28,7 +38,10 @@ router.post('/register', async (req, res) => {
   try {
     const { error, value } = registerSchema.validate(req.body);
     if (error) {
-      return res.status(400).json({ error: error.details[0].message });
+      return res.status(400).json({ 
+        error: error.details[0].message,
+        code: 'VALIDATION_ERROR'
+      });
     }
 
     const { email, password, first_name, last_name, company_name, company_domain } = value;
@@ -57,7 +70,7 @@ router.post('/register', async (req, res) => {
     const user = await prisma.users.create({
       data: {
         email,
-        password_hash: passwordHash,
+        password: passwordHash,
         first_name,
         last_name,
         company_id: company.id,
@@ -65,14 +78,20 @@ router.post('/register', async (req, res) => {
       }
     });
 
-    // Generate JWT
+    // Generate JWT token for localStorage
     const token = jwt.sign(
-      { userId: user.id, email: user.email, role: user.role },
-      process.env.JWT_SECRET,
-      { expiresIn: '24h' }
+      { 
+        id: user.id, 
+        email: user.email,
+        role: user.role,
+        company_id: user.company_id
+      }, 
+      process.env.JWT_SECRET, 
+      { expiresIn: '7d' }
     );
 
     res.status(201).json({
+      success: true,
       message: 'User created successfully',
       token,
       user: {
@@ -95,7 +114,10 @@ router.post('/login', async (req, res) => {
   try {
     const { error, value } = loginSchema.validate(req.body);
     if (error) {
-      return res.status(400).json({ error: error.details[0].message });
+      return res.status(400).json({ 
+        error: error.details[0].message,
+        code: 'VALIDATION_ERROR'
+      });
     }
 
     const { email, password } = value;
@@ -111,19 +133,25 @@ router.post('/login', async (req, res) => {
     }
 
     // Check password
-    const isValidPassword = await bcrypt.compare(password, user.password_hash);
+    const isValidPassword = await bcrypt.compare(password, user.password);
     if (!isValidPassword) {
       return res.status(401).json({ error: 'Invalid credentials' });
     }
 
-    // Generate JWT
+    // Generate JWT token for localStorage
     const token = jwt.sign(
-      { userId: user.id, email: user.email, role: user.role },
-      process.env.JWT_SECRET,
-      { expiresIn: '24h' }
+      { 
+        id: user.id, 
+        email: user.email,
+        role: user.role,
+        company_id: user.company_id
+      }, 
+      process.env.JWT_SECRET, 
+      { expiresIn: '7d' }
     );
 
     res.json({
+      success: true,
       message: 'Login successful',
       token,
       user: {
@@ -142,18 +170,19 @@ router.post('/login', async (req, res) => {
   }
 });
 
-// Get current user
+// Get current user - using JWT from Authorization header
 router.get('/me', async (req, res) => {
   try {
-    const token = req.header('Authorization')?.replace('Bearer ', '');
-    
-    if (!token) {
+    const authHeader = req.headers.authorization;
+    if (!authHeader || !authHeader.startsWith('Bearer ')) {
       return res.status(401).json({ error: 'No token provided' });
     }
 
+    const token = authHeader.split(' ')[1];
     const decoded = jwt.verify(token, process.env.JWT_SECRET);
+    
     const user = await prisma.users.findUnique({
-      where: { id: decoded.userId },
+      where: { id: decoded.id },
       include: { company: true }
     });
 
@@ -162,16 +191,40 @@ router.get('/me', async (req, res) => {
     }
 
     res.json({
-      id: user.id,
-      email: user.email,
-      first_name: user.first_name,
-      last_name: user.last_name,
-      role: user.role,
-      company_id: user.company_id,
-      company_name: user.company.name
+      success: true,
+      user: {
+        id: user.id,
+        email: user.email,
+        first_name: user.first_name,
+        last_name: user.last_name,
+        role: user.role,
+        company_id: user.company_id,
+        company_name: user.company.name
+      }
     });
   } catch (error) {
+    console.error('Get user error:', error);
     res.status(401).json({ error: 'Invalid token' });
+  }
+});
+
+// Logout endpoint
+router.post('/logout', authenticateToken, async (req, res) => {
+  try {
+    // Clear cookies
+    clearAuthCookies(res);
+
+    res.json({
+      success: true,
+      message: 'Logged out successfully'
+    });
+  } catch (error) {
+    console.error('Logout error:', error);
+    clearAuthCookies(res);
+    res.status(500).json({ 
+      error: 'Internal server error',
+      code: 'INTERNAL_ERROR'
+    });
   }
 });
 

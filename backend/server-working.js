@@ -2,9 +2,16 @@ import express from 'express';
 import cors from 'cors';
 import helmet from 'helmet';
 import dotenv from 'dotenv';
-import { PrismaClient } from '@prisma/client';
+import cookieParser from 'cookie-parser';
 import bcrypt from 'bcrypt';
-import jwt from 'jsonwebtoken';
+import { PrismaClient } from '@prisma/client';
+import { apiRateLimit, authenticateToken } from './middleware/secureAuth.js';
+import { csrfProtection, csrfTokenHandler } from './middleware/csrfProtection.js';
+import { errorHandler, notFoundHandler } from './middleware/errorHandler.js';
+import authRoutes from './routes/auth.js';
+import teamsRoutes from './routes/teams.js';
+import targetsRoutes from './routes/targets.js';
+import dealsRoutes from './routes/deals.js';
 
 dotenv.config();
 
@@ -15,148 +22,40 @@ const prisma = new PrismaClient();
 // Security middleware
 app.use(helmet());
 app.use(cors({
-  origin: process.env.FRONTEND_URL || 'http://localhost:3000',
+  origin: [
+    'http://localhost:3000',
+    'http://localhost:3001',
+    process.env.FRONTEND_URL
+  ].filter(Boolean),
   credentials: true
 }));
+
+// Cookie parser for authentication
+app.use(cookieParser());
+
+// Rate limiting
+app.use(apiRateLimit);
 
 // Body parsing
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true }));
 
-// Auth middleware
-const authMiddleware = async (req, res, next) => {
-  try {
-    const token = req.headers.authorization?.replace('Bearer ', '');
-    if (!token) {
-      return res.status(401).json({ error: 'No token provided' });
-    }
+// CSRF protection
+app.use(csrfProtection);
 
-    const decoded = jwt.verify(token, process.env.JWT_SECRET);
-    const user = await prisma.users.findUnique({
-      where: { id: decoded.id },
-      include: { company: true }
-    });
+// CSRF token endpoint
+app.get('/api/csrf-token', csrfTokenHandler);
 
-    if (!user) {
-      return res.status(401).json({ error: 'User not found' });
-    }
+// Use secure authentication routes (no auth required)
+app.use('/api/auth', authRoutes);
 
-    req.user = user;
-    next();
-  } catch (error) {
-    res.status(401).json({ error: 'Invalid token' });
-  }
-};
+// Use secure auth middleware for all protected routes
+const authMiddleware = authenticateToken;
 
-// Auth routes
-app.post('/api/auth/register', async (req, res) => {
-  try {
-    const { email, password, first_name, last_name, company_name } = req.body;
-
-    // Check if user exists
-    const existingUser = await prisma.users.findUnique({
-      where: { email }
-    });
-
-    if (existingUser) {
-      return res.status(400).json({ error: 'User already exists' });
-    }
-
-    // Create company first
-    const company = await prisma.companies.create({
-      data: {
-        name: company_name
-      }
-    });
-
-    // Hash password
-    const hashedPassword = await bcrypt.hash(password, 10);
-
-    // Create user
-    const user = await prisma.users.create({
-      data: {
-        email,
-        password: hashedPassword,
-        first_name,
-        last_name,
-        company_id: company.id,
-        role: 'admin' // First user becomes admin
-      }
-    });
-
-    // Generate JWT
-    const token = jwt.sign(
-      { id: user.id, email: user.email },
-      process.env.JWT_SECRET,
-      { expiresIn: process.env.JWT_EXPIRES_IN }
-    );
-
-    res.status(201).json({
-      user: {
-        id: user.id,
-        email: user.email,
-        first_name: user.first_name,
-        last_name: user.last_name,
-        role: user.role,
-        company_id: user.company_id
-      },
-      token,
-      expires_in: 7 * 24 * 60 * 60 // 7 days in seconds
-    });
-  } catch (error) {
-    console.error('Registration error:', error);
-    res.status(500).json({ error: 'Internal server error' });
-  }
-});
-
-app.post('/api/auth/login', async (req, res) => {
-  try {
-    const { email, password } = req.body;
-
-    // Find user
-    const user = await prisma.users.findUnique({
-      where: { email },
-      include: { company: true }
-    });
-
-    if (!user) {
-      return res.status(401).json({ error: 'Invalid credentials' });
-    }
-
-    // Check password
-    const isValidPassword = await bcrypt.compare(password, user.password);
-    if (!isValidPassword) {
-      return res.status(401).json({ error: 'Invalid credentials' });
-    }
-
-    // Generate JWT
-    const token = jwt.sign(
-      { id: user.id, email: user.email },
-      process.env.JWT_SECRET,
-      { expiresIn: process.env.JWT_EXPIRES_IN }
-    );
-
-    res.json({
-      user: {
-        id: user.id,
-        email: user.email,
-        first_name: user.first_name,
-        last_name: user.last_name,
-        role: user.role,
-        company_id: user.company_id
-      },
-      token,
-      expires_in: 7 * 24 * 60 * 60
-    });
-  } catch (error) {
-    console.error('Login error:', error);
-    res.status(500).json({ error: 'Internal server error' });
-  }
-});
-
-app.get('/api/auth/me', authMiddleware, async (req, res) => {
-  res.json(req.user);
-});
+// Protected routes (require authentication)
+app.use('/api/team', authMiddleware, teamsRoutes);
+app.use('/api/targets', authMiddleware, targetsRoutes);
+app.use('/api/deals', authMiddleware, dealsRoutes);
 
 // Dashboard routes
 app.get('/api/dashboard/sales-rep', authMiddleware, async (req, res) => {
@@ -424,15 +323,328 @@ app.post('/api/analytics/categorization-log', authMiddleware, async (req, res) =
   }
 });
 
+// Team management routes
+app.get('/api/team', authMiddleware, async (req, res) => {
+  try {
+    // Only admins and managers can view team
+    if (req.user.role !== 'admin' && req.user.role !== 'manager') {
+      return res.status(403).json({ error: 'Insufficient permissions' });
+    }
+
+    const teamMembers = await prisma.users.findMany({
+      where: { company_id: req.user.company_id },
+      include: {
+        manager: {
+          select: { first_name: true, last_name: true, email: true }
+        },
+        reports: {
+          select: { id: true, first_name: true, last_name: true, email: true }
+        },
+        deals: {
+          where: { status: 'open' },
+          select: { amount: true }
+        },
+        targets: {
+          where: { is_active: true },
+          select: { quota_amount: true }
+        },
+        commissions: {
+          select: { commission_earned: true }
+        }
+      },
+      orderBy: { created_at: 'desc' }
+    });
+
+    // Calculate performance metrics for each team member
+    const teamWithMetrics = teamMembers.map(member => {
+      const openDealsAmount = member.deals.reduce((sum, deal) => sum + Number(deal.amount), 0);
+      const currentQuota = member.targets.length > 0 ? Number(member.targets[0].quota_amount) : 0;
+      const totalCommissions = member.commissions.reduce((sum, comm) => sum + Number(comm.commission_earned), 0);
+      
+      return {
+        id: member.id,
+        email: member.email,
+        first_name: member.first_name,
+        last_name: member.last_name,
+        role: member.role,
+        is_active: member.is_active,
+        hire_date: member.hire_date,
+        territory: member.territory,
+        created_at: member.created_at,
+        manager: member.manager,
+        reports_count: member.reports.length,
+        performance: {
+          open_deals_amount: openDealsAmount,
+          current_quota: currentQuota,
+          total_commissions: totalCommissions,
+          open_deals_count: member.deals.length
+        }
+      };
+    });
+
+    res.json({
+      team_members: teamWithMetrics,
+      success: true
+    });
+  } catch (error) {
+    console.error('Get team error:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+app.post('/api/team/invite', authMiddleware, async (req, res) => {
+  try {
+    // Only admins can invite team members
+    if (req.user.role !== 'admin') {
+      return res.status(403).json({ error: 'Only admins can invite team members' });
+    }
+
+    const { email, first_name, last_name, role, territory, manager_id } = req.body;
+
+    // Validate required fields
+    if (!email || !first_name || !last_name || !role) {
+      return res.status(400).json({ error: 'Missing required fields' });
+    }
+
+    // Check if user already exists
+    const existingUser = await prisma.users.findUnique({
+      where: { email }
+    });
+
+    if (existingUser) {
+      return res.status(400).json({ error: 'User with this email already exists' });
+    }
+
+    // Validate manager exists if provided
+    if (manager_id) {
+      const manager = await prisma.users.findUnique({
+        where: { 
+          id: manager_id,
+          company_id: req.user.company_id
+        }
+      });
+
+      if (!manager) {
+        return res.status(400).json({ error: 'Invalid manager ID' });
+      }
+    }
+
+    // Generate temporary password
+    const tempPassword = Math.random().toString(36).slice(-8) + Math.random().toString(36).slice(-8).toUpperCase();
+    const hashedPassword = await bcrypt.hash(tempPassword, 10);
+
+    // Create user
+    const newUser = await prisma.users.create({
+      data: {
+        email,
+        password: hashedPassword,
+        first_name,
+        last_name,
+        role,
+        territory,
+        manager_id,
+        company_id: req.user.company_id
+      },
+      include: {
+        manager: {
+          select: { first_name: true, last_name: true, email: true }
+        }
+      }
+    });
+
+    // Log the invitation
+    await prisma.activity_log.create({
+      data: {
+        user_id: req.user.id,
+        company_id: req.user.company_id,
+        action: 'team_member_invited',
+        entity_type: 'user',
+        entity_id: newUser.id,
+        context: {
+          invited_email: email,
+          invited_role: role,
+          invited_by: req.user.email
+        },
+        success: true
+      }
+    });
+
+    res.status(201).json({
+      user: {
+        id: newUser.id,
+        email: newUser.email,
+        first_name: newUser.first_name,
+        last_name: newUser.last_name,
+        role: newUser.role,
+        territory: newUser.territory,
+        manager: newUser.manager,
+        created_at: newUser.created_at
+      },
+      temp_password: tempPassword,
+      message: 'Team member invited successfully'
+    });
+  } catch (error) {
+    console.error('Team invite error:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+app.patch('/api/team/:userId', authMiddleware, async (req, res) => {
+  try {
+    // Only admins can edit team members
+    if (req.user.role !== 'admin') {
+      return res.status(403).json({ error: 'Only admins can edit team members' });
+    }
+
+    const { userId } = req.params;
+    const { first_name, last_name, role, territory, manager_id, is_active } = req.body;
+
+    // Validate user exists and is in same company
+    const existingUser = await prisma.users.findUnique({
+      where: { 
+        id: userId,
+        company_id: req.user.company_id
+      }
+    });
+
+    if (!existingUser) {
+      return res.status(404).json({ error: 'User not found' });
+    }
+
+    // Validate manager exists if provided
+    if (manager_id) {
+      const manager = await prisma.users.findUnique({
+        where: { 
+          id: manager_id,
+          company_id: req.user.company_id
+        }
+      });
+
+      if (!manager) {
+        return res.status(400).json({ error: 'Invalid manager ID' });
+      }
+    }
+
+    // Update user
+    const updatedUser = await prisma.users.update({
+      where: { id: userId },
+      data: {
+        first_name,
+        last_name,
+        role,
+        territory,
+        manager_id,
+        is_active
+      },
+      include: {
+        manager: {
+          select: { first_name: true, last_name: true, email: true }
+        }
+      }
+    });
+
+    // Log the update
+    await prisma.activity_log.create({
+      data: {
+        user_id: req.user.id,
+        company_id: req.user.company_id,
+        action: 'team_member_updated',
+        entity_type: 'user',
+        entity_id: userId,
+        context: {
+          updated_fields: { first_name, last_name, role, territory, manager_id, is_active },
+          updated_by: req.user.email
+        },
+        success: true
+      }
+    });
+
+    res.json({
+      user: {
+        id: updatedUser.id,
+        email: updatedUser.email,
+        first_name: updatedUser.first_name,
+        last_name: updatedUser.last_name,
+        role: updatedUser.role,
+        territory: updatedUser.territory,
+        is_active: updatedUser.is_active,
+        manager: updatedUser.manager,
+        updated_at: updatedUser.updated_at
+      },
+      message: 'Team member updated successfully'
+    });
+  } catch (error) {
+    console.error('Team update error:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+app.delete('/api/team/:userId', authMiddleware, async (req, res) => {
+  try {
+    // Only admins can delete team members
+    if (req.user.role !== 'admin') {
+      return res.status(403).json({ error: 'Only admins can delete team members' });
+    }
+
+    const { userId } = req.params;
+
+    // Validate user exists and is in same company
+    const existingUser = await prisma.users.findUnique({
+      where: { 
+        id: userId,
+        company_id: req.user.company_id
+      }
+    });
+
+    if (!existingUser) {
+      return res.status(404).json({ error: 'User not found' });
+    }
+
+    // Cannot delete self
+    if (userId === req.user.id) {
+      return res.status(400).json({ error: 'Cannot delete yourself' });
+    }
+
+    // Deactivate instead of delete to preserve data integrity
+    await prisma.users.update({
+      where: { id: userId },
+      data: { is_active: false }
+    });
+
+    // Log the deactivation
+    await prisma.activity_log.create({
+      data: {
+        user_id: req.user.id,
+        company_id: req.user.company_id,
+        action: 'team_member_deactivated',
+        entity_type: 'user',
+        entity_id: userId,
+        context: {
+          deactivated_email: existingUser.email,
+          deactivated_by: req.user.email
+        },
+        success: true
+      }
+    });
+
+    res.json({ message: 'Team member deactivated successfully' });
+  } catch (error) {
+    console.error('Team delete error:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
 // Health check
 app.get('/health', (req, res) => {
   res.json({ status: 'OK', timestamp: new Date().toISOString() });
 });
 
-// 404 handler
-app.use('*', (req, res) => {
-  res.status(404).json({ error: 'Route not found' });
-});
+
+// 404 handler (must be after all routes)
+app.use('*', notFoundHandler);
+
+// Error handling middleware (must be last)
+app.use(errorHandler);
 
 app.listen(PORT, () => {
   console.log(`Server running on port ${PORT}`);

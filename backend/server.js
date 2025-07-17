@@ -13,6 +13,8 @@ import targetRoutes from './routes/targets.js';
 import commissionRoutes from './routes/commissions.js';
 import crmRoutes from './routes/crm.js';
 import dashboardRoutes from './routes/dashboard.js';
+import teamRoutes from './routes/teams.js';
+import analyticsRoutes from './routes/analytics.js';
 
 // Middleware imports
 import authMiddleware from './middleware/auth.js';
@@ -21,7 +23,7 @@ import errorHandler from './middleware/errorHandler.js';
 dotenv.config();
 
 const app = express();
-const PORT = process.env.PORT || 3001;
+const PORT = process.env.PORT || 3002;
 
 // Security middleware
 app.use(helmet());
@@ -49,6 +51,8 @@ app.use('/api/targets', authMiddleware, targetRoutes);
 app.use('/api/commissions', authMiddleware, commissionRoutes);
 app.use('/api/crm', authMiddleware, crmRoutes);
 app.use('/api/dashboard', authMiddleware, dashboardRoutes);
+app.use('/api/team', authMiddleware, teamRoutes);
+app.use('/api/analytics', authMiddleware, analyticsRoutes);
 
 // Health check
 app.get('/health', (req, res) => {

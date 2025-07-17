@@ -8,32 +8,97 @@ const prisma = new PrismaClient();
 // Get dashboard data for current user
 router.get('/sales-rep', async (req, res) => {
   try {
+    console.log('Dashboard API: req.user.id =', req.user.id);
+    console.log('Dashboard API: req.user.email =', req.user.email);
+    
+    // Get current target
+    const currentTarget = await prisma.targets.findFirst({
+      where: { 
+        user_id: req.user.id,
+        is_active: true 
+      }
+    });
+    console.log('Dashboard API: currentTarget =', currentTarget);
+
+    // Get deals with categorizations
+    const deals = await prisma.deals.findMany({
+      where: { user_id: req.user.id },
+      include: {
+        deal_categorizations: {
+          orderBy: { created_at: 'desc' },
+          take: 1
+        }
+      },
+      orderBy: { created_at: 'desc' }
+    });
+    console.log('Dashboard API: Found', deals.length, 'deals');
+
+    // Categorize deals
+    const categorizedDeals = {
+      closed: [],
+      commit: [],
+      best_case: [],
+      pipeline: []
+    };
+
+    deals.forEach(deal => {
+      const dealWithType = {
+        ...deal,
+        amount: Number(deal.amount)
+      };
+
+      if (deal.status === 'closed_won') {
+        categorizedDeals.closed.push(dealWithType);
+      } else if (deal.deal_categorizations.length > 0) {
+        const category = deal.deal_categorizations[0].category;
+        if (category === 'commit') {
+          categorizedDeals.commit.push(dealWithType);
+        } else if (category === 'best_case') {
+          categorizedDeals.best_case.push(dealWithType);
+        } else {
+          categorizedDeals.pipeline.push(dealWithType);
+        }
+      } else {
+        categorizedDeals.pipeline.push(dealWithType);
+      }
+    });
+
+    // Calculate amounts
+    const closedAmount = categorizedDeals.closed.reduce((sum, deal) => sum + deal.amount, 0);
+    const commitAmount = categorizedDeals.commit.reduce((sum, deal) => sum + deal.amount, 0);
+    const bestCaseAmount = categorizedDeals.best_case.reduce((sum, deal) => sum + deal.amount, 0);
+    const totalQuota = currentTarget ? Number(currentTarget.quota_amount) : 0;
+    
+    const quotaAttainment = totalQuota > 0 ? (closedAmount / totalQuota) * 100 : 0;
+    const projectedCommission = currentTarget ? (closedAmount + commitAmount) * Number(currentTarget.commission_rate) : 0;
+
+    // Get commission earned
+    const commissionEarned = await prisma.commissions.aggregate({
+      where: { user_id: req.user.id },
+      _sum: { commission_earned: true }
+    });
+
     res.json({
       user: req.user,
-      current_target: null,
+      current_target: currentTarget,
       metrics: {
-        quota_attainment: 0,
-        closed_amount: 0,
-        commission_earned: 0,
-        projected_commission: 0,
+        quota_attainment: quotaAttainment,
+        closed_amount: closedAmount,
+        commission_earned: Number(commissionEarned._sum.commission_earned || 0),
+        projected_commission: projectedCommission,
         trend: 'stable'
       },
       quota_progress: {
-        closed_amount: 0,
-        commit_amount: 0,
-        best_case_amount: 0,
-        total_quota: 0,
-        commission_rate: 0
+        closed_amount: closedAmount,
+        commit_amount: commitAmount,
+        best_case_amount: bestCaseAmount,
+        total_quota: totalQuota,
+        commission_rate: currentTarget ? Number(currentTarget.commission_rate) : 0
       },
-      deals: {
-        closed: [],
-        commit: [],
-        best_case: [],
-        pipeline: []
-      }
+      deals: categorizedDeals
     });
   } catch (error) {
-    console.error('Get dashboard error:', error);
+    console.error('Dashboard error:', error);
     res.status(500).json({ error: 'Internal server error' });
   }
 });
