@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { X, AlertTriangle, User, Calendar, Pound, TrendingUp, CheckCircle } from 'lucide-react';
+import { X, AlertTriangle, User, Calendar, DollarSign, TrendingUp, CheckCircle } from 'lucide-react';
 
 interface ConflictData {
   user_id: string;
@@ -122,7 +122,7 @@ export const ConflictResolutionModal: React.FC<ConflictResolutionModalProps> = (
                         {new Date(conflict.existing_target.period_end).toLocaleDateString('en-GB')}
                       </div>
                       <div className="flex items-center text-red-700">
-                        <Pound className="w-4 h-4 mr-2" />
+                        <DollarSign className="w-4 h-4 mr-2" />
                         {new Intl.NumberFormat('en-GB', {
                           style: 'currency',
                           currency: 'GBP',
@@ -152,7 +152,7 @@ export const ConflictResolutionModal: React.FC<ConflictResolutionModalProps> = (
                         {new Date(conflict.proposed_target.period_end).toLocaleDateString('en-GB')}
                       </div>
                       <div className="flex items-center text-green-700">
-                        <Pound className="w-4 h-4 mr-2" />
+                        <DollarSign className="w-4 h-4 mr-2" />
                         {new Intl.NumberFormat('en-GB', {
                           style: 'currency',
                           currency: 'GBP',

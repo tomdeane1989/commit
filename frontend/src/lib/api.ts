@@ -115,14 +115,32 @@ export const dealsApi = {
 
 // Targets API
 export const targetsApi = {
-  getTargets: async (): Promise<ApiResponse<Target[]>> => {
-    const response = await api.get('/targets');
+  getTargets: async (filters?: { active_only?: boolean; user_id?: string }): Promise<ApiResponse<Target[]>> => {
+    const params = new URLSearchParams();
+    if (filters?.active_only !== undefined) params.append('active_only', filters.active_only.toString());
+    if (filters?.user_id) params.append('user_id', filters.user_id);
+    
+    const response = await api.get(`/targets${params.toString() ? `?${params.toString()}` : ''}`);
     return response.data;
   },
 
   createTarget: async (targetData: Partial<Target>): Promise<Target> => {
-    const response = await api.post('/targets', targetData);
-    return response.data;
+    try {
+      const response = await api.post('/targets', targetData);
+      return response.data;
+    } catch (error: any) {
+      // Check if this is a conflict error that should be handled specially
+      if (error.response?.status === 400 && error.response?.data?.skipped_users) {
+        console.log('Conflict detected in API call, returning conflict response');
+        // Return a special response that indicates conflicts
+        return {
+          ...error.response.data,
+          isConflict: true,
+        } as any;
+      }
+      // Re-throw other errors
+      throw error;
+    }
   },
 
   updateTarget: async (targetId: string, targetData: Partial<Target>): Promise<Target> => {

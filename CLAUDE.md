@@ -68,7 +68,14 @@
   - Progress meter (stacked quota visualization)
 - **Drag-and-drop deal categorization** - smooth single-motion workflow
 - **Commission calculations with visual progress tracking and correct amounts**
-- **Target creation/editing with multiple period types (monthly/quarterly/yearly)**
+- **Advanced Target Management:**
+  - 4-step quota planning wizard with conflict detection
+  - Role-based and individual target creation
+  - Automatic conflict resolution modal
+  - Pro-rating for mid-year hires
+  - UK fiscal year support (April 6 - April 5)
+  - Grouped table display with expandable team member rows
+  - Active/inactive target filtering
 - **Team management system with role-based access control**
 - **Modular component architecture (5 team components)**
 - **Protected routes with proper authentication flow**
@@ -87,13 +94,35 @@
 - **Loading states and user feedback throughout the app**
 
 ### **🔧 Recent Technical Improvements (This Session)**
-- **Security**: Implemented proper JWT authentication for development
-- **Architecture**: Split 1,196-line team component into 5 modular components
-- **Performance**: Fixed N+1 database queries with optimized batch operations
-- **Navigation**: Eliminated page refresh flashing with Next.js client-side routing
-- **Error Handling**: Added React error boundaries and standardized API responses
-- **Authentication Flow**: Fixed infinite redirect loops and hydration issues
-- **Database Integration**: Connected frontend to real seed data with proper user IDs
+
+#### **✅ Complete Conflict Resolution System**
+- **Conflict Detection**: Automatically detects overlapping targets during creation
+- **Conflict Resolution Modal**: Side-by-side comparison of existing vs proposed targets
+- **User Choice**: Interactive modal to keep existing or replace with new targets
+- **Seamless Integration**: Built into quota wizard workflow
+- **Database Schema**: Added `role` field to properly track target types
+- **Error Handling**: Proper conflict detection without breaking target creation flow
+
+#### **✅ Enhanced Targets Management**
+- **Grouped Display**: Role-based targets show once instead of duplicating per user
+- **Expandable Rows**: Click chevron to expand and see all affected team members
+- **Smart Badges**: "Role-based (6 members)" vs "Individual" with color coding
+- **Member Count**: Shows how many people are affected by each target
+- **Visual Hierarchy**: Clear indentation and icons for better UX
+- **Inactive Targets Toggle**: Hide/show inactive targets with checkbox
+
+#### **✅ UI/UX Improvements**
+- **Improved Table Headers**: "Assigned To" instead of redundant "Target" column
+- **Better Assignment Context**: Clear indication of individual vs role-based
+- **Commission Rate Fix**: Proper percentage display (10.0% instead of 0.1%)
+- **Professional Icons**: Target icons for role-based, user icons for individual
+- **Responsive Design**: Expandable rows work smoothly on all screen sizes
+
+#### **✅ Database & Backend Fixes**
+- **Schema Migration**: Added `role` field to targets table
+- **Proper Filtering**: Admin/manager users see all targets, regular users see only their own
+- **Role Storage**: Backend properly stores and retrieves role information for targets
+- **Conflict Resolution API**: New `/resolve-conflicts` endpoint for handling overlaps
 
 ### **⚠️ Next Phase Priorities**
 - CRM sync implementations (Salesforce, HubSpot, Pipedrive)
@@ -340,23 +369,24 @@ npm run seed
 ---
 
 **Last Updated**: 2025-07-18  
-**Status**: Phase 1 COMPLETE + Quota Planning Wizard Implementation  
-**Current Phase**: Phase 2 - Advanced target management and conflict resolution  
-**Next Session Priority**: Conflict resolution UI and CRM integration
+**Status**: Phase 1 COMPLETE + Advanced Target Management System  
+**Current Phase**: Phase 2 - Conflict resolution & grouped target display COMPLETE  
+**Next Session Priority**: CRM integration implementations
 
 ## 🎯 **Key Achievements This Session**
-1. ✅ **Quota Planning Wizard** - Implemented 4-step wizard for intuitive target creation
-2. ✅ **Pro-Rating Logic** - Automatic quota adjustment for mid-year hires
-3. ✅ **UK Fiscal Year Support** - Proper April 6 - April 5 fiscal year handling
-4. ✅ **Smart Date Suggestions** - Contextual date defaults based on year type
-5. ✅ **Backend Enhancement** - Enhanced API with wizard data structure and pro-rating
-6. ✅ **Comprehensive Logging** - Detailed activity logs for audit trails
-7. ✅ **User Experience** - Replaced clunky modal with guided wizard workflow
-8. ✅ **Documentation Update** - Updated CLAUDE.md with new features
+1. ✅ **Complete Conflict Resolution System** - Modal-based conflict detection and resolution
+2. ✅ **Grouped Target Display** - Role-based targets show once with expandable team members
+3. ✅ **Enhanced UX** - Inactive target filtering, proper badges, improved table headers
+4. ✅ **Database Schema Updates** - Added role field for proper target type tracking
+5. ✅ **Advanced UI Components** - Expandable rows, chevron icons, member count badges
 
 ## 🔧 **Technical Fixes Completed**
-- **Authentication System**: localStorage JWT with proper token validation
-- **Component Architecture**: Modular team components for maintainability
+- **Conflict Resolution System**: Complete modal-based conflict detection and resolution
+- **Database Schema**: Added role field to targets table with proper migration
+- **Target Grouping**: Smart grouping algorithm for role-based vs individual targets
+- **UI Components**: Expandable table rows with chevron icons and member counts
+- **API Enhancements**: Proper role storage and retrieval in target operations
+- **Backend Filtering**: Admin/manager users see all targets, proper permissions
 - **API Integration**: Standardized error responses and optimized queries
 - **Navigation System**: Smooth client-side routing without page refreshes
 - **Error Boundaries**: Comprehensive error handling at component and API levels

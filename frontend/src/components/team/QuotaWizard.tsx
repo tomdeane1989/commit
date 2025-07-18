@@ -18,6 +18,9 @@ interface QuotaWizardProps {
   onResolveConflicts: (data: any) => void;
   teamMembers: TeamMember[];
   loading: boolean;
+  onConflictDetected?: (conflicts: any[]) => void;
+  mutationError?: any;
+  mutationData?: any;
 }
 
 interface WizardData {
@@ -54,7 +57,10 @@ export const QuotaWizard: React.FC<QuotaWizardProps> = ({
   onSubmit,
   onResolveConflicts,
   teamMembers,
-  loading
+  loading,
+  onConflictDetected,
+  mutationError,
+  mutationData
 }) => {
   const [currentStep, setCurrentStep] = useState(1);
   const [conflictModalOpen, setConflictModalOpen] = useState(false);
@@ -94,10 +100,22 @@ export const QuotaWizard: React.FC<QuotaWizardProps> = ({
   };
 
   const handleConflictResponse = (error: any) => {
+    console.log('handleConflictResponse called with:', error);
+    
+    // Check if error is null or doesn't have the expected structure
+    if (!error || !error.response) {
+      console.log('Error is null or missing response structure');
+      return false;
+    }
+    
     // Check if the error contains conflict information
     if (error.response?.data?.skipped_users && error.response.data.skipped_users.length > 0) {
+      console.log('Conflicts detected:', error.response.data.skipped_users);
       setConflicts(error.response.data.skipped_users);
       setConflictModalOpen(true);
+      if (onConflictDetected) {
+        onConflictDetected(error.response.data.skipped_users);
+      }
       return true; // Indicate that conflicts were handled
     }
     return false; // No conflicts to handle
@@ -123,8 +141,7 @@ export const QuotaWizard: React.FC<QuotaWizardProps> = ({
       period_end: calculateEndDate(data.start_date, data.year_type, data.fiscal_start_month),
       quota_amount: data.annual_quota,
       commission_rate: data.commission_rate / 100,
-      distribution_method: data.distribution,
-      wizard_data: data // Store full wizard data for future editing
+      distribution_method: data.distribution
     };
   };
 
@@ -185,18 +202,29 @@ export const QuotaWizard: React.FC<QuotaWizardProps> = ({
     }
   }, [isOpen]);
 
-  // Expose the conflict handler to parent component
+  // Handle mutation errors for conflict detection
   useEffect(() => {
-    if (isOpen) {
-      // Store reference to conflict handler for the mutation error callback
-      (window as any).quotaWizardConflictHandler = handleConflictResponse;
+    console.log('Mutation error changed:', mutationError);
+    if (mutationError && mutationError.response?.data?.skipped_users) {
+      console.log('Handling conflict response for mutation error');
+      handleConflictResponse(mutationError);
     }
-    return () => {
-      if ((window as any).quotaWizardConflictHandler) {
-        delete (window as any).quotaWizardConflictHandler;
-      }
-    };
-  }, [isOpen]);
+  }, [mutationError]);
+
+  // Handle mutation success data for conflict detection
+  useEffect(() => {
+    console.log('Mutation data changed:', mutationData);
+    if (mutationData && mutationData.isConflict && mutationData.skipped_users) {
+      console.log('Handling conflict response for mutation success data');
+      // Create a fake error object for the conflict handler
+      const fakeError = {
+        response: {
+          data: mutationData
+        }
+      };
+      handleConflictResponse(fakeError);
+    }
+  }, [mutationData]);
 
   if (!isOpen) return null;
 

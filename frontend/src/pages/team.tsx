@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useRouter } from 'next/router';
 import Layout from '../components/layout';
 import { useAuth } from '../hooks/useAuth';
@@ -9,7 +9,7 @@ import { TeamFilters } from '../components/team/TeamFilters';
 import { TeamMemberCard } from '../components/team/TeamMemberCard';
 import { InviteModal } from '../components/team/InviteModal';
 import { QuotaWizard } from '../components/team/QuotaWizard';
-import { Target, Users, Settings, TrendingUp, Plus } from 'lucide-react';
+import { Target, Users, Settings, TrendingUp, Plus, ChevronRight, ChevronDown } from 'lucide-react';
 
 interface TeamMember {
   id: string;
@@ -45,7 +45,8 @@ interface Target {
   quota_amount: number;
   commission_rate: number;
   is_active: boolean;
-  member: {
+  user: {
+    id: string;
     first_name: string;
     last_name: string;
     email: string;
@@ -67,6 +68,10 @@ const TeamPage = () => {
   const [inviteModalOpen, setInviteModalOpen] = useState(false);
   const [quotaWizardOpen, setQuotaWizardOpen] = useState(false);
   const [editingMember, setEditingMember] = useState<TeamMember | null>(null);
+  
+  // Target filters
+  const [showInactiveTargets, setShowInactiveTargets] = useState(false);
+  const [expandedTargets, setExpandedTargets] = useState<Set<string>>(new Set());
 
   // Check if user has admin/manager permissions
   const canManageTeam = user?.role === 'admin' || user?.role === 'manager';
@@ -83,9 +88,9 @@ const TeamPage = () => {
 
   // Fetch targets data
   const { data: targetsData, isLoading: targetsLoading } = useQuery({
-    queryKey: ['targets'],
+    queryKey: ['targets', showInactiveTargets],
     queryFn: async () => {
-      const response = await targetsApi.getTargets();
+      const response = await targetsApi.getTargets({ active_only: !showInactiveTargets });
       return response.targets || [];
     },
     enabled: canManageTeam
@@ -104,6 +109,13 @@ const TeamPage = () => {
   const createTargetMutation = useMutation({
     mutationFn: targetsApi.createTarget,
     onSuccess: (data) => {
+      // Check if this is a conflict response
+      if ((data as any).isConflict) {
+        console.log('Conflict response received in onSuccess:', data);
+        // Don't close the wizard, let it handle the conflict
+        return;
+      }
+      
       queryClient.invalidateQueries({ queryKey: ['targets'] });
       setQuotaWizardOpen(false);
       
@@ -117,15 +129,16 @@ const TeamPage = () => {
     },
     onError: (error: any) => {
       console.error('Target creation error:', error);
+      console.log('Error response:', error.response?.data);
       
-      // Check if wizard can handle conflicts
-      if (error.response?.data?.skipped_users && error.response.data.skipped_users.length > 0) {
-        if ((window as any).quotaWizardConflictHandler) {
-          const handled = (window as any).quotaWizardConflictHandler(error);
-          if (handled) return; // Conflicts handled by wizard
-        }
+      // Check if this is a conflict error and the wizard is open
+      if (quotaWizardOpen && error.response?.data?.skipped_users && error.response.data.skipped_users.length > 0) {
+        console.log('Conflicts detected, wizard should handle this');
+        // Don't show alert, let the wizard handle it
+        return;
       }
       
+      // Show regular error
       const errorMessage = error.response?.data?.error || 'Failed to create target';
       const additionalMessage = error.response?.data?.message || '';
       
@@ -191,6 +204,43 @@ const TeamPage = () => {
     member.role === 'manager' && member.is_active
   );
 
+  // Group targets for display
+  const groupedTargets = React.useMemo(() => {
+    if (!targetsData) return [];
+    
+    const groups: { [key: string]: Target[] } = {};
+    
+    targetsData.forEach((target: Target) => {
+      if (target.role) {
+        // Role-based target - group by role + period + quota + commission
+        const key = `${target.role}-${target.period_start}-${target.period_end}-${target.quota_amount}-${target.commission_rate}`;
+        if (!groups[key]) {
+          groups[key] = [];
+        }
+        groups[key].push(target);
+      } else {
+        // Individual target - each gets its own group
+        const key = `individual-${target.id}`;
+        groups[key] = [target];
+      }
+    });
+    
+    return Object.values(groups);
+  }, [targetsData]);
+
+  // Toggle expanded state for a target group
+  const toggleExpanded = (groupKey: string) => {
+    setExpandedTargets(prev => {
+      const newSet = new Set(prev);
+      if (newSet.has(groupKey)) {
+        newSet.delete(groupKey);
+      } else {
+        newSet.add(groupKey);
+      }
+      return newSet;
+    });
+  };
+
   // Handle invite submission
   const handleInviteSubmit = (data: any) => {
     inviteMutation.mutate(data);
@@ -198,6 +248,12 @@ const TeamPage = () => {
 
   // Handle target creation
   const handleTargetSubmit = (data: any) => {
+    console.log('Submitting target data:', data);
+    console.log('Current mutation state:', {
+      isError: createTargetMutation.isError,
+      error: createTargetMutation.error,
+      isPending: createTargetMutation.isPending
+    });
     createTargetMutation.mutate(data);
   };
 
@@ -229,6 +285,7 @@ const TeamPage = () => {
       router.push('/dashboard');
     }
   }, [user, canManageTeam, router]);
+
 
   if (!canManageTeam) {
     return (
@@ -347,13 +404,26 @@ const TeamPage = () => {
                 <h2 className="text-xl font-semibold text-gray-900">Sales Targets & Quotas</h2>
                 <p className="text-gray-600 mt-1">Set and manage performance targets for your team</p>
               </div>
-              <button
-                onClick={() => setQuotaWizardOpen(true)}
-                className="inline-flex items-center px-4 py-2 bg-gradient-to-r from-indigo-600 to-purple-600 text-white text-sm font-medium rounded-xl hover:from-indigo-700 hover:to-purple-700 transition-all duration-300 shadow-lg shadow-indigo-500/25"
-              >
-                <Plus className="w-4 h-4 mr-2" />
-                Create Target
-              </button>
+              <div className="flex items-center space-x-4">
+                {/* Show Inactive Toggle */}
+                <label className="flex items-center">
+                  <input
+                    type="checkbox"
+                    checked={showInactiveTargets}
+                    onChange={(e) => setShowInactiveTargets(e.target.checked)}
+                    className="rounded border-gray-300 text-indigo-600 focus:ring-indigo-500"
+                  />
+                  <span className="ml-2 text-sm text-gray-700">Show inactive targets</span>
+                </label>
+                
+                <button
+                  onClick={() => setQuotaWizardOpen(true)}
+                  className="inline-flex items-center px-4 py-2 bg-gradient-to-r from-indigo-600 to-purple-600 text-white text-sm font-medium rounded-xl hover:from-indigo-700 hover:to-purple-700 transition-all duration-300 shadow-lg shadow-indigo-500/25"
+                >
+                  <Plus className="w-4 h-4 mr-2" />
+                  Create Target
+                </button>
+              </div>
             </div>
 
             {/* Targets List */}
@@ -382,7 +452,7 @@ const TeamPage = () => {
                     <thead className="bg-gray-50">
                       <tr>
                         <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                          Target
+                          Assigned To
                         </th>
                         <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                           Period
@@ -399,53 +469,156 @@ const TeamPage = () => {
                       </tr>
                     </thead>
                     <tbody className="bg-white divide-y divide-gray-200">
-                      {targetsData.map((target: Target) => (
-                        <tr key={target.id} className="hover:bg-gray-50">
-                          <td className="px-6 py-4 whitespace-nowrap">
-                            <div className="text-sm font-medium text-gray-900">
-                              {target.member ? (
-                                `${target.member.first_name} ${target.member.last_name}`
-                              ) : (
-                                target.role ? `${target.role} (Role-based)` : 'N/A'
-                              )}
-                            </div>
-                            <div className="text-sm text-gray-500">
-                              {target.member?.email || target.role || 'N/A'}
-                            </div>
-                          </td>
-                          <td className="px-6 py-4 whitespace-nowrap">
-                            <div className="text-sm text-gray-900">
-                              {new Date(target.period_start).toLocaleDateString('en-GB')} - {new Date(target.period_end).toLocaleDateString('en-GB')}
-                            </div>
-                            <div className="text-sm text-gray-500 capitalize">
-                              {target.period_type}
-                            </div>
-                          </td>
-                          <td className="px-6 py-4 whitespace-nowrap">
-                            <div className="text-sm font-medium text-gray-900">
-                              {new Intl.NumberFormat('en-GB', {
-                                style: 'currency',
-                                currency: 'GBP',
-                                minimumFractionDigits: 0
-                              }).format(target.quota_amount)}
-                            </div>
-                          </td>
-                          <td className="px-6 py-4 whitespace-nowrap">
-                            <div className="text-sm text-gray-900">
-                              {target.commission_rate}%
-                            </div>
-                          </td>
-                          <td className="px-6 py-4 whitespace-nowrap">
-                            <span className={`inline-flex px-2 py-1 text-xs font-semibold rounded-full ${
-                              target.is_active
-                                ? 'bg-green-100 text-green-800'
-                                : 'bg-gray-100 text-gray-800'
-                            }`}>
-                              {target.is_active ? 'Active' : 'Inactive'}
-                            </span>
-                          </td>
-                        </tr>
-                      ))}
+                      {groupedTargets.map((group: Target[]) => {
+                        const mainTarget = group[0];
+                        const groupKey = mainTarget.role ? 
+                          `${mainTarget.role}-${mainTarget.period_start}-${mainTarget.period_end}-${mainTarget.quota_amount}-${mainTarget.commission_rate}` : 
+                          `individual-${mainTarget.id}`;
+                        const isExpanded = expandedTargets.has(groupKey);
+                        const isRoleBased = !!mainTarget.role;
+                        
+                        return (
+                          <React.Fragment key={groupKey}>
+                            {/* Main target row */}
+                            <tr className="hover:bg-gray-50">
+                              <td className="px-6 py-4 whitespace-nowrap">
+                                <div className="flex items-center">
+                                  <div className="flex-shrink-0 w-8 h-8 bg-gray-100 rounded-full flex items-center justify-center mr-3">
+                                    {!isRoleBased ? (
+                                      <Users className="w-4 h-4 text-gray-600" />
+                                    ) : (
+                                      <Target className="w-4 h-4 text-blue-600" />
+                                    )}
+                                  </div>
+                                  <div className="flex-1">
+                                    <div className="flex items-center">
+                                      <div className="text-sm font-medium text-gray-900">
+                                        {!isRoleBased ? (
+                                          mainTarget.user ? `${mainTarget.user.first_name} ${mainTarget.user.last_name}` : 'N/A'
+                                        ) : (
+                                          `All ${mainTarget.role.replace('_', ' ').replace(/\b\w/g, l => l.toUpperCase())}s`
+                                        )}
+                                      </div>
+                                      {isRoleBased && (
+                                        <button
+                                          onClick={() => toggleExpanded(groupKey)}
+                                          className="ml-2 p-1 hover:bg-gray-200 rounded-full transition-colors"
+                                        >
+                                          {isExpanded ? (
+                                            <ChevronDown className="w-4 h-4 text-gray-500" />
+                                          ) : (
+                                            <ChevronRight className="w-4 h-4 text-gray-500" />
+                                          )}
+                                        </button>
+                                      )}
+                                    </div>
+                                    <div className="text-sm text-gray-500">
+                                      {!isRoleBased ? (
+                                        <>
+                                          <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800 mr-2">
+                                            Individual
+                                          </span>
+                                          {mainTarget.user?.email || 'N/A'}
+                                        </>
+                                      ) : (
+                                        <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-800">
+                                          Role-based ({group.length} members)
+                                        </span>
+                                      )}
+                                    </div>
+                                  </div>
+                                </div>
+                              </td>
+                              <td className="px-6 py-4 whitespace-nowrap">
+                                <div className="text-sm text-gray-900">
+                                  {new Date(mainTarget.period_start).toLocaleDateString('en-GB')} - {new Date(mainTarget.period_end).toLocaleDateString('en-GB')}
+                                </div>
+                                <div className="text-sm text-gray-500 capitalize">
+                                  {mainTarget.period_type}
+                                </div>
+                              </td>
+                              <td className="px-6 py-4 whitespace-nowrap">
+                                <div className="text-sm font-medium text-gray-900">
+                                  {new Intl.NumberFormat('en-GB', {
+                                    style: 'currency',
+                                    currency: 'GBP',
+                                    minimumFractionDigits: 0
+                                  }).format(mainTarget.quota_amount)}
+                                </div>
+                                {isRoleBased && (
+                                  <div className="text-xs text-gray-500">
+                                    per person
+                                  </div>
+                                )}
+                              </td>
+                              <td className="px-6 py-4 whitespace-nowrap">
+                                <div className="text-sm text-gray-900">
+                                  {(mainTarget.commission_rate * 100).toFixed(1)}%
+                                </div>
+                              </td>
+                              <td className="px-6 py-4 whitespace-nowrap">
+                                <span className={`inline-flex px-2 py-1 text-xs font-semibold rounded-full ${
+                                  mainTarget.is_active
+                                    ? 'bg-green-100 text-green-800'
+                                    : 'bg-gray-100 text-gray-800'
+                                }`}>
+                                  {mainTarget.is_active ? 'Active' : 'Inactive'}
+                                </span>
+                              </td>
+                            </tr>
+                            
+                            {/* Expanded rows for role-based targets */}
+                            {isRoleBased && isExpanded && group.map((target: Target) => (
+                              <tr key={target.id} className="bg-gray-50">
+                                <td className="px-6 py-4 whitespace-nowrap">
+                                  <div className="flex items-center">
+                                    <div className="w-8 h-8 mr-3" /> {/* Spacer */}
+                                    <div className="flex-shrink-0 w-6 h-6 bg-white rounded-full flex items-center justify-center mr-3 border">
+                                      <Users className="w-3 h-3 text-gray-600" />
+                                    </div>
+                                    <div>
+                                      <div className="text-sm font-medium text-gray-900">
+                                        {target.user ? `${target.user.first_name} ${target.user.last_name}` : 'N/A'}
+                                      </div>
+                                      <div className="text-sm text-gray-500">
+                                        {target.user?.email || 'N/A'}
+                                      </div>
+                                    </div>
+                                  </div>
+                                </td>
+                                <td className="px-6 py-4 whitespace-nowrap">
+                                  <div className="text-sm text-gray-700">
+                                    Individual assignment
+                                  </div>
+                                </td>
+                                <td className="px-6 py-4 whitespace-nowrap">
+                                  <div className="text-sm text-gray-700">
+                                    {new Intl.NumberFormat('en-GB', {
+                                      style: 'currency',
+                                      currency: 'GBP',
+                                      minimumFractionDigits: 0
+                                    }).format(target.quota_amount)}
+                                  </div>
+                                </td>
+                                <td className="px-6 py-4 whitespace-nowrap">
+                                  <div className="text-sm text-gray-700">
+                                    {(target.commission_rate * 100).toFixed(1)}%
+                                  </div>
+                                </td>
+                                <td className="px-6 py-4 whitespace-nowrap">
+                                  <span className={`inline-flex px-2 py-1 text-xs font-semibold rounded-full ${
+                                    target.is_active
+                                      ? 'bg-green-100 text-green-800'
+                                      : 'bg-gray-100 text-gray-800'
+                                  }`}>
+                                    {target.is_active ? 'Active' : 'Inactive'}
+                                  </span>
+                                </td>
+                              </tr>
+                            ))}
+                          </React.Fragment>
+                        );
+                      })}
                     </tbody>
                   </table>
                 </div>
@@ -471,6 +644,11 @@ const TeamPage = () => {
         onResolveConflicts={handleResolveConflicts}
         teamMembers={teamData || []}
         loading={createTargetMutation.isPending || resolveConflictsMutation.isPending}
+        onConflictDetected={(conflicts) => {
+          console.log('Conflicts detected in team.tsx:', conflicts);
+        }}
+        mutationError={createTargetMutation.error}
+        mutationData={createTargetMutation.data}
       />
     </Layout>
   );
