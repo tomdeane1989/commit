@@ -130,7 +130,7 @@ export const TeamMemberCard: React.FC<TeamMemberCardProps> = ({
             
             <div className="flex items-center text-sm text-gray-600">
               <Building className="w-4 h-4 mr-2" />
-              <span className="capitalize">{member.role}</span>
+              <span className="capitalize">{member.role.replace('_', ' ')}</span>
               {member.territory && (
                 <span className="ml-2 px-2 py-1 bg-gray-100 text-xs rounded">
                   {member.territory}

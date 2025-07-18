@@ -6,6 +6,31 @@ import Joi from 'joi';
 const router = express.Router();
 const prisma = new PrismaClient();
 
+// Helper function to calculate pro-rated quota for mid-year hires
+const calculateProRatedQuota = (baseQuota, hireDate, periodStart, periodEnd) => {
+  const hireDateObj = new Date(hireDate);
+  const periodStartObj = new Date(periodStart);
+  const periodEndObj = new Date(periodEnd);
+  
+  // If hired before the period starts, use full quota
+  if (hireDateObj <= periodStartObj) {
+    return baseQuota;
+  }
+  
+  // If hired after the period ends, no quota
+  if (hireDateObj > periodEndObj) {
+    return 0;
+  }
+  
+  // Calculate pro-rated quota based on remaining time in period
+  const totalPeriodDays = (periodEndObj - periodStartObj) / (1000 * 60 * 60 * 24);
+  const remainingPeriodDays = (periodEndObj - hireDateObj) / (1000 * 60 * 60 * 24);
+  
+  const proRatedQuota = baseQuota * (remainingPeriodDays / totalPeriodDays);
+  
+  return Math.round(proRatedQuota);
+};
+
 const targetSchema = Joi.object({
   user_id: Joi.string().optional(),
   period_type: Joi.string().valid('monthly', 'quarterly', 'annual').required(),
@@ -19,6 +44,10 @@ const targetSchema = Joi.object({
 router.get('/', async (req, res) => {
   try {
     const { user_id, active_only = 'false' } = req.query;
+    
+    if (!req.user) {
+      return res.status(401).json({ error: 'Authentication required' });
+    }
     
     const where = {
       ...(user_id ? { user_id } : { user_id: req.user.id }),
@@ -58,12 +87,16 @@ router.get('/', async (req, res) => {
 // Create target
 router.post('/', async (req, res) => {
   try {
+    if (!req.user) {
+      return res.status(401).json({ error: 'Authentication required' });
+    }
+    
     // Only admins and managers can create targets
     if (req.user.role !== 'admin' && req.user.role !== 'manager') {
       return res.status(403).json({ error: 'Only admins and managers can create targets' });
     }
 
-    const { target_type, user_id, role, period_type, period_start, period_end, quota_amount, commission_rate } = req.body;
+    const { target_type, user_id, role, period_type, period_start, period_end, quota_amount, commission_rate, distribution_method, wizard_data } = req.body;
 
     // Validate required fields
     if (!target_type || !period_type || !period_start || !period_end || !quota_amount || !commission_rate) {
@@ -110,6 +143,7 @@ router.post('/', async (req, res) => {
     }
 
     const createdTargets = [];
+    const skippedUsers = [];
 
     // Create targets for each user
     for (const targetUser of targetUsers) {
@@ -129,6 +163,10 @@ router.post('/', async (req, res) => {
 
       if (overlapping) {
         console.warn(`Skipping overlapping target for user ${targetUser.first_name} ${targetUser.last_name}`);
+        skippedUsers.push({
+          name: `${targetUser.first_name} ${targetUser.last_name}`,
+          existing_period: `${overlapping.period_start.toISOString().split('T')[0]} to ${overlapping.period_end.toISOString().split('T')[0]}`
+        });
         continue;
       }
 
@@ -143,6 +181,29 @@ router.post('/', async (req, res) => {
         }
       });
 
+      // Calculate pro-rated quota if user was hired mid-period
+      let finalQuotaAmount = quota_amount;
+      let proRatedInfo = null;
+      
+      if (targetUser.hire_date) {
+        const proRatedQuota = calculateProRatedQuota(
+          quota_amount, 
+          targetUser.hire_date, 
+          period_start, 
+          period_end
+        );
+        
+        if (proRatedQuota !== quota_amount) {
+          finalQuotaAmount = proRatedQuota;
+          proRatedInfo = {
+            original_quota: quota_amount,
+            pro_rated_quota: proRatedQuota,
+            hire_date: targetUser.hire_date,
+            reason: 'Mid-year hire pro-rating applied'
+          };
+        }
+      }
+
       // Create new target
       const target = await prisma.targets.create({
         data: {
@@ -151,9 +212,11 @@ router.post('/', async (req, res) => {
           period_type,
           period_start: new Date(period_start),
           period_end: new Date(period_end),
-          quota_amount,
+          quota_amount: finalQuotaAmount,
           commission_rate,
-          is_active: true
+          is_active: true,
+          ...(wizard_data && { wizard_metadata: wizard_data }),
+          ...(proRatedInfo && { pro_rated_info: proRatedInfo })
         }
       });
 
@@ -171,17 +234,40 @@ router.post('/', async (req, res) => {
             target_type,
             target_user: `${targetUser.first_name} ${targetUser.last_name}`,
             quota_amount: target.quota_amount,
+            original_quota: quota_amount,
             period_start: target.period_start,
-            period_end: target.period_end
+            period_end: target.period_end,
+            ...(proRatedInfo && { pro_rated: true, pro_rated_info: proRatedInfo }),
+            ...(distribution_method && { distribution_method }),
+            ...(wizard_data && { created_via_wizard: true })
           },
           success: true
         }
       });
     }
 
+    if (createdTargets.length === 0) {
+      return res.status(400).json({
+        error: 'No targets created. All users already have overlapping active targets for the specified period.',
+        skipped_users: skippedUsers,
+        message: 'Try selecting a different time period that doesn\'t overlap with existing targets.'
+      });
+    }
+
+    // Check if any targets were pro-rated
+    const proRatedTargets = createdTargets.filter(target => target.pro_rated_info);
+    
     res.status(201).json({
       targets: createdTargets,
-      message: `Created ${createdTargets.length} target${createdTargets.length !== 1 ? 's' : ''} successfully`
+      message: `Created ${createdTargets.length} target${createdTargets.length !== 1 ? 's' : ''} successfully`,
+      ...(skippedUsers.length > 0 && {
+        warning: `${skippedUsers.length} user${skippedUsers.length !== 1 ? 's' : ''} skipped due to overlapping targets`,
+        skipped_users: skippedUsers
+      }),
+      ...(proRatedTargets.length > 0 && {
+        pro_rated_count: proRatedTargets.length,
+        pro_rated_info: `${proRatedTargets.length} target${proRatedTargets.length !== 1 ? 's' : ''} pro-rated for mid-year hires`
+      })
     });
   } catch (error) {
     console.error('Create target error:', error);

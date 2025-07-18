@@ -33,18 +33,18 @@ app.use(cors({
 // Cookie parser for authentication
 app.use(cookieParser());
 
-// Rate limiting
-app.use(apiRateLimit);
+// Rate limiting (disabled for development)
+// app.use(apiRateLimit);
 
 // Body parsing
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true }));
 
-// CSRF protection
-app.use(csrfProtection);
+// CSRF protection (disabled for development)
+// app.use(csrfProtection);
 
-// CSRF token endpoint
-app.get('/api/csrf-token', csrfTokenHandler);
+// CSRF token endpoint (disabled for development)
+// app.get('/api/csrf-token', csrfTokenHandler);
 
 // Use secure authentication routes (no auth required)
 app.use('/api/auth', authRoutes);
@@ -270,24 +270,6 @@ app.get('/api/deals', authMiddleware, async (req, res) => {
     });
   } catch (error) {
     console.error('Get deals error:', error);
-    res.status(500).json({ error: 'Internal server error' });
-  }
-});
-
-// Targets routes
-app.get('/api/targets', authMiddleware, async (req, res) => {
-  try {
-    const targets = await prisma.targets.findMany({
-      where: { user_id: req.user.id },
-      orderBy: { created_at: 'desc' }
-    });
-
-    res.json({
-      targets,
-      success: true
-    });
-  } catch (error) {
-    console.error('Get targets error:', error);
     res.status(500).json({ error: 'Internal server error' });
   }
 });
@@ -646,6 +628,6 @@ app.use('*', notFoundHandler);
 // Error handling middleware (must be last)
 app.use(errorHandler);
 
-app.listen(PORT, () => {
-  console.log(`Server running on port ${PORT}`);
+app.listen(PORT, '127.0.0.1', () => {
+  console.log(`Server running on 127.0.0.1:${PORT}`);
 });

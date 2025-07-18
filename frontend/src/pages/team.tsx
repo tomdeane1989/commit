@@ -8,7 +8,7 @@ import { TeamStats } from '../components/team/TeamStats';
 import { TeamFilters } from '../components/team/TeamFilters';
 import { TeamMemberCard } from '../components/team/TeamMemberCard';
 import { InviteModal } from '../components/team/InviteModal';
-import { TargetModal } from '../components/team/TargetModal';
+import { QuotaWizard } from '../components/team/QuotaWizard';
 import { Target, Users, Settings, TrendingUp, Plus } from 'lucide-react';
 
 interface TeamMember {
@@ -65,7 +65,7 @@ const TeamPage = () => {
   
   // Modals
   const [inviteModalOpen, setInviteModalOpen] = useState(false);
-  const [targetModalOpen, setTargetModalOpen] = useState(false);
+  const [quotaWizardOpen, setQuotaWizardOpen] = useState(false);
   const [editingMember, setEditingMember] = useState<TeamMember | null>(null);
 
   // Check if user has admin/manager permissions
@@ -103,9 +103,21 @@ const TeamPage = () => {
   // Create target mutation
   const createTargetMutation = useMutation({
     mutationFn: targetsApi.createTarget,
-    onSuccess: () => {
+    onSuccess: (data) => {
       queryClient.invalidateQueries({ queryKey: ['targets'] });
-      setTargetModalOpen(false);
+      setQuotaWizardOpen(false);
+      
+      // Show warning if some users were skipped
+      if (data.warning) {
+        alert(`${data.message}\n\nWarning: ${data.warning}`);
+      }
+    },
+    onError: (error: any) => {
+      console.error('Target creation error:', error);
+      const errorMessage = error.response?.data?.error || 'Failed to create target';
+      const additionalMessage = error.response?.data?.message || '';
+      
+      alert(`Error: ${errorMessage}${additionalMessage ? `\n\n${additionalMessage}` : ''}`);
     }
   });
 
@@ -297,7 +309,7 @@ const TeamPage = () => {
                 <p className="text-gray-600 mt-1">Set and manage performance targets for your team</p>
               </div>
               <button
-                onClick={() => setTargetModalOpen(true)}
+                onClick={() => setQuotaWizardOpen(true)}
                 className="inline-flex items-center px-4 py-2 bg-gradient-to-r from-indigo-600 to-purple-600 text-white text-sm font-medium rounded-xl hover:from-indigo-700 hover:to-purple-700 transition-all duration-300 shadow-lg shadow-indigo-500/25"
               >
                 <Plus className="w-4 h-4 mr-2" />
@@ -318,7 +330,7 @@ const TeamPage = () => {
                   <h3 className="text-lg font-medium text-gray-900 mb-2">No targets found</h3>
                   <p className="text-gray-600 mb-4">Create your first target to start tracking team performance.</p>
                   <button
-                    onClick={() => setTargetModalOpen(true)}
+                    onClick={() => setQuotaWizardOpen(true)}
                     className="inline-flex items-center px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition-colors"
                   >
                     <Plus className="w-4 h-4 mr-2" />
@@ -413,9 +425,9 @@ const TeamPage = () => {
         loading={inviteMutation.isPending}
       />
 
-      <TargetModal
-        isOpen={targetModalOpen}
-        onClose={() => setTargetModalOpen(false)}
+      <QuotaWizard
+        isOpen={quotaWizardOpen}
+        onClose={() => setQuotaWizardOpen(false)}
         onSubmit={handleTargetSubmit}
         teamMembers={teamData || []}
         loading={createTargetMutation.isPending}

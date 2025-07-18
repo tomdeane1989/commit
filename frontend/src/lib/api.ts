@@ -11,7 +11,7 @@ import type {
   Commission 
 } from '../types';
 
-const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3002';
+const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://127.0.0.1:3002';
 
 // Create axios instance with default config
 const api = axios.create({

@@ -42,8 +42,9 @@ export const TargetModal: React.FC<TargetModalProps> = ({
     
     const data = {
       ...formData,
+      target_type: targetType,
       quota_amount: parseFloat(formData.quota_amount),
-      commission_rate: parseFloat(formData.commission_rate),
+      commission_rate: parseFloat(formData.commission_rate) / 100, // Convert percentage to decimal
       // Clear the field that's not being used
       user_id: targetType === 'individual' ? formData.user_id : null,
       role: targetType === 'role' ? formData.role : null
