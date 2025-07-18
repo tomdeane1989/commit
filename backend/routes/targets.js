@@ -50,7 +50,8 @@ router.get('/', async (req, res) => {
     }
     
     const where = {
-      ...(user_id ? { user_id } : { user_id: req.user.id }),
+      // Admin/Manager can see all targets if no user_id specified
+      ...(user_id ? { user_id } : (req.user.role === 'admin' || req.user.role === 'manager') ? {} : { user_id: req.user.id }),
       ...(active_only === 'true' && { is_active: true })
     };
 
@@ -73,6 +74,8 @@ router.get('/', async (req, res) => {
       },
       orderBy: { created_at: 'desc' }
     });
+
+    console.log(`GET targets: Found ${targets.length} targets for user ${req.user.email}`);
 
     res.json({
       targets,
@@ -145,6 +148,8 @@ router.post('/', async (req, res) => {
     const createdTargets = [];
     const skippedUsers = [];
 
+    console.log(`Starting target creation for ${targetUsers.length} users`);
+
     // Create targets for each user
     for (const targetUser of targetUsers) {
       // Check for overlapping periods
@@ -162,7 +167,7 @@ router.post('/', async (req, res) => {
       });
 
       if (overlapping) {
-        console.warn(`Skipping overlapping target for user ${targetUser.first_name} ${targetUser.last_name}`);
+        console.log(`Skipping overlapping target for user ${targetUser.first_name} ${targetUser.last_name}`);
         skippedUsers.push({
           user_id: targetUser.id,
           name: `${targetUser.first_name} ${targetUser.last_name}`,
@@ -181,13 +186,15 @@ router.post('/', async (req, res) => {
             period_end: period_end,
             quota_amount: quota_amount,
             commission_rate: commission_rate,
-            period_type: period_type
+            period_type: period_type,
+            role: target_type === 'role' ? role : null
           }
         });
+        console.log(`Added to skippedUsers array. Total skipped: ${skippedUsers.length}`);
         continue;
       }
 
-      // Deactivate any existing active targets for this user
+      // Deactivate any existing active targets for this user (no conflicts found)
       await prisma.targets.updateMany({
         where: {
           user_id: targetUser.id,
@@ -232,8 +239,7 @@ router.post('/', async (req, res) => {
           quota_amount: finalQuotaAmount,
           commission_rate,
           is_active: true,
-          ...(wizard_data && { wizard_metadata: wizard_data }),
-          ...(proRatedInfo && { pro_rated_info: proRatedInfo })
+          role: target_type === 'role' ? role : null
         }
       });
 
@@ -263,7 +269,10 @@ router.post('/', async (req, res) => {
       });
     }
 
+    console.log(`Loop completed. Created ${createdTargets.length} targets, skipped ${skippedUsers.length} users`);
+    
     if (createdTargets.length === 0) {
+      console.log('No targets created, returning 400 error with conflict data');
       return res.status(400).json({
         error: 'No targets created. All users already have overlapping active targets for the specified period.',
         skipped_users: skippedUsers,
@@ -394,6 +403,8 @@ router.post('/resolve-conflicts', async (req, res) => {
 
     const { conflicts, wizard_data } = req.body;
     
+    console.log('Resolve conflicts called with:', JSON.stringify(req.body, null, 2));
+    
     if (!conflicts || !Array.isArray(conflicts)) {
       return res.status(400).json({ error: 'Conflicts array is required' });
     }
@@ -401,17 +412,23 @@ router.post('/resolve-conflicts', async (req, res) => {
     const resolvedTargets = [];
     const errors = [];
 
+    console.log(`Starting conflict resolution for ${conflicts.length} conflicts`);
+
     for (const conflict of conflicts) {
       const { user_id, action, existing_target_id, proposed_target } = conflict;
       
+      console.log(`Processing conflict for user ${user_id}, action: ${action}`);
+      
       if (action === 'replace') {
         try {
+          console.log(`  - Deactivating existing target: ${existing_target_id}`);
           // Deactivate existing target
           await prisma.targets.update({
             where: { id: existing_target_id },
             data: { is_active: false }
           });
 
+          console.log(`  - Fetching user data for: ${user_id}`);
           // Calculate pro-rated quota if needed
           const targetUser = await prisma.users.findUnique({
             where: { id: user_id }
@@ -439,6 +456,7 @@ router.post('/resolve-conflicts', async (req, res) => {
             }
           }
 
+          console.log(`  - Creating new target for user ${user_id} with quota ${finalQuotaAmount}`);
           // Create new target
           const newTarget = await prisma.targets.create({
             data: {
@@ -450,11 +468,11 @@ router.post('/resolve-conflicts', async (req, res) => {
               quota_amount: finalQuotaAmount,
               commission_rate: proposed_target.commission_rate,
               is_active: true,
-              ...(wizard_data && { wizard_metadata: wizard_data }),
-              ...(proRatedInfo && { pro_rated_info: proRatedInfo })
+              role: proposed_target.role || null
             }
           });
 
+          console.log(`  - Successfully created target: ${newTarget.id}`);
           resolvedTargets.push(newTarget);
 
           // Log activity
@@ -506,6 +524,8 @@ router.post('/resolve-conflicts', async (req, res) => {
     }
 
     const proRatedTargets = resolvedTargets.filter(target => target.pro_rated_info);
+
+    console.log(`Conflict resolution completed: ${resolvedTargets.length} targets created, ${errors.length} errors`);
 
     res.status(201).json({
       message: `Resolved ${conflicts.length} conflict${conflicts.length !== 1 ? 's' : ''} successfully`,
