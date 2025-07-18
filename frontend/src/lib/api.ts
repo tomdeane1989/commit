@@ -134,6 +134,11 @@ export const targetsApi = {
     const response = await api.patch(`/targets/${targetId}/deactivate`);
     return response.data;
   },
+
+  resolveConflicts: async (data: { conflicts: any[], wizard_data: any }): Promise<any> => {
+    const response = await api.post('/targets/resolve-conflicts', data);
+    return response.data;
+  },
 };
 
 // Commissions API

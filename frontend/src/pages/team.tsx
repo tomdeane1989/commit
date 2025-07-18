@@ -107,17 +107,51 @@ const TeamPage = () => {
       queryClient.invalidateQueries({ queryKey: ['targets'] });
       setQuotaWizardOpen(false);
       
-      // Show warning if some users were skipped
-      if (data.warning) {
-        alert(`${data.message}\n\nWarning: ${data.warning}`);
+      // Show warning if some users were skipped or pro-rated
+      if (data.warning || data.pro_rated_info) {
+        let message = data.message;
+        if (data.warning) message += `\n\nWarning: ${data.warning}`;
+        if (data.pro_rated_info) message += `\n\nInfo: ${data.pro_rated_info}`;
+        alert(message);
       }
     },
     onError: (error: any) => {
       console.error('Target creation error:', error);
+      
+      // Check if wizard can handle conflicts
+      if (error.response?.data?.skipped_users && error.response.data.skipped_users.length > 0) {
+        if ((window as any).quotaWizardConflictHandler) {
+          const handled = (window as any).quotaWizardConflictHandler(error);
+          if (handled) return; // Conflicts handled by wizard
+        }
+      }
+      
       const errorMessage = error.response?.data?.error || 'Failed to create target';
       const additionalMessage = error.response?.data?.message || '';
       
       alert(`Error: ${errorMessage}${additionalMessage ? `\n\n${additionalMessage}` : ''}`);
+    }
+  });
+
+  // Resolve conflicts mutation
+  const resolveConflictsMutation = useMutation({
+    mutationFn: targetsApi.resolveConflicts,
+    onSuccess: (data) => {
+      queryClient.invalidateQueries({ queryKey: ['targets'] });
+      setQuotaWizardOpen(false);
+      
+      // Show success message with details
+      let message = data.message;
+      if (data.pro_rated_info) message += `\n\nInfo: ${data.pro_rated_info}`;
+      if (data.errors && data.errors.length > 0) {
+        message += `\n\nSome errors occurred: ${data.errors.map((e: any) => e.error).join(', ')}`;
+      }
+      alert(message);
+    },
+    onError: (error: any) => {
+      console.error('Conflict resolution error:', error);
+      const errorMessage = error.response?.data?.error || 'Failed to resolve conflicts';
+      alert(`Error: ${errorMessage}`);
     }
   });
 
@@ -165,6 +199,11 @@ const TeamPage = () => {
   // Handle target creation
   const handleTargetSubmit = (data: any) => {
     createTargetMutation.mutate(data);
+  };
+
+  // Handle conflict resolution
+  const handleResolveConflicts = (data: any) => {
+    resolveConflictsMutation.mutate(data);
   };
 
   // Handle member edit
@@ -429,8 +468,9 @@ const TeamPage = () => {
         isOpen={quotaWizardOpen}
         onClose={() => setQuotaWizardOpen(false)}
         onSubmit={handleTargetSubmit}
+        onResolveConflicts={handleResolveConflicts}
         teamMembers={teamData || []}
-        loading={createTargetMutation.isPending}
+        loading={createTargetMutation.isPending || resolveConflictsMutation.isPending}
       />
     </Layout>
   );

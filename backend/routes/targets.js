@@ -164,8 +164,25 @@ router.post('/', async (req, res) => {
       if (overlapping) {
         console.warn(`Skipping overlapping target for user ${targetUser.first_name} ${targetUser.last_name}`);
         skippedUsers.push({
+          user_id: targetUser.id,
           name: `${targetUser.first_name} ${targetUser.last_name}`,
-          existing_period: `${overlapping.period_start.toISOString().split('T')[0]} to ${overlapping.period_end.toISOString().split('T')[0]}`
+          email: targetUser.email,
+          role: targetUser.role,
+          existing_target: {
+            id: overlapping.id,
+            period_start: overlapping.period_start.toISOString().split('T')[0],
+            period_end: overlapping.period_end.toISOString().split('T')[0],
+            quota_amount: overlapping.quota_amount,
+            commission_rate: overlapping.commission_rate,
+            period_type: overlapping.period_type
+          },
+          proposed_target: {
+            period_start: period_start,
+            period_end: period_end,
+            quota_amount: quota_amount,
+            commission_rate: commission_rate,
+            period_type: period_type
+          }
         });
         continue;
       }
@@ -359,6 +376,150 @@ router.patch('/:id/deactivate', async (req, res) => {
     res.json(target);
   } catch (error) {
     console.error('Deactivate target error:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// Resolve conflicts by replacing existing targets
+router.post('/resolve-conflicts', async (req, res) => {
+  try {
+    if (!req.user) {
+      return res.status(401).json({ error: 'Authentication required' });
+    }
+    
+    // Only admins and managers can resolve conflicts
+    if (req.user.role !== 'admin' && req.user.role !== 'manager') {
+      return res.status(403).json({ error: 'Only admins and managers can resolve conflicts' });
+    }
+
+    const { conflicts, wizard_data } = req.body;
+    
+    if (!conflicts || !Array.isArray(conflicts)) {
+      return res.status(400).json({ error: 'Conflicts array is required' });
+    }
+
+    const resolvedTargets = [];
+    const errors = [];
+
+    for (const conflict of conflicts) {
+      const { user_id, action, existing_target_id, proposed_target } = conflict;
+      
+      if (action === 'replace') {
+        try {
+          // Deactivate existing target
+          await prisma.targets.update({
+            where: { id: existing_target_id },
+            data: { is_active: false }
+          });
+
+          // Calculate pro-rated quota if needed
+          const targetUser = await prisma.users.findUnique({
+            where: { id: user_id }
+          });
+
+          let finalQuotaAmount = proposed_target.quota_amount;
+          let proRatedInfo = null;
+          
+          if (targetUser?.hire_date) {
+            const proRatedQuota = calculateProRatedQuota(
+              proposed_target.quota_amount,
+              targetUser.hire_date,
+              proposed_target.period_start,
+              proposed_target.period_end
+            );
+            
+            if (proRatedQuota !== proposed_target.quota_amount) {
+              finalQuotaAmount = proRatedQuota;
+              proRatedInfo = {
+                original_quota: proposed_target.quota_amount,
+                pro_rated_quota: proRatedQuota,
+                hire_date: targetUser.hire_date,
+                reason: 'Mid-year hire pro-rating applied'
+              };
+            }
+          }
+
+          // Create new target
+          const newTarget = await prisma.targets.create({
+            data: {
+              user_id: user_id,
+              company_id: req.user.company_id,
+              period_type: proposed_target.period_type,
+              period_start: new Date(proposed_target.period_start),
+              period_end: new Date(proposed_target.period_end),
+              quota_amount: finalQuotaAmount,
+              commission_rate: proposed_target.commission_rate,
+              is_active: true,
+              ...(wizard_data && { wizard_metadata: wizard_data }),
+              ...(proRatedInfo && { pro_rated_info: proRatedInfo })
+            }
+          });
+
+          resolvedTargets.push(newTarget);
+
+          // Log activity
+          await prisma.activity_log.create({
+            data: {
+              user_id: req.user.id,
+              company_id: req.user.company_id,
+              action: 'target_conflict_resolved',
+              entity_type: 'target',
+              entity_id: newTarget.id,
+              context: {
+                action: 'replace',
+                replaced_target_id: existing_target_id,
+                user_name: targetUser ? `${targetUser.first_name} ${targetUser.last_name}` : 'Unknown',
+                quota_amount: newTarget.quota_amount,
+                original_quota: proposed_target.quota_amount,
+                ...(proRatedInfo && { pro_rated: true, pro_rated_info: proRatedInfo })
+              },
+              success: true
+            }
+          });
+
+        } catch (error) {
+          console.error(`Error resolving conflict for user ${user_id}:`, error);
+          errors.push({
+            user_id,
+            error: 'Failed to resolve conflict',
+            details: error.message
+          });
+        }
+      } else if (action === 'keep') {
+        // Just log that we kept the existing target
+        await prisma.activity_log.create({
+          data: {
+            user_id: req.user.id,
+            company_id: req.user.company_id,
+            action: 'target_conflict_resolved',
+            entity_type: 'target',
+            entity_id: existing_target_id,
+            context: {
+              action: 'keep',
+              user_id: user_id,
+              message: 'Kept existing target, rejected proposed target'
+            },
+            success: true
+          }
+        });
+      }
+    }
+
+    const proRatedTargets = resolvedTargets.filter(target => target.pro_rated_info);
+
+    res.status(201).json({
+      message: `Resolved ${conflicts.length} conflict${conflicts.length !== 1 ? 's' : ''} successfully`,
+      resolved_targets: resolvedTargets,
+      created_count: resolvedTargets.length,
+      errors: errors,
+      ...(proRatedTargets.length > 0 && {
+        pro_rated_count: proRatedTargets.length,
+        pro_rated_info: `${proRatedTargets.length} target${proRatedTargets.length !== 1 ? 's' : ''} pro-rated for mid-year hires`
+      })
+    });
+
+  } catch (error) {
+    console.error('Resolve conflicts error:', error);
     res.status(500).json({ error: 'Internal server error' });
   }
 });

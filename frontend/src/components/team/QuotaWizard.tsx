@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import { X, ChevronRight, ChevronLeft, Calendar, Users, Target, CheckCircle, AlertCircle } from 'lucide-react';
+import { ConflictResolutionModal } from './ConflictResolutionModal';
 
 interface TeamMember {
   id: string;
@@ -14,6 +15,7 @@ interface QuotaWizardProps {
   isOpen: boolean;
   onClose: () => void;
   onSubmit: (data: any) => void;
+  onResolveConflicts: (data: any) => void;
   teamMembers: TeamMember[];
   loading: boolean;
 }
@@ -50,10 +52,13 @@ export const QuotaWizard: React.FC<QuotaWizardProps> = ({
   isOpen,
   onClose,
   onSubmit,
+  onResolveConflicts,
   teamMembers,
   loading
 }) => {
   const [currentStep, setCurrentStep] = useState(1);
+  const [conflictModalOpen, setConflictModalOpen] = useState(false);
+  const [conflicts, setConflicts] = useState<any[]>([]);
   const [wizardData, setWizardData] = useState<WizardData>({
     scope: 'role',
     year_type: 'calendar',
@@ -86,6 +91,25 @@ export const QuotaWizard: React.FC<QuotaWizardProps> = ({
     // Transform wizard data to API format
     const apiData = transformWizardDataToApiFormat(wizardData);
     onSubmit(apiData);
+  };
+
+  const handleConflictResponse = (error: any) => {
+    // Check if the error contains conflict information
+    if (error.response?.data?.skipped_users && error.response.data.skipped_users.length > 0) {
+      setConflicts(error.response.data.skipped_users);
+      setConflictModalOpen(true);
+      return true; // Indicate that conflicts were handled
+    }
+    return false; // No conflicts to handle
+  };
+
+  const handleResolveConflicts = (resolutions: any[]) => {
+    const conflictData = {
+      conflicts: resolutions,
+      wizard_data: wizardData
+    };
+    onResolveConflicts(conflictData);
+    setConflictModalOpen(false);
   };
 
   const transformWizardDataToApiFormat = (data: WizardData) => {
@@ -140,6 +164,8 @@ export const QuotaWizard: React.FC<QuotaWizardProps> = ({
 
   const resetWizard = () => {
     setCurrentStep(1);
+    setConflictModalOpen(false);
+    setConflicts([]);
     setWizardData({
       scope: 'role',
       year_type: 'calendar',
@@ -157,6 +183,19 @@ export const QuotaWizard: React.FC<QuotaWizardProps> = ({
     if (!isOpen) {
       resetWizard();
     }
+  }, [isOpen]);
+
+  // Expose the conflict handler to parent component
+  useEffect(() => {
+    if (isOpen) {
+      // Store reference to conflict handler for the mutation error callback
+      (window as any).quotaWizardConflictHandler = handleConflictResponse;
+    }
+    return () => {
+      if ((window as any).quotaWizardConflictHandler) {
+        delete (window as any).quotaWizardConflictHandler;
+      }
+    };
   }, [isOpen]);
 
   if (!isOpen) return null;
@@ -278,6 +317,15 @@ export const QuotaWizard: React.FC<QuotaWizardProps> = ({
             )}
           </div>
         </div>
+
+        {/* Conflict Resolution Modal */}
+        <ConflictResolutionModal
+          isOpen={conflictModalOpen}
+          onClose={() => setConflictModalOpen(false)}
+          onResolve={handleResolveConflicts}
+          conflicts={conflicts}
+          loading={loading}
+        />
       </div>
     </div>
   );
