@@ -16,7 +16,13 @@ import {
   RefreshCw,
   Target,
   Clock,
-  Package
+  Package,
+  Plus,
+  Timer,
+  Award,
+  ArrowRight,
+  Trophy,
+  Percent
 } from 'lucide-react';
 
 const DealsPage = () => {
@@ -28,7 +34,47 @@ const DealsPage = () => {
     to_date: ''
   });
   const [draggedDeal, setDraggedDeal] = useState<Deal | null>(null);
+  const [showAddDeal, setShowAddDeal] = useState(false);
+  const [expandedDeals, setExpandedDeals] = useState<Set<string>>(new Set());
   const queryClient = useQueryClient();
+
+  // Toggle expanded state for a deal
+  const toggleDealExpansion = (dealId: string) => {
+    setExpandedDeals(prev => {
+      const newSet = new Set(prev);
+      if (newSet.has(dealId)) {
+        newSet.delete(dealId);
+      } else {
+        newSet.add(dealId);
+      }
+      return newSet;
+    });
+  };
+
+  // Helper function to calculate days remaining in quarter (hardcoded Sept 30 for now)
+  const getDaysRemainingInQuarter = () => {
+    const now = new Date();
+    const quarterEnd = new Date(now.getFullYear(), 8, 30); // September 30
+    const diffTime = quarterEnd.getTime() - now.getTime();
+    const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+    return Math.max(0, diffDays);
+  };
+
+  // Helper function to get confidence rating for each category
+  const getConfidenceRating = (category: string) => {
+    switch (category) {
+      case 'pipeline': return 50;
+      case 'best_case': return 75;
+      case 'commit': return 95;
+      case 'closed_won': return 100;
+      default: return 50;
+    }
+  };
+
+  // Helper function to calculate commission (using 10% for demo)
+  const calculateCommission = (amount: number) => {
+    return amount * 0.10;
+  };
 
   // Initialize session tracking for ML data
   useEffect(() => {
@@ -156,11 +202,21 @@ const DealsPage = () => {
     
     if (draggedDeal && draggedDeal.deal_type !== category) {
       const previousCategory = draggedDeal.deal_type;
+      const dealAmount = Number(draggedDeal.amount);
+      const commissionChange = calculateCommission(dealAmount);
+      
       updateDealCategoryMutation.mutate({ 
         dealId: draggedDeal.id, 
         category,
         previousCategory 
       });
+
+      // Show success feedback
+      const categoryLabel = category === 'commit' ? 'Commit' : 
+                           category === 'best_case' ? 'Best Case' : 'Pipeline';
+      
+      // You could add a toast notification here
+      console.log(`Moved to ${categoryLabel} - forecasting £${commissionChange.toLocaleString()} more commission`);
     }
     setDraggedDeal(null);
   };
@@ -169,218 +225,505 @@ const DealsPage = () => {
     setDraggedDeal(null);
   };
 
-  const DealCard = ({ deal }: { deal: Deal }) => (
-    <div
-      draggable
-      onDragStart={(e) => handleDragStart(e, deal)}
-      onDragEnd={handleDragEnd}
-      className={`p-3 bg-white rounded-lg border border-gray-200 shadow-sm hover:shadow-md transition-all duration-200 cursor-move select-none relative group ${
-        draggedDeal?.id === deal.id 
-          ? 'opacity-50 scale-95' 
-          : 'hover:scale-[1.02]'
-      }`}
-    >
-      {/* Hover tooltip */}
-      <div className="absolute top-full left-0 mt-2 bg-gray-900 text-white text-xs px-3 py-2 rounded-lg opacity-0 group-hover:opacity-100 transition-opacity duration-200 pointer-events-none whitespace-nowrap z-30 shadow-lg">
-        <div className="font-medium mb-1">{deal.deal_name}</div>
-        <div className="flex items-center space-x-4 text-xs opacity-90">
-          <div className="flex items-center space-x-1">
-            <Calendar className="w-3 h-3" />
-            <span>{deal.close_date ? new Date(deal.close_date).toLocaleDateString('en-GB', { day: '2-digit', month: 'short' }) : 'TBD'}</span>
-          </div>
-          <div className="flex items-center space-x-1">
-            <BarChart3 className="w-3 h-3" />
-            <span>{deal.probability}%</span>
-          </div>
-        </div>
-      </div>
+  const DealCard = ({ deal }: { deal: Deal }) => {
+    const commission = calculateCommission(Number(deal.amount));
+    const daysToClose = deal.close_date ? 
+      Math.max(0, Math.ceil((new Date(deal.close_date).getTime() - new Date().getTime()) / (1000 * 60 * 60 * 24))) : 
+      null;
+    const isExpanded = expandedDeals.has(deal.id);
 
-      {/* Company name */}
-      <div className="text-sm font-medium text-gray-900 mb-2 truncate">
-        {deal.account_name}
-      </div>
-      
-      {/* Deal value */}
-      <div className="flex items-center space-x-1">
-        <PoundSterling className="w-3 h-3 text-green-600" />
-        <span className="font-semibold text-green-700 text-sm">
-          £{Number(deal.amount).toLocaleString()}
-        </span>
-      </div>
-    </div>
-  );
+    const handleCardClick = (e: React.MouseEvent) => {
+      e.stopPropagation();
+      toggleDealExpansion(deal.id);
+    };
 
-  const DealsSection = ({ title, icon: Icon, deals, bgColor, borderColor, iconColor, textColor, category }: any) => (
-    <div className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden">
-      <div className="p-4 border-b border-gray-100">
-        <div className="flex items-start justify-between">
-          <div className="flex items-center space-x-2">
-            <div className={`p-1.5 ${bgColor} rounded-lg`}>
-              <Icon className={`w-4 h-4 ${iconColor}`} />
-            </div>
-            <div>
-              <h3 className={`text-sm font-semibold ${textColor} mb-1`}>
-                {title}
-              </h3>
-              <div className={`text-xs font-medium ${textColor} opacity-90 mb-0.5`}>
-                £{deals.reduce((sum: number, deal: Deal) => sum + Number(deal.amount), 0).toLocaleString()}
-              </div>
-              <p className={`text-xs ${textColor} opacity-60`}>
-                {deals.length} deal{deals.length !== 1 ? 's' : ''}
-              </p>
-            </div>
-          </div>
-        </div>
-      </div>
-      
-      <div 
-        className={`p-3 transition-all duration-200 ${category ? 'min-h-[200px]' : 'min-h-[150px]'} ${
-          draggedDeal && category && draggedDeal.deal_type !== category 
-            ? 'bg-blue-50 border-2 border-blue-300 border-dashed' 
-            : ''
-        }`}
-        onDragOver={category ? handleDragOver : undefined}
-        onDragEnter={category ? handleDragEnter : undefined}
-        onDragLeave={category ? handleDragLeave : undefined}
-        onDrop={category ? (e) => handleDrop(e, category) : undefined}
+    return (
+      <div
+        draggable
+        onDragStart={(e) => handleDragStart(e, deal)}
+        onDragEnd={handleDragEnd}
+        onClick={handleCardClick}
+        className={`bg-white rounded-lg border border-gray-200 shadow-sm hover:shadow-md transition-all duration-300 cursor-pointer select-none relative group ${
+          draggedDeal?.id === deal.id 
+            ? 'opacity-60 scale-95 shadow-xl' 
+            : 'hover:scale-[1.01] hover:-translate-y-0.5'
+        } ${isExpanded ? 'ring-2 ring-blue-200 border-blue-300' : ''}`}
       >
-        {deals.length === 0 ? (
-          <div className="text-center py-8">
-            <Icon className={`w-8 h-8 ${iconColor} mx-auto mb-2 opacity-40`} />
-            <p className="text-xs text-gray-500">
-              {category ? 'Drop deals here' : 'No deals available'}
-            </p>
+        {/* Compact View */}
+        <div className="p-3">
+          {/* Company Name */}
+          <div className="text-sm font-semibold text-gray-900 mb-2 truncate">
+            {deal.account_name}
           </div>
-        ) : (
-          <div className="space-y-2 max-h-[400px] overflow-y-auto">
-            {deals.map((deal: Deal) => (
-              <DealCard key={deal.id} deal={deal} />
-            ))}
+          
+          {/* Deal Amount */}
+          <div className="flex items-center space-x-1">
+            <PoundSterling className="w-3 h-3 text-green-600" />
+            <span className="font-bold text-green-700">
+              £{Number(deal.amount).toLocaleString()}
+            </span>
+          </div>
+
+          {/* Expand indicator */}
+          <div className="absolute top-2 right-2 opacity-0 group-hover:opacity-100 transition-opacity duration-200">
+            <div className={`w-4 h-4 rounded-full bg-gray-100 flex items-center justify-center transform transition-transform duration-200 ${isExpanded ? 'rotate-180' : ''}`}>
+              <div className="w-2 h-2 border-b border-r border-gray-400 transform rotate-45 -translate-y-0.5"></div>
+            </div>
+          </div>
+
+          {/* Drag indicator */}
+          <div className="absolute bottom-2 right-2 opacity-0 group-hover:opacity-100 transition-opacity duration-200">
+            <div className="grid grid-cols-2 gap-0.5">
+              <div className="w-1 h-1 bg-gray-400 rounded-full"></div>
+              <div className="w-1 h-1 bg-gray-400 rounded-full"></div>
+              <div className="w-1 h-1 bg-gray-400 rounded-full"></div>
+              <div className="w-1 h-1 bg-gray-400 rounded-full"></div>
+            </div>
+          </div>
+        </div>
+
+        {/* Expanded View */}
+        {isExpanded && (
+          <div className="border-t border-gray-100 p-3 bg-gray-50">
+            {/* Deal Name */}
+            {deal.deal_name && deal.deal_name !== deal.account_name && (
+              <div className="mb-3">
+                <span className="text-xs font-medium text-gray-600">Deal:</span>
+                <div className="text-sm font-medium text-gray-900 mt-1">
+                  {deal.deal_name}
+                </div>
+              </div>
+            )}
+
+            {/* Time Remaining */}
+            {daysToClose !== null && (
+              <div className="flex items-center justify-between mb-3">
+                <span className="text-xs font-medium text-gray-600">Time to close</span>
+                <div className="flex items-center space-x-1">
+                  <Clock className="w-3 h-3 text-orange-500" />
+                  <span className="text-sm font-medium text-orange-600">
+                    {daysToClose === 0 ? 'Today' : daysToClose === 1 ? '1 day' : `${daysToClose} days`}
+                  </span>
+                </div>
+              </div>
+            )}
+
+            {/* Close Date */}
+            {deal.close_date && (
+              <div className="flex items-center justify-between mb-3">
+                <span className="text-xs font-medium text-gray-600">Close date</span>
+                <span className="text-sm text-gray-700">
+                  {new Date(deal.close_date).toLocaleDateString('en-GB')}
+                </span>
+              </div>
+            )}
+
+            {/* Estimated Commission */}
+            <div className="pt-2 border-t border-gray-200">
+              <div className="flex items-center justify-between">
+                <span className="text-xs font-medium text-gray-600">Est. Commission</span>
+                <div className="flex items-center space-x-1">
+                  <Award className="w-3 h-3 text-purple-500" />
+                  <span className="text-sm font-semibold text-purple-600">
+                    £{commission.toLocaleString()}
+                  </span>
+                </div>
+              </div>
+            </div>
           </div>
         )}
       </div>
-    </div>
-  );
+    );
+  };
 
-  const ProgressMeter = () => {
-    const meterHeight = 320;
-    const maxProgress = 120; // Scale to 120% instead of 100%
+  const DealsSection = ({ title, icon: Icon, deals, bgColor, borderColor, iconColor, textColor, category, badge, description }: any) => {
+    const totalValue = deals.reduce((sum: number, deal: Deal) => sum + Number(deal.amount), 0);
+    const totalCommission = calculateCommission(totalValue);
     
-    // Calculate heights based on 120% scale
-    const closedHeight = Math.min((closedProgress / maxProgress) * meterHeight, meterHeight);
-    const commitHeight = Math.min((commitProgress / maxProgress) * meterHeight, meterHeight - closedHeight);
-    const bestCaseHeight = Math.min((bestCaseProgress / maxProgress) * meterHeight, meterHeight - closedHeight - commitHeight);
+    return (
+      <div className={`bg-white rounded-xl border-2 shadow-lg overflow-hidden transition-all duration-300 ${
+        draggedDeal && category && draggedDeal.deal_type !== category 
+          ? 'border-blue-400 bg-blue-50 shadow-xl transform scale-105' 
+          : borderColor
+      }`}>
+        <div className="p-4 border-b border-gray-100">
+          <div className="flex items-start justify-between mb-3">
+            <div className="flex items-center space-x-3">
+              <div className={`p-2 ${bgColor} rounded-xl`}>
+                <Icon className={`w-5 h-5 ${iconColor}`} />
+              </div>
+              <div>
+                <div className="flex items-center space-x-2 mb-1">
+                  <h3 className={`text-lg font-bold ${textColor}`}>
+                    {title}
+                  </h3>
+                  {badge && (
+                    <span className={`px-2 py-1 text-xs font-semibold rounded-full ${badge.class}`}>
+                      {badge.text}
+                    </span>
+                  )}
+                </div>
+                <p className="text-xs text-gray-600">{description}</p>
+              </div>
+            </div>
+          </div>
+
+          {/* Summary Metrics */}
+          <div className="grid grid-cols-2 gap-4 text-center">
+            <div>
+              <div className={`text-xl font-bold ${textColor}`}>
+                £{totalValue.toLocaleString()}
+              </div>
+              <div className="text-xs text-gray-600">Total Value</div>
+            </div>
+            <div>
+              <div className={`text-xl font-bold ${textColor}`}>
+                {deals.length}
+              </div>
+              <div className="text-xs text-gray-600">Deals</div>
+            </div>
+          </div>
+        </div>
+        
+        <div 
+          className={`p-4 transition-all duration-300 min-h-[250px] ${
+            draggedDeal && category && draggedDeal.deal_type !== category 
+              ? 'bg-gradient-to-b from-blue-50 to-blue-100' 
+              : 'bg-gray-50'
+          }`}
+          onDragOver={category ? handleDragOver : undefined}
+          onDragEnter={category ? handleDragEnter : undefined}
+          onDragLeave={category ? handleDragLeave : undefined}
+          onDrop={category ? (e) => handleDrop(e, category) : undefined}
+        >
+          {deals.length === 0 ? (
+            <div className="text-center py-12">
+              <Icon className={`w-12 h-12 ${iconColor} mx-auto mb-4 opacity-40`} />
+              <p className="text-sm text-gray-500 mb-2">
+                {category ? 'Drop deals here' : 'No deals available'}
+              </p>
+              {category && (
+                <p className="text-xs text-gray-400">
+                  Drag from Pipeline to categorize
+                </p>
+              )}
+            </div>
+          ) : (
+            <div className="space-y-3 max-h-[500px] overflow-y-auto">
+              {deals.map((deal: Deal) => (
+                <DealCard key={deal.id} deal={deal} />
+              ))}
+            </div>
+          )}
+        </div>
+      </div>
+    );
+  };
+
+  const QuotaProgress = () => {
+    const actualAttainment = (closedAmount / quotaTarget) * 100;
+    const projectedTotal = commitAmount + bestCaseAmount;
+    const totalPotential = closedAmount + projectedTotal;
+    const totalPotentialAttainment = (totalPotential / quotaTarget) * 100;
     
-    // Target line position (100% = 100/120 = 83.33% up the meter)
-    const targetLinePosition = (100 / maxProgress) * meterHeight;
+    // Calculate progress percentages based on quota
+    const actualProgress = Math.min(actualAttainment, 100);
+    const projectedProgress = Math.min(((projectedTotal / quotaTarget) * 100), 100);
+    
+    // Commission calculations
+    const actualCommission = calculateCommission(closedAmount);
+    const projectedCommission = calculateCommission(projectedTotal);
+    const totalCommission = actualCommission + projectedCommission;
+
+    const [hoveredSegment, setHoveredSegment] = useState<string | null>(null);
 
     return (
-      <div className="bg-white rounded-xl border border-gray-200 shadow-sm p-6">
-        <div className="text-center mb-6">
-          <h2 className="text-lg font-semibold text-gray-900 mb-4">Quota Progress</h2>
-          
-          {/* Primary metric: Percentage complete */}
-          <div className="text-4xl font-bold text-gray-900 mb-2">
-            {totalProgress.toFixed(0)}%
-          </div>
-          
-          {/* Secondary metric: Amount closed */}
-          <div className="text-lg font-semibold text-gray-700 mb-1">
-            £{totalCategorized.toLocaleString()}
-          </div>
-          
-          {/* Supporting information: Target amount */}
-          <div className="text-sm text-gray-500">
-            of £{quotaTarget.toLocaleString()} target
+      <div className="bg-white rounded-xl border border-gray-200 shadow-lg p-6 group hover:shadow-xl transition-all duration-300">
+        {/* Header */}
+        <div className="flex items-center justify-between mb-8">
+          <h2 className="text-xl font-bold text-gray-900">Quota Attainment</h2>
+          <div className="text-right">
+            <div className="text-3xl font-bold text-gray-900 group-hover:text-green-600 transition-colors duration-300">
+              {actualAttainment.toFixed(0)}%
+            </div>
+            <div className="text-sm text-gray-500">actual closed</div>
           </div>
         </div>
 
-        <div className="relative mx-auto mb-6" style={{ width: '60px', height: `${meterHeight}px` }}>
-          {/* Background meter */}
-          <div 
-            className="absolute bottom-0 w-full bg-gray-100 rounded-full border border-gray-200"
-            style={{ height: `${meterHeight}px` }}
-          />
-          
-          {/* Target line at 100% */}
-          <div 
-            className="absolute left-0 right-0 border-t-2 border-dashed border-gray-500 z-10"
-            style={{ bottom: `${targetLinePosition}px` }}
-          >
-            <div className="absolute -right-16 -top-2 text-xs text-gray-700 font-medium whitespace-nowrap bg-white px-1 rounded">
-              Target
+        {/* Enhanced Circular Progress Ring */}
+        <div className="relative flex items-center justify-center mb-8 py-8">
+          <div className="w-64 h-64 transition-transform duration-500">
+            <svg className="w-full h-full -rotate-90 drop-shadow-lg" viewBox="0 0 180 180" style={{ overflow: 'visible' }}>
+              {/* Outer commission ring background */}
+              <circle
+                cx="90"
+                cy="90"
+                r="80"
+                stroke="#f1f5f9"
+                strokeWidth="10"
+                fill="none"
+                className="opacity-60"
+              />
+              
+              {/* Outer commission ring - Actual (Blue tones for commission) */}
+              <circle
+                cx="90"
+                cy="90"
+                r="80"
+                stroke="url(#blueGradientOuter)"
+                strokeWidth="10"
+                fill="none"
+                strokeLinecap="round"
+                strokeDasharray={`${Math.min(actualProgress * 5.03, 503)} 503`}
+                className="transition-all duration-300 cursor-pointer hover:stroke-width-[12]"
+                style={{ pointerEvents: actualProgress > 0 ? 'stroke' : 'none' }}
+                onMouseEnter={(e) => {
+                  e.stopPropagation();
+                  setHoveredSegment('actual');
+                }}
+                onMouseLeave={(e) => {
+                  e.stopPropagation();
+                  setHoveredSegment(null);
+                }}
+              />
+              
+              {/* Outer commission ring - Projected (Purple tones for projected commission) */}
+              <circle
+                cx="90"
+                cy="90"
+                r="80"
+                stroke="url(#purpleGradientOuter)"
+                strokeWidth="10"
+                fill="none"
+                strokeLinecap="round"
+                strokeDasharray="8 4"
+                strokeDashoffset={-actualProgress * 5.03}
+                className="transition-all duration-300 opacity-85 cursor-pointer hover:stroke-width-[12] hover:opacity-100"
+                style={{
+                  strokeDasharray: `${Math.min(projectedProgress * 5.03, 503)} 503`,
+                  strokeDashoffset: -actualProgress * 5.03,
+                  pointerEvents: projectedProgress > 0 ? 'stroke' : 'none'
+                }}
+                onMouseEnter={(e) => {
+                  e.stopPropagation();
+                  setHoveredSegment('projected');
+                }}
+                onMouseLeave={(e) => {
+                  e.stopPropagation();
+                  setHoveredSegment(null);
+                }}
+              />
+              
+              {/* Inner quota ring background */}
+              <circle
+                cx="90"
+                cy="90"
+                r="64"
+                stroke="#f1f5f9"
+                strokeWidth="16"
+                fill="none"
+                className="transition-colors duration-300"
+              />
+              
+              {/* Inner quota ring - Actual Progress (Green for quota attainment) */}
+              <circle
+                cx="90"
+                cy="90"
+                r="64"
+                stroke="url(#greenGradient)"
+                strokeWidth="16"
+                fill="none"
+                strokeLinecap="round"
+                strokeDasharray={`${Math.min(actualProgress * 4.02, 402)} 402`}
+                className="transition-all duration-300 cursor-pointer hover:stroke-width-[18]"
+                style={{
+                  filter: 'drop-shadow(0 0 8px rgba(16, 185, 129, 0.3))',
+                  pointerEvents: actualProgress > 0 ? 'stroke' : 'none'
+                }}
+                onMouseEnter={(e) => {
+                  e.stopPropagation();
+                  setHoveredSegment('actual');
+                }}
+                onMouseLeave={(e) => {
+                  e.stopPropagation();
+                  setHoveredSegment(null);
+                }}
+              />
+              
+              {/* Inner quota ring - Projected Progress (Amber for projected quota) */}
+              <circle
+                cx="90"
+                cy="90"
+                r="64"
+                stroke="url(#amberGradient)"
+                strokeWidth="12"
+                fill="none"
+                strokeLinecap="round"
+                strokeDasharray="8 4"
+                strokeDashoffset={-actualProgress * 4.02}
+                className="transition-all duration-300 opacity-80 cursor-pointer hover:stroke-width-[14] hover:opacity-100"
+                style={{
+                  strokeDasharray: `${Math.min(projectedProgress * 4.02, 402)} 402`,
+                  strokeDashoffset: -actualProgress * 4.02,
+                  filter: 'drop-shadow(0 0 6px rgba(245, 158, 11, 0.2))',
+                  pointerEvents: projectedProgress > 0 ? 'stroke' : 'none'
+                }}
+                onMouseEnter={(e) => {
+                  e.stopPropagation();
+                  setHoveredSegment('projected');
+                }}
+                onMouseLeave={(e) => {
+                  e.stopPropagation();
+                  setHoveredSegment(null);
+                }}
+              />
+
+              {/* Gradient definitions */}
+              <defs>
+                <linearGradient id="greenGradient" x1="0%" y1="0%" x2="100%" y2="100%">
+                  <stop offset="0%" stopColor="#10B981" />
+                  <stop offset="100%" stopColor="#059669" />
+                </linearGradient>
+                <linearGradient id="amberGradient" x1="0%" y1="0%" x2="100%" y2="100%">
+                  <stop offset="0%" stopColor="#F59E0B" />
+                  <stop offset="100%" stopColor="#D97706" />
+                </linearGradient>
+                <linearGradient id="blueGradientOuter" x1="0%" y1="0%" x2="100%" y2="100%">
+                  <stop offset="0%" stopColor="#3B82F6" />
+                  <stop offset="100%" stopColor="#1D4ED8" />
+                </linearGradient>
+                <linearGradient id="purpleGradientOuter" x1="0%" y1="0%" x2="100%" y2="100%">
+                  <stop offset="0%" stopColor="#8B5CF6" />
+                  <stop offset="100%" stopColor="#7C3AED" />
+                </linearGradient>
+              </defs>
+            </svg>
+            
+            {/* Center content with hover details */}
+            <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none">
+              {hoveredSegment === 'actual' ? (
+                <div className="text-center">
+                  <div className="text-3xl font-bold text-green-600">
+                    {actualAttainment.toFixed(0)}%
+                  </div>
+                  <div className="text-sm text-green-700 font-medium">
+                    £{closedAmount.toLocaleString()}
+                  </div>
+                  <div className="text-xs text-blue-600 font-semibold">
+                    Commission: £{actualCommission.toLocaleString()}
+                  </div>
+                </div>
+              ) : hoveredSegment === 'projected' ? (
+                <div className="text-center">
+                  <div className="text-3xl font-bold text-amber-600">
+                    {((projectedTotal / quotaTarget) * 100).toFixed(0)}%
+                  </div>
+                  <div className="text-sm text-amber-700 font-medium">
+                    £{projectedTotal.toLocaleString()}
+                  </div>
+                  <div className="text-xs text-purple-600 font-semibold">
+                    Commission: £{projectedCommission.toLocaleString()}
+                  </div>
+                </div>
+              ) : (
+                <div className="text-center">
+                  <div className="text-4xl font-bold text-gray-900 transition-all duration-300">
+                    {actualAttainment.toFixed(0)}%
+                  </div>
+                  <div className="text-sm text-gray-500">Quota Attainment</div>
+                  <div className="text-xs text-gray-400 mt-1">
+                    Hover segments for details
+                  </div>
+                </div>
+              )}
+            </div>
+
+            {/* Commission labels around the outer ring */}
+            <div className="absolute -top-6 left-1/2 transform -translate-x-1/2">
+              <div className="text-xs font-semibold text-gray-600 bg-white px-3 py-1 rounded-full shadow-sm border">
+                Total Commission
+              </div>
+            </div>
+            <div className="absolute -bottom-6 left-1/2 transform -translate-x-1/2">
+              <div className="text-sm font-bold text-gray-800 bg-gray-50 px-3 py-1 rounded-full shadow-sm border">
+                £{totalCommission.toLocaleString()}
+              </div>
             </div>
           </div>
-
-          {/* Closed Won (bottom) */}
-          <div 
-            className="absolute bottom-0 w-full bg-gradient-to-t from-green-500 to-green-400 rounded-b-full transition-all duration-1000 group cursor-pointer"
-            style={{ height: `${closedHeight}px` }}
-          >
-            <div className="absolute right-full mr-2 top-1/2 -translate-y-1/2 bg-gray-900 text-white text-xs px-2 py-1 rounded opacity-0 group-hover:opacity-100 transition-opacity duration-200 pointer-events-none whitespace-nowrap z-20">
-              Closed: £{closedAmount.toLocaleString()}
-            </div>
-          </div>
-
-          {/* Commit (middle) */}
-          <div 
-            className="absolute w-full bg-gradient-to-t from-orange-500 to-orange-400 transition-all duration-1000 group cursor-pointer"
-            style={{ 
-              height: `${commitHeight}px`,
-              bottom: `${closedHeight}px`
-            }}
-          >
-            <div className="absolute right-full mr-2 top-1/2 -translate-y-1/2 bg-gray-900 text-white text-xs px-2 py-1 rounded opacity-0 group-hover:opacity-100 transition-opacity duration-200 pointer-events-none whitespace-nowrap z-20">
-              Commit: £{commitAmount.toLocaleString()}
-            </div>
-          </div>
-
-          {/* Best Case (top) */}
-          <div 
-            className="absolute w-full transition-all duration-1000 group cursor-pointer"
-            style={{ background: 'linear-gradient(to top, #6b8950, #5a6450)' }}
-            style={{ 
-              height: `${bestCaseHeight}px`,
-              bottom: `${closedHeight + commitHeight}px`
-            }}
-          >
-            <div className="absolute right-full mr-2 top-1/2 -translate-y-1/2 bg-gray-900 text-white text-xs px-2 py-1 rounded opacity-0 group-hover:opacity-100 transition-opacity duration-200 pointer-events-none whitespace-nowrap z-20">
-              Best Case: £{bestCaseAmount.toLocaleString()}
-            </div>
-          </div>
-
         </div>
 
-        {/* Compact Legend */}
+        {/* Progress Summary */}
+        <div className="space-y-4 mb-6">
+          <div>
+            <div className="flex justify-between items-center mb-2">
+              <span className="text-sm font-medium text-gray-700">Actual Closed</span>
+              <span className="text-lg font-bold text-gray-900">
+                £{closedAmount.toLocaleString()}
+              </span>
+            </div>
+            <div className="flex justify-between items-center mb-2">
+              <span className="text-sm font-medium text-gray-700">Projected Total</span>
+              <span className="text-lg font-bold text-gray-900">
+                £{projectedTotal.toLocaleString()}
+              </span>
+            </div>
+            <div className="flex justify-between items-center mb-2">
+              <span className="text-sm font-medium text-gray-700">Quota Target</span>
+              <span className="text-lg font-bold text-gray-900">
+                £{quotaTarget.toLocaleString()}
+              </span>
+            </div>
+            <div className="flex justify-between items-center">
+              <span className="text-sm font-medium text-gray-700">Actual Attainment</span>
+              <span className={`text-lg font-bold ${actualAttainment >= 100 ? 'text-green-600' : 'text-orange-600'}`}>
+                {actualAttainment.toFixed(0)}%
+              </span>
+            </div>
+          </div>
+        </div>
+
+        {/* Legend */}
         <div className="space-y-3">
-          <div className="flex items-center p-3 bg-green-50 rounded-lg">
+          <div className="flex items-center justify-between p-3 bg-green-50 rounded-lg">
             <div className="flex items-center space-x-3">
               <div className="w-3 h-3 bg-green-500 rounded-full"></div>
-              <span className="text-sm font-medium text-green-800">Closed</span>
+              <span className="text-sm font-medium text-green-800">Actual (Closed Won)</span>
+            </div>
+            <div className="text-right">
+              <div className="text-sm font-bold text-green-800">
+                £{closedAmount.toLocaleString()}
+              </div>
+              <div className="text-xs text-green-600">
+                Commission: £{calculateCommission(closedAmount).toLocaleString()}
+              </div>
             </div>
           </div>
 
-          <div className="flex items-center p-3 bg-orange-50 rounded-lg">
+          <div className="flex items-center justify-between p-3 bg-orange-50 rounded-lg">
             <div className="flex items-center space-x-3">
-              <div className="w-3 h-3 bg-orange-500 rounded-full"></div>
-              <span className="text-sm font-medium text-orange-800">Commit</span>
+              <div className="w-3 h-3 bg-orange-500 rounded-full border-2 border-orange-300" style={{backgroundImage: 'repeating-linear-gradient(45deg, transparent, transparent 2px, rgba(255,255,255,0.3) 2px, rgba(255,255,255,0.3) 4px)'}}></div>
+              <span className="text-sm font-medium text-orange-800">Projected (Commit + Best Case)</span>
             </div>
-          </div>
-
-          <div className="flex items-center p-3 bg-purple-50 rounded-lg">
-            <div className="flex items-center space-x-3">
-              <div className="w-3 h-3 bg-purple-500 rounded-full"></div>
-              <span className="text-sm font-medium text-purple-800">Best Case</span>
-            </div>
-          </div>
-
-          <div className="flex items-center p-3 bg-gray-50 rounded-lg border-t border-gray-200">
-            <div className="flex items-center space-x-3">
-              <div className="w-3 h-3 bg-gray-400 rounded-full"></div>
-              <span className="text-sm font-medium text-gray-700">Target</span>
+            <div className="text-right">
+              <div className="text-sm font-bold text-orange-800">
+                £{projectedTotal.toLocaleString()}
+              </div>
+              <div className="text-xs text-orange-600">
+                Commission: £{calculateCommission(projectedTotal).toLocaleString()}
+              </div>
             </div>
           </div>
         </div>
+
+        {/* Achievement Badge */}
+        {actualAttainment >= 100 && (
+          <div className="mt-4 p-3 bg-gradient-to-r from-green-500 to-emerald-500 rounded-lg text-center">
+            <div className="flex items-center justify-center space-x-2 text-white">
+              <Trophy className="w-5 h-5" />
+              <span className="font-bold">Quota Achieved!</span>
+            </div>
+          </div>
+        )}
       </div>
     );
   };
@@ -391,20 +734,81 @@ const DealsPage = () => {
         {/* Header */}
         <div className="flex items-center justify-between">
           <div>
-            <h1 className="text-3xl font-bold text-gray-900">Deal Categorization</h1>
-            <p className="mt-1 text-gray-600">
-              Drag deals from Pipeline into commitment buckets to track your commission forecast
+            <h1 className="text-4xl font-bold bg-gradient-to-r from-gray-900 to-gray-700 bg-clip-text text-transparent">
+              Commission Forecasting
+            </h1>
+            <p className="mt-2 text-lg text-gray-600">
+              Drag deals into confidence buckets to see your projected earnings and track quota attainment
             </p>
           </div>
           <div className="flex items-center space-x-3">
             <button
               onClick={() => refetch()}
               disabled={isLoading}
-              className="inline-flex items-center px-3 py-2 bg-white border border-gray-300 rounded-lg text-sm font-medium text-gray-700 hover:bg-gray-50 transition-colors disabled:opacity-50"
+              className="inline-flex items-center px-4 py-2 bg-white border border-gray-300 rounded-lg text-sm font-medium text-gray-700 hover:bg-gray-50 transition-colors disabled:opacity-50 shadow-sm"
             >
               <RefreshCw className={`w-4 h-4 mr-2 ${isLoading ? 'animate-spin' : ''}`} />
               Sync CRM
             </button>
+          </div>
+        </div>
+
+        {/* Summary Bar */}
+        <div className="bg-gradient-to-r from-green-700 to-green-600 rounded-2xl p-4 md:p-6 text-white shadow-xl" style={{ background: 'linear-gradient(to right, #82a365, #6b8950)' }}>
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-4 md:gap-6">
+            {/* Actual (Closed Won) */}
+            <div className="text-center md:text-left">
+              <div className="flex items-center justify-center md:justify-start mb-2">
+                <CheckCircle className="w-5 h-5 mr-2 text-green-200" />
+                <span className="text-sm font-medium text-green-100">Actual Closed</span>
+              </div>
+              <div className="text-3xl font-bold text-white">
+                £{closedAmount.toLocaleString()}
+              </div>
+              <div className="text-sm text-green-100">
+                Commission: £{calculateCommission(closedAmount).toLocaleString()}
+              </div>
+            </div>
+
+            {/* Projected (Commit + Best Case) */}
+            <div className="text-center md:text-left">
+              <div className="flex items-center justify-center md:justify-start mb-2">
+                <TrendingUp className="w-5 h-5 mr-2 text-yellow-200" />
+                <span className="text-sm font-medium text-green-100">Projected</span>
+              </div>
+              <div className="text-3xl font-bold text-white">
+                £{(commitAmount + bestCaseAmount).toLocaleString()}
+              </div>
+              <div className="text-sm text-green-100">
+                Commission: £{calculateCommission(commitAmount + bestCaseAmount).toLocaleString()}
+              </div>
+            </div>
+
+            {/* Quota Target */}
+            <div className="text-center md:text-left">
+              <div className="flex items-center justify-center md:justify-start mb-2">
+                <Target className="w-5 h-5 mr-2 text-blue-200" />
+                <span className="text-sm font-medium text-green-100">Quota Target</span>
+              </div>
+              <div className="text-3xl font-bold text-white">
+                £{quotaTarget.toLocaleString()}
+              </div>
+              <div className="text-sm text-green-100">
+                Attainment: {((closedAmount / quotaTarget) * 100).toFixed(0)}%
+              </div>
+            </div>
+
+            {/* Days Remaining */}
+            <div className="text-center md:text-left">
+              <div className="flex items-center justify-center md:justify-start mb-2">
+                <Timer className="w-5 h-5 mr-2 text-orange-200" />
+                <span className="text-sm font-medium text-green-100">Days Remaining</span>
+              </div>
+              <div className="text-3xl font-bold text-white">
+                {getDaysRemainingInQuarter()}
+              </div>
+              <div className="text-sm text-green-100">days in quarter</div>
+            </div>
           </div>
         </div>
 
@@ -458,18 +862,19 @@ const DealsPage = () => {
             </div>
           </div>
         ) : (
-          <div className="grid grid-cols-1 lg:grid-cols-4 gap-6">
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 lg:gap-6">
             {/* Pipeline Deals */}
             <div className="lg:col-span-1">
               <DealsSection
                 title="Pipeline"
                 icon={Package}
                 deals={dealsByCategory.pipeline}
-                bgColor="bg-blue-100"
-                borderColor="border-blue-200"
-                iconColor="text-[#82a365]"
-                textColor="text-blue-800"
+                bgColor="bg-gray-100"
+                borderColor="border-gray-300"
+                iconColor="text-gray-500"
+                textColor="text-gray-700"
                 category="pipeline"
+                description="CRM synced opportunities"
               />
             </div>
 
@@ -479,11 +884,12 @@ const DealsPage = () => {
                 title="Commit"
                 icon={Star}
                 deals={dealsByCategory.commit}
-                bgColor="bg-orange-100"
-                borderColor="border-orange-200"
-                iconColor="text-orange-600"
-                textColor="text-orange-800"
+                bgColor="bg-amber-100"
+                borderColor="border-amber-300"
+                iconColor="text-amber-600"
+                textColor="text-amber-800"
                 category="commit"
+                description="High confidence deals"
               />
             </div>
 
@@ -491,39 +897,66 @@ const DealsPage = () => {
             <div className="lg:col-span-1">
               <DealsSection
                 title="Best Case"
-                icon={Zap}
+                icon={TrendingUp}
                 deals={dealsByCategory.best_case}
                 bgColor="bg-purple-100"
-                borderColor="border-purple-200"
+                borderColor="border-purple-300"
                 iconColor="text-purple-600"
                 textColor="text-purple-800"
                 category="best_case"
+                description="Potential upside opportunities"
               />
             </div>
 
-            {/* Progress Meter */}
-            <div className="lg:col-span-1">
-              <ProgressMeter />
+            {/* Quota Progress */}
+            <div className="md:col-span-2 lg:col-span-1">
+              <QuotaProgress />
             </div>
           </div>
         )}
 
-        {/* Instructions */}
-        <div className="bg-blue-50 rounded-xl border border-blue-200 p-4">
-          <h3 className="text-sm font-semibold text-blue-900 mb-2">
-            💡 How to Use
+        {/* Enhanced Instructions */}
+        <div className="bg-gradient-to-r from-blue-50 to-indigo-50 rounded-xl border border-blue-200 p-6">
+          <h3 className="text-lg font-bold text-blue-900 mb-4 flex items-center">
+            <TrendingUp className="w-5 h-5 mr-2" />
+            Commission Forecasting Guide
           </h3>
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-3 text-xs text-blue-800">
-            <div>
-              <p>• <strong>CRM Sync:</strong> All deals start in "Pipeline"</p>
-              <p>• <strong>Drag & Drop:</strong> Move to Commit or Best Case buckets</p>
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 text-sm text-blue-800">
+            <div className="space-y-2">
+              <p className="font-semibold">📊 Pipeline</p>
+              <p>CRM-synced opportunities</p>
+              <p>Starting point for all deals</p>
             </div>
-            <div>
-              <p>• <strong>Progress Meter:</strong> Shows categorized deals only</p>
-              <p>• <strong>Commission:</strong> Based on your manual categorization</p>
+            <div className="space-y-2">
+              <p className="font-semibold">⭐ Commit</p>
+              <p>High confidence deals</p>
+              <p>Drag likely closes here</p>
+            </div>
+            <div className="space-y-2">
+              <p className="font-semibold">🚀 Best Case</p>
+              <p>Potential upside opportunities</p>
+              <p>Optimistic forecast scenarios</p>
             </div>
           </div>
+          <div className="mt-4 p-3 bg-white rounded-lg border border-blue-200">
+            <p className="text-sm text-gray-700">
+              <strong>Pro Tip:</strong> Only categorized deals count toward your commission forecast. 
+              Drag deals to update your projected earnings in real-time.
+            </p>
+          </div>
         </div>
+
+        {/* Floating Action Button */}
+        <button
+          onClick={() => setShowAddDeal(true)}
+          className="fixed bottom-6 right-6 w-14 h-14 bg-gradient-to-r from-blue-600 to-indigo-600 text-white rounded-full shadow-lg hover:shadow-xl hover:scale-110 transition-all duration-300 flex items-center justify-center z-50 group"
+          title="Add Deal"
+        >
+          <Plus className="w-6 h-6" />
+          <div className="absolute bottom-full right-0 mb-2 px-3 py-2 bg-gray-900 text-white text-sm rounded-lg opacity-0 group-hover:opacity-100 transition-opacity duration-200 pointer-events-none whitespace-nowrap">
+            Add Deal
+          </div>
+        </button>
       </div>
     </Layout>
   );
