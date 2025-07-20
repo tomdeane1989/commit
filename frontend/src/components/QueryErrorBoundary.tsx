@@ -46,7 +46,8 @@ const QueryErrorFallback: React.FC<QueryErrorFallbackProps> = ({ error, retry })
         <div className="space-y-3">
           <button
             onClick={retry}
-            className="w-full flex justify-center items-center px-4 py-2 border border-transparent rounded-xl text-sm font-medium text-white bg-indigo-600 hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 transition-colors"
+            className="w-full flex justify-center items-center px-4 py-2 border border-transparent rounded-xl text-sm font-medium text-white focus:outline-none focus:ring-2 focus:ring-offset-2 transition-colors hover:opacity-90"
+            style={{ backgroundColor: '#384031', '--tw-ring-color': '#384031' } as React.CSSProperties}
           >
             <RefreshCw className="w-4 h-4 mr-2" />
             Try Again
@@ -54,7 +55,8 @@ const QueryErrorFallback: React.FC<QueryErrorFallbackProps> = ({ error, retry })
           
           <button
             onClick={() => window.location.reload()}
-            className="w-full flex justify-center items-center px-4 py-2 border border-gray-300 rounded-xl text-sm font-medium text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 transition-colors"
+            className="w-full flex justify-center items-center px-4 py-2 border border-gray-300 rounded-xl text-sm font-medium text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 transition-colors"
+            style={{ '--tw-ring-color': '#384031' } as React.CSSProperties}
           >
             Reload Page
           </button>

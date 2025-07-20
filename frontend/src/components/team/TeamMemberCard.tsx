@@ -103,9 +103,11 @@ export const TeamMemberCard: React.FC<TeamMemberCardProps> = ({
       {/* Member Info */}
       <div className="flex items-start space-x-4">
         <div className={`w-12 h-12 rounded-full flex items-center justify-center ${
-          member.is_active ? 'bg-indigo-100' : 'bg-gray-100'
-        }`}>
-          <User className={`w-6 h-6 ${member.is_active ? 'text-indigo-600' : 'text-gray-400'}`} />
+          member.is_active ? 'bg-gray-100' : 'bg-gray-100'
+        }`}
+        style={member.is_active ? { backgroundColor: 'rgba(56, 64, 49, 0.1)' } : {}}>
+          <User className={`w-6 h-6 ${member.is_active ? '' : 'text-gray-400'}`}
+          style={member.is_active ? { color: '#384031' } : {}} />
         </div>
         
         <div className="flex-1 min-w-0">

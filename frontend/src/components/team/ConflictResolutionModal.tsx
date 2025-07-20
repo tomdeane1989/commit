@@ -231,9 +231,23 @@ export const ConflictResolutionModal: React.FC<ConflictResolutionModalProps> = (
               disabled={!canResolve || loading}
               className={`flex items-center px-4 py-2 text-sm font-medium rounded-lg transition-colors ${
                 canResolve && !loading
-                  ? 'bg-indigo-600 text-white hover:bg-indigo-700'
+                  ? 'text-white cursor-pointer'
                   : 'bg-gray-300 text-gray-500 cursor-not-allowed'
               }`}
+              style={canResolve && !loading ? { 
+                backgroundColor: '#384031',
+                ':hover': { opacity: 0.9 }
+              } : {}}
+              onMouseEnter={(e) => {
+                if (canResolve && !loading) {
+                  e.currentTarget.style.opacity = '0.9';
+                }
+              }}
+              onMouseLeave={(e) => {
+                if (canResolve && !loading) {
+                  e.currentTarget.style.opacity = '1';
+                }
+              }}
             >
               {loading ? (
                 <>

@@ -333,7 +333,8 @@ const DealsPage = () => {
 
           {/* Best Case (top) */}
           <div 
-            className="absolute w-full bg-gradient-to-t from-purple-500 to-purple-400 transition-all duration-1000 group cursor-pointer"
+            className="absolute w-full transition-all duration-1000 group cursor-pointer"
+            style={{ background: 'linear-gradient(to top, #4a5240, #5a6450)' }}
             style={{ 
               height: `${bestCaseHeight}px`,
               bottom: `${closedHeight + commitHeight}px`
@@ -413,14 +414,14 @@ const DealsPage = () => {
                 placeholder="Search deals..."
                 value={filters.search}
                 onChange={(e) => setFilters({...filters, search: e.target.value})}
-                className="pl-10 pr-4 py-2 w-full bg-gray-50 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                className="pl-10 pr-4 py-2 w-full bg-gray-50 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:border-transparent\n                style={{ '--tw-ring-color': '#384031' } as React.CSSProperties}"
               />
             </div>
             
             <select
               value={filters.status}
               onChange={(e) => setFilters({...filters, status: e.target.value})}
-              className="py-2 px-3 bg-gray-50 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+              className="py-2 px-3 bg-gray-50 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:border-transparent\n                style={{ '--tw-ring-color': '#384031' } as React.CSSProperties}"
             >
               <option value="">All Statuses</option>
               <option value="open">Open</option>
@@ -432,14 +433,14 @@ const DealsPage = () => {
               type="date"
               value={filters.from_date}
               onChange={(e) => setFilters({...filters, from_date: e.target.value})}
-              className="py-2 px-3 bg-gray-50 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+              className="py-2 px-3 bg-gray-50 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:border-transparent\n                style={{ '--tw-ring-color': '#384031' } as React.CSSProperties}"
             />
             
             <input
               type="date"
               value={filters.to_date}
               onChange={(e) => setFilters({...filters, to_date: e.target.value})}
-              className="py-2 px-3 bg-gray-50 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+              className="py-2 px-3 bg-gray-50 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:border-transparent\n                style={{ '--tw-ring-color': '#384031' } as React.CSSProperties}"
             />
           </div>
         </div>
@@ -448,7 +449,7 @@ const DealsPage = () => {
         {isLoading ? (
           <div className="flex items-center justify-center h-64">
             <div className="text-center">
-              <div className="animate-spin rounded-full h-12 w-12 border-4 border-blue-600 border-t-transparent mx-auto"></div>
+              <div className="animate-spin rounded-full h-12 w-12 border-4 border-t-transparent mx-auto" style={{ borderColor: '#384031' }}></div>
               <p className="mt-4 text-gray-600">Loading deals...</p>
             </div>
           </div>
@@ -462,7 +463,7 @@ const DealsPage = () => {
                 deals={dealsByCategory.pipeline}
                 bgColor="bg-blue-100"
                 borderColor="border-blue-200"
-                iconColor="text-blue-600"
+                iconColor="text-[#384031]"
                 textColor="text-blue-800"
                 category="pipeline"
               />

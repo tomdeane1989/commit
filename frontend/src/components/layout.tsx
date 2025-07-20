@@ -84,17 +84,18 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
           {/* Logo */}
           <div className="flex items-center h-20 px-8 border-b border-gray-200/50">
             <div className="flex items-center space-x-4">
-              <div className="relative">
-                <div className="w-12 h-12 bg-gradient-to-br from-indigo-600 via-purple-600 to-blue-600 rounded-2xl flex items-center justify-center shadow-lg">
-                  <PoundSterling className="w-6 h-6 text-white" />
-                </div>
-                <div className="absolute -top-1 -right-1 w-4 h-4 bg-green-500 rounded-full border-2 border-white"></div>
+              <div className="w-12 h-12 bg-white rounded-lg shadow-lg flex items-center justify-center">
+                <img 
+                  src="/commit_masthead.png" 
+                  alt="Commit Logo" 
+                  className="w-11 h-11 object-contain"
+                />
               </div>
-              <div>
-                <h1 className="text-xl font-bold bg-gradient-to-r from-gray-900 to-gray-600 bg-clip-text text-transparent">
-                  SalesComm
+              <div className="text-center">
+                <h1 className="text-xl font-bold text-green-800" style={{ fontFamily: 'Calibri, sans-serif' }}>
+                  Commit
                 </h1>
-                <p className="text-xs text-gray-500 font-medium">Enterprise Edition</p>
+                <p className="text-xs text-gray-500 font-medium">Own Your Number</p>
               </div>
             </div>
           </div>
@@ -114,9 +115,13 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
                   onClick={() => handleNavigation(item.href)}
                   className={`w-full flex items-center justify-between px-5 py-4 text-sm font-medium rounded-2xl transition-all duration-300 group relative overflow-hidden ${
                     isActive 
-                      ? 'bg-gradient-to-r from-indigo-600 to-purple-600 text-white shadow-lg shadow-indigo-500/25' 
+                      ? 'text-white shadow-lg' 
                       : 'text-gray-700 hover:bg-gray-50 hover:text-gray-900'
                   }`}
+                  style={isActive ? { 
+                    background: `linear-gradient(to right, #384031, #4a5240)`,
+                    boxShadow: '0 10px 15px -3px rgba(56, 64, 49, 0.25)'
+                  } : {}}
                 >
                   <div className="flex items-center">
                     <div className={`p-2 rounded-xl mr-4 transition-all duration-300 ${
@@ -134,7 +139,7 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
                     <ChevronRight className="w-4 h-4 text-white/70" />
                   )}
                   {isActive && (
-                    <div className="absolute inset-0 bg-gradient-to-r from-indigo-600 to-purple-600 opacity-20 rounded-2xl"></div>
+                    <div className="absolute inset-0 opacity-20 rounded-2xl" style={{ background: 'linear-gradient(to right, #384031, #4a5240)' }}></div>
                   )}
                 </button>
               );
@@ -146,7 +151,7 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
             <div className="flex items-center justify-between p-4 bg-gray-50 rounded-2xl">
               <div className="flex items-center space-x-3">
                 <div className="relative">
-                  <div className="w-12 h-12 bg-gradient-to-br from-indigo-500 to-purple-600 rounded-2xl flex items-center justify-center text-white text-sm font-bold shadow-lg">
+                  <div className="w-12 h-12 rounded-2xl flex items-center justify-center text-white text-sm font-bold shadow-lg" style={{ background: 'linear-gradient(to bottom right, #384031, #4a5240)' }}>
                     {user?.first_name?.[0]}{user?.last_name?.[0]}
                   </div>
                   <div className="absolute -bottom-1 -right-1 w-4 h-4 bg-green-500 rounded-full border-2 border-white"></div>
@@ -166,6 +171,15 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
                 <LogOut className="w-4 h-4" />
               </button>
             </div>
+            
+            {/* Footer with text logo */}
+            <div className="mt-4 flex justify-center">
+              <img 
+                src="/commit_text_only.jpg" 
+                alt="Commit" 
+                className="h-6 opacity-40 hover:opacity-60 transition-opacity duration-300"
+              />
+            </div>
           </div>
         </div>
       </div>
@@ -183,10 +197,11 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
                 <input
                   type="text"
                   placeholder="Search deals, commissions, team..."
-                  className="block w-96 pl-12 pr-4 py-3 bg-gray-50 border border-gray-200 rounded-2xl text-sm placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent transition-all duration-300"
+                  className="block w-96 pl-12 pr-4 py-3 bg-gray-50 border border-gray-200 rounded-2xl text-sm placeholder-gray-500 focus:outline-none focus:ring-2 focus:border-transparent transition-all duration-300"
+                  style={{ '--tw-ring-color': '#384031' } as React.CSSProperties}
                 />
               </div>
-              <button className="inline-flex items-center px-4 py-2 bg-gradient-to-r from-indigo-600 to-purple-600 text-white text-sm font-medium rounded-xl hover:from-indigo-700 hover:to-purple-700 transition-all duration-300 shadow-lg shadow-indigo-500/25">
+              <button className="inline-flex items-center px-4 py-2 text-white text-sm font-medium rounded-xl transition-all duration-300 shadow-lg hover:opacity-90" style={{ background: 'linear-gradient(to right, #384031, #4a5240)', boxShadow: '0 10px 15px -3px rgba(56, 64, 49, 0.25)' }}>
                 <Plus className="w-4 h-4 mr-2" />
                 New Deal
               </button>

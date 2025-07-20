@@ -92,7 +92,8 @@ export const InviteModal: React.FC<InviteModalProps> = ({
                 required
                 value={formData.email}
                 onChange={(e) => setFormData({ ...formData, email: e.target.value })}
-                className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
+                className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:border-transparent"
+                style={{ '--tw-ring-color': '#384031' } as any}
                 placeholder="john.doe@company.com"
                 disabled={loading}
               />
@@ -111,7 +112,8 @@ export const InviteModal: React.FC<InviteModalProps> = ({
                 required
                 value={formData.first_name}
                 onChange={(e) => setFormData({ ...formData, first_name: e.target.value })}
-                className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
+                className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:border-transparent"
+                style={{ '--tw-ring-color': '#384031' } as any}
                 placeholder="John"
                 disabled={loading}
               />
@@ -130,7 +132,8 @@ export const InviteModal: React.FC<InviteModalProps> = ({
                 required
                 value={formData.last_name}
                 onChange={(e) => setFormData({ ...formData, last_name: e.target.value })}
-                className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
+                className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:border-transparent"
+                style={{ '--tw-ring-color': '#384031' } as any}
                 placeholder="Doe"
                 disabled={loading}
               />
@@ -148,7 +151,8 @@ export const InviteModal: React.FC<InviteModalProps> = ({
                 required
                 value={formData.role}
                 onChange={(e) => setFormData({ ...formData, role: e.target.value })}
-                className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
+                className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:border-transparent"
+                style={{ '--tw-ring-color': '#384031' } as any}
                 disabled={loading}
               >
                 <option value="sales_rep">Sales Representative</option>
@@ -169,7 +173,8 @@ export const InviteModal: React.FC<InviteModalProps> = ({
                 type="text"
                 value={formData.territory}
                 onChange={(e) => setFormData({ ...formData, territory: e.target.value })}
-                className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
+                className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:border-transparent"
+                style={{ '--tw-ring-color': '#384031' } as any}
                 placeholder="UK North, London, etc."
                 disabled={loading}
               />
@@ -187,7 +192,8 @@ export const InviteModal: React.FC<InviteModalProps> = ({
                 <select
                   value={formData.manager_id}
                   onChange={(e) => setFormData({ ...formData, manager_id: e.target.value })}
-                  className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
+                  className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:border-transparent"
+                style={{ '--tw-ring-color': '#384031' } as any}
                   disabled={loading}
                 >
                   <option value="">Select a manager (optional)</option>
@@ -214,7 +220,13 @@ export const InviteModal: React.FC<InviteModalProps> = ({
             <button
               type="submit"
               disabled={loading}
-              className="flex-1 px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+              className="flex-1 px-4 py-2 text-white rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+              style={{ 
+                backgroundColor: '#384031',
+                ':hover': { opacity: 0.9 }
+              }}
+              onMouseEnter={(e) => e.currentTarget.style.opacity = '0.9'}
+              onMouseLeave={(e) => e.currentTarget.style.opacity = '1'}
             >
               {loading ? 'Inviting...' : 'Send Invite'}
             </button>

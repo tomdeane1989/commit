@@ -81,7 +81,7 @@ const DashboardPage = () => {
       <Layout>
         <div className="flex items-center justify-center h-96">
           <div className="text-center">
-            <div className="animate-spin rounded-full h-16 w-16 border-4 border-indigo-600 border-t-transparent mx-auto"></div>
+            <div className="animate-spin rounded-full h-16 w-16 border-4 border-t-transparent mx-auto" style={{ borderColor: '#384031' }}></div>
             <p className="mt-6 text-gray-600 font-medium">Loading your dashboard...</p>
           </div>
         </div>
@@ -118,7 +118,7 @@ const DashboardPage = () => {
               Sales Dashboard
             </h1>
             <p className="mt-2 text-gray-600 text-lg">
-              Welcome back, <span className="font-semibold text-indigo-600">{user?.first_name}</span>! 
+              Welcome back, <span className="font-semibold" style={{ color: '#384031' }}>{user?.first_name}</span>! 
               Here's your performance overview.
             </p>
           </div>
@@ -141,7 +141,7 @@ const DashboardPage = () => {
         {/* Key Metrics */}
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
           {/* Quota Attainment */}
-          <div className="relative overflow-hidden bg-gradient-to-br from-indigo-500 to-purple-600 rounded-3xl p-6 text-white shadow-2xl shadow-indigo-500/25">
+          <div className="relative overflow-hidden rounded-3xl p-6 text-white shadow-2xl" style={{ background: 'linear-gradient(to bottom right, #384031, #4a5240)', boxShadow: '0 25px 50px -12px rgba(56, 64, 49, 0.25)' }}>
             <div className="absolute top-0 right-0 w-32 h-32 bg-white/10 rounded-full -mr-16 -mt-16"></div>
             <div className="absolute bottom-0 left-0 w-20 h-20 bg-white/10 rounded-full -ml-10 -mb-10"></div>
             <div className="relative z-10">
@@ -187,7 +187,7 @@ const DashboardPage = () => {
           </div>
 
           {/* Commission Earned */}
-          <div className="relative overflow-hidden bg-gradient-to-br from-purple-500 to-pink-600 rounded-3xl p-6 text-white shadow-2xl shadow-purple-500/25">
+          <div className="relative overflow-hidden rounded-3xl p-6 text-white shadow-2xl" style={{ background: 'linear-gradient(to bottom right, #4a5240, #5a6450)', boxShadow: '0 25px 50px -12px rgba(74, 82, 64, 0.25)' }}>
             <div className="absolute top-0 right-0 w-32 h-32 bg-white/10 rounded-full -mr-16 -mt-16"></div>
             <div className="absolute bottom-0 left-0 w-20 h-20 bg-white/10 rounded-full -ml-10 -mb-10"></div>
             <div className="relative z-10">
@@ -241,7 +241,7 @@ const DashboardPage = () => {
               <div className="flex items-center justify-between mb-8">
                 <h3 className="text-xl font-bold text-gray-900">Quota Progress</h3>
                 <div className="flex items-center space-x-2">
-                  <div className="w-3 h-3 bg-gradient-to-r from-indigo-500 to-purple-600 rounded-full"></div>
+                  <div className="w-3 h-3 rounded-full" style={{ background: 'linear-gradient(to right, #384031, #4a5240)' }}></div>
                   <span className="text-2xl font-bold text-gray-900">
                     {metrics?.quota_attainment?.toFixed(0) || 0}%
                   </span>
@@ -386,7 +386,7 @@ const DashboardPage = () => {
                 </div>
 
                 {/* Best Case Deals */}
-                <div className="relative overflow-hidden bg-gradient-to-br from-purple-500/10 to-pink-500/10 rounded-3xl p-6 border border-purple-200">
+                <div className="relative overflow-hidden rounded-3xl p-6 border" style={{ background: 'linear-gradient(to bottom right, rgba(56, 64, 49, 0.1), rgba(74, 82, 64, 0.1))', borderColor: 'rgba(56, 64, 49, 0.2)' }}>
                   <div className="absolute top-0 right-0 w-20 h-20 bg-purple-500/10 rounded-full -mr-10 -mt-10"></div>
                   <div className="relative z-10">
                     <div className="flex items-center justify-between mb-4">
@@ -410,7 +410,7 @@ const DashboardPage = () => {
                   <div className="relative z-10">
                     <div className="flex items-center justify-between mb-4">
                       <div className="p-3 bg-blue-500/20 rounded-2xl">
-                        <Clock className="w-6 h-6 text-blue-600" />
+                        <Clock className="w-6 h-6" style={{ color: '#384031' }} />
                       </div>
                       <span className="bg-blue-500 text-white text-sm font-bold px-3 py-1 rounded-full">
                         {deals?.pipeline?.length || 0}
@@ -428,7 +428,7 @@ const DashboardPage = () => {
         </div>
 
         {/* Welcome Message */}
-        <div className="relative overflow-hidden bg-gradient-to-r from-indigo-600 via-purple-600 to-pink-600 rounded-3xl p-8 text-white shadow-2xl">
+        <div className="relative overflow-hidden rounded-3xl p-8 text-white shadow-2xl" style={{ background: 'linear-gradient(to right, #384031, #4a5240, #5a6450)' }}>
           <div className="absolute top-0 right-0 w-64 h-64 bg-white/10 rounded-full -mr-32 -mt-32"></div>
           <div className="absolute bottom-0 left-0 w-32 h-32 bg-white/10 rounded-full -ml-16 -mb-16"></div>
           <div className="relative z-10">
