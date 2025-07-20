@@ -119,7 +119,7 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
                       : 'text-gray-700 hover:bg-gray-50 hover:text-gray-900'
                   }`}
                   style={isActive ? { 
-                    background: `linear-gradient(to right, #384031, #4a5240)`,
+                    background: `linear-gradient(to right, #82a365, #6b8950)`,
                     boxShadow: '0 10px 15px -3px rgba(56, 64, 49, 0.25)'
                   } : {}}
                 >
@@ -139,7 +139,7 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
                     <ChevronRight className="w-4 h-4 text-white/70" />
                   )}
                   {isActive && (
-                    <div className="absolute inset-0 opacity-20 rounded-2xl" style={{ background: 'linear-gradient(to right, #384031, #4a5240)' }}></div>
+                    <div className="absolute inset-0 opacity-20 rounded-2xl" style={{ background: 'linear-gradient(to right, #82a365, #6b8950)' }}></div>
                   )}
                 </button>
               );
@@ -151,7 +151,7 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
             <div className="flex items-center justify-between p-4 bg-gray-50 rounded-2xl">
               <div className="flex items-center space-x-3">
                 <div className="relative">
-                  <div className="w-12 h-12 rounded-2xl flex items-center justify-center text-white text-sm font-bold shadow-lg" style={{ background: 'linear-gradient(to bottom right, #384031, #4a5240)' }}>
+                  <div className="w-12 h-12 rounded-2xl flex items-center justify-center text-white text-sm font-bold shadow-lg" style={{ background: 'linear-gradient(to bottom right, #82a365, #6b8950)' }}>
                     {user?.first_name?.[0]}{user?.last_name?.[0]}
                   </div>
                   <div className="absolute -bottom-1 -right-1 w-4 h-4 bg-green-500 rounded-full border-2 border-white"></div>
@@ -198,10 +198,10 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
                   type="text"
                   placeholder="Search deals, commissions, team..."
                   className="block w-96 pl-12 pr-4 py-3 bg-gray-50 border border-gray-200 rounded-2xl text-sm placeholder-gray-500 focus:outline-none focus:ring-2 focus:border-transparent transition-all duration-300"
-                  style={{ '--tw-ring-color': '#384031' } as React.CSSProperties}
+                  style={{ '--tw-ring-color': '#82a365' } as React.CSSProperties}
                 />
               </div>
-              <button className="inline-flex items-center px-4 py-2 text-white text-sm font-medium rounded-xl transition-all duration-300 shadow-lg hover:opacity-90" style={{ background: 'linear-gradient(to right, #384031, #4a5240)', boxShadow: '0 10px 15px -3px rgba(56, 64, 49, 0.25)' }}>
+              <button className="inline-flex items-center px-4 py-2 text-white text-sm font-medium rounded-xl transition-all duration-300 shadow-lg hover:opacity-90" style={{ background: 'linear-gradient(to right, #82a365, #6b8950)', boxShadow: '0 10px 15px -3px rgba(56, 64, 49, 0.25)' }}>
                 <Plus className="w-4 h-4 mr-2" />
                 New Deal
               </button>

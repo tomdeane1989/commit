@@ -107,7 +107,7 @@ export const TeamMemberCard: React.FC<TeamMemberCardProps> = ({
         }`}
         style={member.is_active ? { backgroundColor: 'rgba(56, 64, 49, 0.1)' } : {}}>
           <User className={`w-6 h-6 ${member.is_active ? '' : 'text-gray-400'}`}
-          style={member.is_active ? { color: '#384031' } : {}} />
+          style={member.is_active ? { color: '#82a365' } : {}} />
         </div>
         
         <div className="flex-1 min-w-0">

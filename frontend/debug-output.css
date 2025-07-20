@@ -2424,16 +2424,14 @@ h1, h2, h3, h4, h5, h6 {
   transition-duration: 500ms;
 }
 
-/* Primary Button Colors */
+/* Primary Button Colors - Higher Specificity */
 
-.bg-indigo-600, .bg-indigo-500 {
-  --tw-bg-opacity: 1 !important;
-  background-color: rgb(130 163 101 / var(--tw-bg-opacity, 1)) !important;
+button.bg-indigo-600, .bg-indigo-600, button.bg-indigo-500, .bg-indigo-500 {
+  background-color: #82a365 !important;
 }
 
-.bg-blue-600, .bg-blue-500 {
-  --tw-bg-opacity: 1 !important;
-  background-color: rgb(130 163 101 / var(--tw-bg-opacity, 1)) !important;
+button.bg-blue-600, .bg-blue-600, button.bg-blue-500, .bg-blue-500 {
+  background-color: #82a365 !important;
 }
 
 /* Purple/Pink to Green Overrides */
@@ -2533,6 +2531,45 @@ h1, h2, h3, h4, h5, h6 {
 }
 
 /* Professional Focus Styles */
+
+/* FORCE COLOR OVERRIDES - Maximum Specificity */
+
+html body * {
+  /* Blue to Green */
+}
+
+html body button[class*="bg-blue-6"],
+html body button[class*="bg-indigo-6"],
+html body div[class*="bg-blue-6"],
+html body div[class*="bg-indigo-6"],
+html body span[class*="bg-blue-6"],
+html body span[class*="bg-indigo-6"] {
+  background-color: #82a365 !important;
+}
+
+html body *[class*="from-indigo"],
+html body *[class*="from-purple"],
+html body *[class*="from-blue"] {
+  --tw-gradient-from: #82a365 !important;
+  --tw-gradient-to: rgba(130, 163, 101, 0) !important;
+  --tw-gradient-stops: var(--tw-gradient-from), var(--tw-gradient-to) !important;
+}
+
+html body *[class*="to-purple"],
+html body *[class*="to-pink"] {
+  --tw-gradient-to: #6b8950 !important;
+}
+
+html body *[class*="text-blue-6"],
+html body *[class*="text-indigo-6"],
+html body *[class*="text-purple-6"] {
+  color: #6b8950 !important;
+}
+
+html body *[class*="border-blue-6"],
+html body *[class*="border-indigo-6"] {
+  border-color: #82a365 !important;
+}
 
 .hover\:scale-\[1\.02\]:hover {
   --tw-scale-x: 1.02;

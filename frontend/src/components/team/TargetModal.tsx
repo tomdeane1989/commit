@@ -169,7 +169,7 @@ export const TargetModal: React.FC<TargetModalProps> = ({
                   value={formData.user_id}
                   onChange={(e) => setFormData({ ...formData, user_id: e.target.value })}
                   className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:border-transparent"
-                  style={{ '--tw-ring-color': '#384031' } as any}
+                  style={{ '--tw-ring-color': '#82a365' } as any}
                   disabled={loading}
                 >
                   <option value="">Select a team member</option>
@@ -196,7 +196,7 @@ export const TargetModal: React.FC<TargetModalProps> = ({
                   value={formData.role}
                   onChange={(e) => setFormData({ ...formData, role: e.target.value })}
                   className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:border-transparent"
-                  style={{ '--tw-ring-color': '#384031' } as any}
+                  style={{ '--tw-ring-color': '#82a365' } as any}
                   disabled={loading}
                 >
                   <option value="">Select a role</option>
@@ -220,7 +220,7 @@ export const TargetModal: React.FC<TargetModalProps> = ({
                 value={formData.period_type}
                 onChange={(e) => setFormData({ ...formData, period_type: e.target.value })}
                 className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:border-transparent"
-                style={{ '--tw-ring-color': '#384031' } as any}
+                style={{ '--tw-ring-color': '#82a365' } as any}
                 disabled={loading}
               >
                 <option value="monthly">Monthly</option>
@@ -241,7 +241,7 @@ export const TargetModal: React.FC<TargetModalProps> = ({
               value={formData.period_start}
               onChange={(e) => handleStartDateChange(e.target.value)}
               className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:border-transparent"
-              style={{ '--tw-ring-color': '#384031' } as any}
+              style={{ '--tw-ring-color': '#82a365' } as any}
               disabled={loading}
             />
           </div>
@@ -257,7 +257,7 @@ export const TargetModal: React.FC<TargetModalProps> = ({
               value={formData.period_end}
               onChange={(e) => setFormData({ ...formData, period_end: e.target.value })}
               className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:border-transparent"
-              style={{ '--tw-ring-color': '#384031' } as any}
+              style={{ '--tw-ring-color': '#82a365' } as any}
               disabled={loading}
             />
           </div>
@@ -277,7 +277,7 @@ export const TargetModal: React.FC<TargetModalProps> = ({
                 value={formData.quota_amount}
                 onChange={(e) => setFormData({ ...formData, quota_amount: e.target.value })}
                 className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:border-transparent"
-                style={{ '--tw-ring-color': '#384031' } as any}
+                style={{ '--tw-ring-color': '#82a365' } as any}
                 placeholder="250000"
                 disabled={loading}
               />
@@ -300,7 +300,7 @@ export const TargetModal: React.FC<TargetModalProps> = ({
                 value={formData.commission_rate}
                 onChange={(e) => setFormData({ ...formData, commission_rate: e.target.value })}
                 className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:border-transparent"
-                style={{ '--tw-ring-color': '#384031' } as any}
+                style={{ '--tw-ring-color': '#82a365' } as any}
                 placeholder="3.0"
                 disabled={loading}
               />
@@ -322,7 +322,7 @@ export const TargetModal: React.FC<TargetModalProps> = ({
               disabled={loading}
               className="flex-1 px-4 py-2 text-white rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
               style={{ 
-                backgroundColor: '#384031',
+                backgroundColor: '#82a365',
                 ':hover': { opacity: 0.9 }
               }}
               onMouseEnter={(e) => e.currentTarget.style.opacity = '0.9'}

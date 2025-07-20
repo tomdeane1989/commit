@@ -30,7 +30,7 @@ export const TeamFilters: React.FC<TeamFiltersProps> = ({
             placeholder="Search team members..."
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
-            className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:border-transparent\n            style={{ '--tw-ring-color': '#384031' } as React.CSSProperties}"
+            className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:border-transparent\n            style={{ '--tw-ring-color': '#82a365' } as React.CSSProperties}"
           />
         </div>
 
@@ -41,7 +41,7 @@ export const TeamFilters: React.FC<TeamFiltersProps> = ({
             <select
               value={roleFilter}
               onChange={(e) => setRoleFilter(e.target.value)}
-              className="px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:border-transparent\n            style={{ '--tw-ring-color': '#384031' } as React.CSSProperties} text-sm"
+              className="px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:border-transparent\n            style={{ '--tw-ring-color': '#82a365' } as React.CSSProperties} text-sm"
             >
               <option value="">All Roles</option>
               <option value="admin">Admin</option>
@@ -53,7 +53,7 @@ export const TeamFilters: React.FC<TeamFiltersProps> = ({
           <select
             value={statusFilter}
             onChange={(e) => setStatusFilter(e.target.value)}
-            className="px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:border-transparent\n            style={{ '--tw-ring-color': '#384031' } as React.CSSProperties} text-sm"
+            className="px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:border-transparent\n            style={{ '--tw-ring-color': '#82a365' } as React.CSSProperties} text-sm"
           >
             <option value="">All Status</option>
             <option value="active">Active</option>
@@ -63,7 +63,7 @@ export const TeamFilters: React.FC<TeamFiltersProps> = ({
           <button
             onClick={onInviteClick}
             className="inline-flex items-center px-4 py-2 text-white text-sm font-medium rounded-lg transition-all duration-300 shadow-lg hover:opacity-90"
-            style={{ background: 'linear-gradient(to right, #384031, #4a5240)', boxShadow: '0 10px 15px -3px rgba(56, 64, 49, 0.25)' }}
+            style={{ background: 'linear-gradient(to right, #82a365, #6b8950)', boxShadow: '0 10px 15px -3px rgba(56, 64, 49, 0.25)' }}
           >
             <Plus className="w-4 h-4 mr-2" />
             Invite Member

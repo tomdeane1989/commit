@@ -39,22 +39,22 @@ const LoginPage = () => {
         </div>
 
         {/* Test Account Box */}
-        <div className="rounded-lg border px-4 py-3" style={{ borderColor: '#384031', backgroundColor: '#f8f9f4' }}>
+        <div className="rounded-lg border px-4 py-3" style={{ borderColor: '#82a365', backgroundColor: '#f8f9f4' }}>
           <div className="flex items-center justify-between">
             <div>
-              <h3 className="text-sm font-medium" style={{ color: '#384031' }}>Test Account</h3>
-              <p className="text-xs" style={{ color: '#4a5240' }}>Use these credentials to explore the product</p>
+              <h3 className="text-sm font-medium" style={{ color: '#82a365' }}>Test Account</h3>
+              <p className="text-xs" style={{ color: '#6b8950' }}>Use these credentials to explore the product</p>
             </div>
             <button
               type="button"
               onClick={handleTestLogin}
               className="text-xs font-medium text-white px-3 py-1 rounded-md transition hover:opacity-90"
-              style={{ backgroundColor: '#384031' }}
+              style={{ backgroundColor: '#82a365' }}
             >
               Use Test Account
             </button>
           </div>
-          <div className="mt-2 text-xs space-y-1" style={{ color: '#384031' }}>
+          <div className="mt-2 text-xs space-y-1" style={{ color: '#82a365' }}>
             <div><strong>Email:</strong> test@company.com</div>
             <div><strong>Password:</strong> password123</div>
           </div>
@@ -83,7 +83,7 @@ const LoginPage = () => {
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
                 className="w-full px-4 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:outline-none transition"
-                style={{ '--tw-ring-color': '#384031' } as React.CSSProperties}
+                style={{ '--tw-ring-color': '#82a365' } as React.CSSProperties}
               />
             </div>
 
@@ -100,7 +100,7 @@ const LoginPage = () => {
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
                   className="w-full px-4 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:outline-none transition"
-                  style={{ '--tw-ring-color': '#384031' } as React.CSSProperties}
+                  style={{ '--tw-ring-color': '#82a365' } as React.CSSProperties}
                 />
                 <button
                   type="button"
@@ -123,7 +123,7 @@ const LoginPage = () => {
               type="submit"
               disabled={loading}
               className="w-full flex justify-center items-center px-4 py-2 text-sm font-medium text-white rounded-lg transition disabled:opacity-50 hover:opacity-90"
-              style={{ backgroundColor: '#384031' }}
+              style={{ backgroundColor: '#82a365' }}
             >
               {loading ? (
                 <>
@@ -142,7 +142,7 @@ const LoginPage = () => {
             <a
               href="/register"
               className="font-medium hover:opacity-80 transition"
-              style={{ color: '#384031' }}
+              style={{ color: '#82a365' }}
             >
               Sign up
             </a>

@@ -235,7 +235,7 @@ export const ConflictResolutionModal: React.FC<ConflictResolutionModalProps> = (
                   : 'bg-gray-300 text-gray-500 cursor-not-allowed'
               }`}
               style={canResolve && !loading ? { 
-                backgroundColor: '#384031',
+                backgroundColor: '#82a365',
                 ':hover': { opacity: 0.9 }
               } : {}}
               onMouseEnter={(e) => {

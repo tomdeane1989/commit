@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import Layout from '../../components/layout';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { useAuth } from '../../hooks/useAuth';
 import api from '../../lib/api';
 import { Deal } from '../../types';
 import { 
@@ -19,6 +20,7 @@ import {
 } from 'lucide-react';
 
 const DealsPage = () => {
+  const { user } = useAuth();
   const [filters, setFilters] = useState({
     status: '',
     search: '',
@@ -50,11 +52,13 @@ const DealsPage = () => {
 
   // Get current user's quota from settings
   const { data: targetsData } = useQuery({
-    queryKey: ['targets'],
+    queryKey: ['targets', user?.id],
     queryFn: async () => {
-      const response = await api.get('/targets');
+      // Pass user_id to ensure we only get the current user's targets
+      const response = await api.get(`/targets?user_id=${user?.id}`);
       return response.data;
-    }
+    },
+    enabled: !!user?.id
   });
 
   const updateDealCategoryMutation = useMutation({
@@ -116,7 +120,7 @@ const DealsPage = () => {
   const closedAmount = dealsByCategory.closed.reduce((sum: number, deal: Deal) => sum + Number(deal.amount), 0);
   const commitAmount = dealsByCategory.commit.reduce((sum: number, deal: Deal) => sum + Number(deal.amount), 0);
   const bestCaseAmount = dealsByCategory.best_case.reduce((sum: number, deal: Deal) => sum + Number(deal.amount), 0);
-  const quotaTarget = currentTarget?.quota_amount || 100000;
+  const quotaTarget = Number(currentTarget?.quota_amount) || 100000;
   
   const totalCategorized = closedAmount + commitAmount + bestCaseAmount;
   const closedProgress = (closedAmount / quotaTarget) * 100;
@@ -334,7 +338,7 @@ const DealsPage = () => {
           {/* Best Case (top) */}
           <div 
             className="absolute w-full transition-all duration-1000 group cursor-pointer"
-            style={{ background: 'linear-gradient(to top, #4a5240, #5a6450)' }}
+            style={{ background: 'linear-gradient(to top, #6b8950, #5a6450)' }}
             style={{ 
               height: `${bestCaseHeight}px`,
               bottom: `${closedHeight + commitHeight}px`
@@ -414,14 +418,14 @@ const DealsPage = () => {
                 placeholder="Search deals..."
                 value={filters.search}
                 onChange={(e) => setFilters({...filters, search: e.target.value})}
-                className="pl-10 pr-4 py-2 w-full bg-gray-50 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:border-transparent\n                style={{ '--tw-ring-color': '#384031' } as React.CSSProperties}"
+                className="pl-10 pr-4 py-2 w-full bg-gray-50 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:border-transparent\n                style={{ '--tw-ring-color': '#82a365' } as React.CSSProperties}"
               />
             </div>
             
             <select
               value={filters.status}
               onChange={(e) => setFilters({...filters, status: e.target.value})}
-              className="py-2 px-3 bg-gray-50 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:border-transparent\n                style={{ '--tw-ring-color': '#384031' } as React.CSSProperties}"
+              className="py-2 px-3 bg-gray-50 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:border-transparent\n                style={{ '--tw-ring-color': '#82a365' } as React.CSSProperties}"
             >
               <option value="">All Statuses</option>
               <option value="open">Open</option>
@@ -433,14 +437,14 @@ const DealsPage = () => {
               type="date"
               value={filters.from_date}
               onChange={(e) => setFilters({...filters, from_date: e.target.value})}
-              className="py-2 px-3 bg-gray-50 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:border-transparent\n                style={{ '--tw-ring-color': '#384031' } as React.CSSProperties}"
+              className="py-2 px-3 bg-gray-50 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:border-transparent\n                style={{ '--tw-ring-color': '#82a365' } as React.CSSProperties}"
             />
             
             <input
               type="date"
               value={filters.to_date}
               onChange={(e) => setFilters({...filters, to_date: e.target.value})}
-              className="py-2 px-3 bg-gray-50 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:border-transparent\n                style={{ '--tw-ring-color': '#384031' } as React.CSSProperties}"
+              className="py-2 px-3 bg-gray-50 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:border-transparent\n                style={{ '--tw-ring-color': '#82a365' } as React.CSSProperties}"
             />
           </div>
         </div>
@@ -449,7 +453,7 @@ const DealsPage = () => {
         {isLoading ? (
           <div className="flex items-center justify-center h-64">
             <div className="text-center">
-              <div className="animate-spin rounded-full h-12 w-12 border-4 border-t-transparent mx-auto" style={{ borderColor: '#384031' }}></div>
+              <div className="animate-spin rounded-full h-12 w-12 border-4 border-t-transparent mx-auto" style={{ borderColor: '#82a365' }}></div>
               <p className="mt-4 text-gray-600">Loading deals...</p>
             </div>
           </div>
@@ -463,7 +467,7 @@ const DealsPage = () => {
                 deals={dealsByCategory.pipeline}
                 bgColor="bg-blue-100"
                 borderColor="border-blue-200"
-                iconColor="text-[#384031]"
+                iconColor="text-[#82a365]"
                 textColor="text-blue-800"
                 category="pipeline"
               />

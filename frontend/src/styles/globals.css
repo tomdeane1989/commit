@@ -2,67 +2,309 @@
 @tailwind components;
 @tailwind utilities;
 
-/* Global Color Scheme Override - Commit Theme */
+/* Professional SaaS Color Scheme - Global Overrides */
 @layer utilities {
-  /* Primary Button Styles */
-  .bg-indigo-600 {
-    @apply bg-commit-900 !important;
+  /* Primary Button Colors - Higher Specificity */
+  button.bg-indigo-600, .bg-indigo-600, button.bg-indigo-500, .bg-indigo-500 {
+    background-color: #82a365 !important;
   }
   
-  .bg-blue-600 {
-    @apply bg-commit-900 !important;
+  button.bg-blue-600, .bg-blue-600, button.bg-blue-500, .bg-blue-500 {
+    background-color: #82a365 !important;
   }
   
-  .hover\:bg-indigo-700:hover {
-    @apply bg-commit-950 !important;
+  button:hover.hover\:bg-indigo-700, .hover\:bg-indigo-700:hover, button:hover.hover\:bg-indigo-600, .hover\:bg-indigo-600:hover {
+    background-color: #6b8950 !important;
   }
   
-  .hover\:bg-blue-700:hover {
-    @apply bg-commit-950 !important;
+  button:hover.hover\:bg-blue-700, .hover\:bg-blue-700:hover, button:hover.hover\:bg-blue-600, .hover\:bg-blue-600:hover {
+    background-color: #6b8950 !important;
+  }
+  
+  /* Purple/Pink to Green Overrides */
+  .bg-purple-500, .bg-purple-600 {
+    @apply bg-sage-500 !important;
+  }
+  
+  .bg-pink-500, .bg-pink-600 {
+    @apply bg-sage-500 !important;
+  }
+  
+  /* Gradient Overrides (Consistent Green Spectrum) */
+  .from-indigo-600, .from-indigo-500 {
+    @apply from-sage-500 !important;
+  }
+  
+  .to-purple-600, .to-purple-500, .to-purple-400 {
+    @apply to-sage-600 !important;
+  }
+  
+  .from-purple-500, .from-purple-600 {
+    @apply from-sage-500 !important;
+  }
+  
+  .to-pink-600, .to-pink-500 {
+    @apply to-sage-600 !important;
+  }
+  
+  .hover\:from-indigo-700:hover {
+    @apply hover:from-sage-600 !important;
+  }
+  
+  .hover\:to-purple-700:hover {
+    @apply hover:to-sage-700 !important;
   }
   
   /* Text Colors */
-  .text-indigo-600 {
-    @apply text-commit-900 !important;
+  .text-indigo-600, .text-indigo-500 {
+    @apply text-sage-600 !important;
   }
   
-  .text-blue-600 {
-    @apply text-commit-900 !important;
+  .text-blue-600, .text-blue-500, .text-blue-700, .text-blue-800 {
+    @apply text-sage-600 !important;
   }
   
-  .hover\:text-blue-500:hover {
-    @apply text-commit-800 !important;
+  .text-purple-500, .text-purple-600 {
+    @apply text-sage-600 !important;
+  }
+  
+  .hover\:text-blue-500:hover, .hover\:text-indigo-500:hover {
+    @apply text-sage-500 !important;
   }
   
   /* Border Colors */
-  .border-indigo-600 {
-    @apply border-commit-900 !important;
+  .border-indigo-600, .border-indigo-500 {
+    @apply border-sage-500 !important;
   }
   
-  .border-blue-600 {
-    @apply border-commit-900 !important;
+  .border-blue-600, .border-blue-500 {
+    @apply border-sage-500 !important;
+  }
+  
+  .border-purple-500, .border-purple-600 {
+    @apply border-sage-500 !important;
+  }
+  
+  /* Focus Ring Colors */
+  .focus\:ring-indigo-500:focus, .focus\:ring-indigo-600:focus {
+    @apply focus:ring-sage-400 !important;
+  }
+  
+  .focus\:ring-blue-500:focus, .focus\:ring-blue-600:focus {
+    @apply focus:ring-sage-400 !important;
+  }
+  
+  /* Background Colors for Cards/Elements */
+  .bg-indigo-100, .bg-blue-100 {
+    @apply bg-sage-100 !important;
+  }
+  
+  .bg-indigo-50, .bg-blue-50 {
+    @apply bg-sage-50 !important;
+  }
+  
+  .bg-purple-100, .bg-pink-100 {
+    @apply bg-sage-100 !important;
+  }
+  
+  /* Shadow Colors */
+  .shadow-indigo-500\/25, .shadow-blue-500\/25 {
+    box-shadow: 0 10px 15px -3px rgba(107, 137, 80, 0.25) !important;
+  }
+  
+  .shadow-purple-500\/25, .shadow-pink-500\/25 {
+    box-shadow: 0 10px 15px -3px rgba(107, 137, 80, 0.25) !important;
   }
 }
 
-/* Custom Commit Theme Classes */
+/* Professional SaaS Design System */
 @layer components {
+  /* Button System */
   .btn-primary {
-    @apply bg-commit-900 hover:bg-commit-950 text-white font-medium px-4 py-2 rounded-lg transition-colors duration-200 focus:outline-none focus:ring-2 focus:ring-commit-900 focus:ring-offset-2;
+    @apply bg-sage-600 hover:bg-sage-700 text-white font-medium px-6 py-3 rounded-xl transition-all duration-200 focus:outline-none focus:ring-2 focus:ring-sage-500 focus:ring-offset-2 shadow-sm;
   }
   
   .btn-secondary {
-    @apply bg-gray-100 hover:bg-gray-200 text-gray-700 font-medium px-4 py-2 rounded-lg transition-colors duration-200 focus:outline-none focus:ring-2 focus:ring-commit-900 focus:ring-offset-2;
+    @apply bg-slate-100 hover:bg-slate-200 text-slate-700 font-medium px-6 py-3 rounded-xl transition-all duration-200 focus:outline-none focus:ring-2 focus:ring-sage-500 focus:ring-offset-2 border border-slate-200;
+  }
+  
+  .btn-ghost {
+    @apply text-slate-600 hover:text-sage-600 hover:bg-sage-50 font-medium px-4 py-2 rounded-lg transition-all duration-200 focus:outline-none focus:ring-2 focus:ring-sage-500 focus:ring-offset-2;
+  }
+  
+  .btn-sm {
+    @apply px-4 py-2 text-sm rounded-lg;
+  }
+  
+  .btn-lg {
+    @apply px-8 py-4 text-lg rounded-2xl;
+  }
+  
+  /* Card System */
+  .card {
+    @apply bg-white rounded-2xl border border-slate-200 shadow-sm;
+  }
+  
+  .card-elevated {
+    @apply bg-white rounded-2xl border border-slate-200 shadow-lg shadow-slate-900/5;
+  }
+  
+  .card-header {
+    @apply p-6 border-b border-slate-100;
+  }
+  
+  .card-body {
+    @apply p-6;
+  }
+  
+  .card-footer {
+    @apply p-6 border-t border-slate-100 bg-slate-50 rounded-b-2xl;
+  }
+  
+  /* Form Elements */
+  .input {
+    @apply w-full px-4 py-3 bg-white border border-slate-200 rounded-xl text-slate-700 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-sage-500 focus:border-transparent transition-all duration-200;
+  }
+  
+  .input-error {
+    @apply border-red-300 focus:ring-red-500;
+  }
+  
+  .label {
+    @apply block text-sm font-medium text-slate-700 mb-2;
+  }
+  
+  /* Typography */
+  .text-heading {
+    @apply text-slate-800 font-semibold;
+  }
+  
+  .text-body {
+    @apply text-slate-600;
+  }
+  
+  .text-muted {
+    @apply text-slate-400;
   }
   
   .text-primary {
-    @apply text-commit-900;
+    @apply text-sage-600;
   }
   
+  .text-success {
+    @apply text-emerald-600;
+  }
+  
+  .text-warning {
+    @apply text-amber-600;
+  }
+  
+  .text-error {
+    @apply text-red-600;
+  }
+  
+  /* Background Utilities */
   .bg-primary {
-    @apply bg-commit-900;
+    @apply bg-sage-600;
   }
   
-  .border-primary {
-    @apply border-commit-900;
+  .bg-success {
+    @apply bg-emerald-100 text-emerald-800;
   }
+  
+  .bg-warning {
+    @apply bg-amber-100 text-amber-800;
+  }
+  
+  .bg-error {
+    @apply bg-red-100 text-red-800;
+  }
+  
+  /* Page Layout */
+  .page-bg {
+    @apply bg-slate-50;
+  }
+  
+  .sidebar-bg {
+    @apply bg-white/90 backdrop-blur-xl border-slate-200/50;
+  }
+  
+  /* Professional Animations */
+  .animate-fade-in {
+    animation: fadeIn 0.3s ease-in-out;
+  }
+  
+  .animate-slide-up {
+    animation: slideUp 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+  }
+}
+
+/* Custom Animations */
+@keyframes fadeIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@keyframes slideUp {
+  from { 
+    opacity: 0; 
+    transform: translateY(1rem); 
+  }
+  to { 
+    opacity: 1; 
+    transform: translateY(0); 
+  }
+}
+
+/* Professional Focus Styles */
+@layer base {
+  *:focus {
+    @apply outline-none;
+  }
+  
+  body {
+    @apply text-slate-700 bg-slate-50 antialiased;
+  }
+  
+  h1, h2, h3, h4, h5, h6 {
+    @apply text-slate-800;
+  }
+}
+
+/* FORCE COLOR OVERRIDES - Maximum Specificity */
+html body * {
+  /* Blue to Green */
+}
+
+html body button[class*="bg-blue-6"],
+html body button[class*="bg-indigo-6"],
+html body div[class*="bg-blue-6"],
+html body div[class*="bg-indigo-6"],
+html body span[class*="bg-blue-6"],
+html body span[class*="bg-indigo-6"] {
+  background-color: #82a365 !important;
+}
+
+html body *[class*="from-indigo"],
+html body *[class*="from-purple"],
+html body *[class*="from-blue"] {
+  --tw-gradient-from: #82a365 !important;
+  --tw-gradient-to: rgba(130, 163, 101, 0) !important;
+  --tw-gradient-stops: var(--tw-gradient-from), var(--tw-gradient-to) !important;
+}
+
+html body *[class*="to-purple"],
+html body *[class*="to-pink"] {
+  --tw-gradient-to: #6b8950 !important;
+}
+
+html body *[class*="text-blue-6"],
+html body *[class*="text-indigo-6"],
+html body *[class*="text-purple-6"] {
+  color: #6b8950 !important;
+}
+
+html body *[class*="border-blue-6"],
+html body *[class*="border-indigo-6"] {
+  border-color: #82a365 !important;
 }

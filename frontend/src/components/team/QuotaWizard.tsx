@@ -255,14 +255,14 @@ export const QuotaWizard: React.FC<QuotaWizardProps> = ({
                     ? 'text-white'
                     : 'bg-gray-200 text-gray-500'
                 }`}
-                style={step <= currentStep ? { backgroundColor: '#384031' } : {}}>
+                style={step <= currentStep ? { backgroundColor: '#82a365' } : {}}>
                   {step < currentStep ? <CheckCircle className="w-4 h-4" /> : step}
                 </div>
                 {step < 4 && (
                   <div className={`w-16 h-1 mx-2 ${
                     step < currentStep ? '' : 'bg-gray-200'
                   }`} 
-                  style={step < currentStep ? { backgroundColor: '#384031' } : {}} />
+                  style={step < currentStep ? { backgroundColor: '#82a365' } : {}} />
                 )}
               </div>
             ))}
@@ -332,7 +332,7 @@ export const QuotaWizard: React.FC<QuotaWizardProps> = ({
               <button
                 onClick={nextStep}
                 className="flex items-center px-4 py-2 text-sm font-medium text-white rounded-lg transition-all"
-                style={{ backgroundColor: '#384031' }}
+                style={{ backgroundColor: '#82a365' }}
                 onMouseEnter={(e) => e.currentTarget.style.opacity = '0.9'}
                 onMouseLeave={(e) => e.currentTarget.style.opacity = '1'}
               >
@@ -431,7 +431,7 @@ const Step1ScopeAndTiming: React.FC<{
                   ? 'bg-green-50 border-green-500'
                   : 'border-gray-200 hover:border-gray-300'
               }`}
-              style={data.scope === value ? { color: '#384031' } : {}}
+              style={data.scope === value ? { color: '#82a365' } : {}}
             >
               <Icon className="w-5 h-5 mb-2" />
               <div className="font-medium">{label}</div>
@@ -451,7 +451,7 @@ const Step1ScopeAndTiming: React.FC<{
             value={data.user_id || ''}
             onChange={(e) => updateData({ user_id: e.target.value })}
             className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:border-transparent"
-            style={{ '--tw-ring-color': '#384031' } as any}
+            style={{ '--tw-ring-color': '#82a365' } as any}
           >
             <option value="">Choose team member...</option>
             {activeMembers.map(member => (
@@ -473,7 +473,7 @@ const Step1ScopeAndTiming: React.FC<{
             value={data.role || ''}
             onChange={(e) => updateData({ role: e.target.value })}
             className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:border-transparent"
-            style={{ '--tw-ring-color': '#384031' } as any}
+            style={{ '--tw-ring-color': '#82a365' } as any}
           >
             <option value="">Choose role...</option>
             {uniqueRoles.map(role => (
@@ -503,7 +503,7 @@ const Step1ScopeAndTiming: React.FC<{
                   ? 'bg-green-50 border-green-500'
                   : 'border-gray-200 hover:border-gray-300'
               }`}
-              style={data.year_type === value ? { color: '#384031' } : {}}
+              style={data.year_type === value ? { color: '#82a365' } : {}}
             >
               <Calendar className="w-5 h-5 mb-2" />
               <div className="font-medium">{label}</div>
@@ -523,7 +523,7 @@ const Step1ScopeAndTiming: React.FC<{
           value={data.start_date}
           onChange={(e) => updateData({ start_date: e.target.value })}
           className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:border-transparent"
-          style={{ '--tw-ring-color': '#384031' } as any}
+          style={{ '--tw-ring-color': '#82a365' } as any}
         />
         <p className="text-xs text-gray-500 mt-1">
           {data.year_type === 'fiscal' 
@@ -585,7 +585,7 @@ const Step2DistributionMethod: React.FC<{
                 ? 'bg-green-50 border-green-500'
                 : 'border-gray-200 hover:border-gray-300'
             }`}
-            style={data.distribution === value ? { color: '#384031' } : {}}
+            style={data.distribution === value ? { color: '#82a365' } : {}}
           >
             <div className="text-2xl mb-2">{icon}</div>
             <div className="font-medium">{label}</div>
@@ -654,7 +654,7 @@ const Step3SetAmounts: React.FC<{
               value={data.annual_quota || ''}
               onChange={(e) => updateData({ annual_quota: parseFloat(e.target.value) || 0 })}
               className="w-full pl-8 pr-3 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:border-transparent"
-              style={{ '--tw-ring-color': '#384031' } as any}
+              style={{ '--tw-ring-color': '#82a365' } as any}
               placeholder="250000"
             />
           </div>
@@ -671,7 +671,7 @@ const Step3SetAmounts: React.FC<{
               value={data.commission_rate || ''}
               onChange={(e) => updateData({ commission_rate: parseFloat(e.target.value) || 0 })}
               className="w-full pr-8 pl-3 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:border-transparent"
-              style={{ '--tw-ring-color': '#384031' } as any}
+              style={{ '--tw-ring-color': '#82a365' } as any}
               placeholder="7.5"
             />
             <span className="absolute right-3 top-3 text-gray-500">%</span>
@@ -721,8 +721,8 @@ const Step3SetAmounts: React.FC<{
       {/* Commission Preview */}
       {data.annual_quota > 0 && data.commission_rate > 0 && (
         <div className="bg-green-50 p-4 rounded-lg">
-          <h4 className="font-medium mb-3" style={{ color: '#384031' }}>Commission Preview</h4>
-          <div className="text-sm" style={{ color: '#384031' }}>
+          <h4 className="font-medium mb-3" style={{ color: '#82a365' }}>Commission Preview</h4>
+          <div className="text-sm" style={{ color: '#82a365' }}>
             <p>
               If targets are met, commission earnings will be:{' '}
               <span className="font-medium">
@@ -822,7 +822,7 @@ const Step4ReviewAndConflicts: React.FC<{
               <span style={{ color: '#2f3427' }}>
                 {member.first_name} {member.last_name}
               </span>
-              <span style={{ color: '#384031' }}>
+              <span style={{ color: '#82a365' }}>
                 {member.role.replace('_', ' ').replace(/\b\w/g, l => l.toUpperCase())}
               </span>
             </div>
