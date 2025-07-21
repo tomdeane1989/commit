@@ -14,7 +14,9 @@ import {
   Search,
   Plus,
   Filter,
-  MoreHorizontal
+  MoreHorizontal,
+  Menu,
+  X
 } from 'lucide-react';
 
 interface LayoutProps {
@@ -48,9 +50,15 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
   const { user, logout } = useAuth();
   const router = useRouter();
   const [currentPath, setCurrentPath] = React.useState('/dashboard');
+  const [isMobileMenuOpen, setIsMobileMenuOpen] = React.useState(false);
 
   React.useEffect(() => {
     setCurrentPath(router.pathname);
+  }, [router.pathname]);
+
+  // Close mobile menu when route changes
+  React.useEffect(() => {
+    setIsMobileMenuOpen(false);
   }, [router.pathname]);
 
   const navigation = [
@@ -77,12 +85,22 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
   };
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-gray-50 via-white to-gray-100">
+    <div className="min-h-screen bg-gradient-to-br from-gray-50 via-white to-gray-100 lg:flex">
+      {/* Mobile menu overlay */}
+      {isMobileMenuOpen && (
+        <div 
+          className="fixed inset-0 z-40 bg-black bg-opacity-50 lg:hidden"
+          onClick={() => setIsMobileMenuOpen(false)}
+        />
+      )}
+
       {/* Sidebar */}
-      <div className="fixed inset-y-0 left-0 z-50 w-80 bg-white/80 backdrop-blur-xl border-r border-gray-200/50 shadow-2xl">
+      <div className={`fixed inset-y-0 left-0 z-50 w-80 bg-white/80 backdrop-blur-xl border-r border-gray-200/50 shadow-2xl transform transition-transform duration-300 lg:relative lg:transform-none lg:z-10 ${
+        isMobileMenuOpen ? 'translate-x-0' : '-translate-x-full lg:translate-x-0'
+      }`}>
         <div className="flex flex-col h-full">
           {/* Logo */}
-          <div className="flex items-center h-20 px-8 border-b border-gray-200/50">
+          <div className="flex items-center justify-between h-20 px-8 border-b border-gray-200/50">
             <div className="flex items-center space-x-4">
               <div className="w-12 h-12 bg-white rounded-lg shadow-lg flex items-center justify-center">
                 <img 
@@ -98,6 +116,13 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
                 <p className="text-xs text-gray-500 font-medium">Own Your Number</p>
               </div>
             </div>
+            {/* Mobile close button */}
+            <button
+              onClick={() => setIsMobileMenuOpen(false)}
+              className="lg:hidden p-2 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded-lg transition-colors duration-200"
+            >
+              <X className="w-6 h-6" />
+            </button>
           </div>
 
           {/* Navigation */}
@@ -185,42 +210,62 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
       </div>
 
       {/* Main content */}
-      <div className="pl-80">
+      <div className="flex-1 lg:flex lg:flex-col">
         {/* Top bar */}
-        <div className="sticky top-0 z-40 bg-white/80 backdrop-blur-xl border-b border-gray-200/50">
-          <div className="flex items-center justify-between h-20 px-8">
-            <div className="flex items-center space-x-6">
-              <div className="relative">
+        <div className="sticky top-0 z-30 bg-white/80 backdrop-blur-xl border-b border-gray-200/50">
+          <div className="flex items-center justify-between h-20 px-4 lg:px-8">
+            <div className="flex items-center space-x-4 lg:space-x-6">
+              {/* Mobile menu button */}
+              <button
+                onClick={() => setIsMobileMenuOpen(true)}
+                className="lg:hidden p-2 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded-lg transition-colors duration-200"
+              >
+                <Menu className="w-6 h-6" />
+              </button>
+              
+              {/* Search - hidden on small screens, responsive on larger */}
+              <div className="hidden sm:block relative">
                 <div className="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none">
                   <Search className="h-5 w-5 text-gray-400" />
                 </div>
                 <input
                   type="text"
                   placeholder="Search deals, commissions, team..."
-                  className="block w-96 pl-12 pr-4 py-3 bg-gray-50 border border-gray-200 rounded-2xl text-sm placeholder-gray-500 focus:outline-none focus:ring-2 focus:border-transparent transition-all duration-300"
+                  className="block w-64 lg:w-96 pl-12 pr-4 py-3 bg-gray-50 border border-gray-200 rounded-2xl text-sm placeholder-gray-500 focus:outline-none focus:ring-2 focus:border-transparent transition-all duration-300"
                   style={{ '--tw-ring-color': '#82a365' } as React.CSSProperties}
                 />
               </div>
-              <button className="inline-flex items-center px-4 py-2 text-white text-sm font-medium rounded-xl transition-all duration-300 shadow-lg hover:opacity-90" style={{ background: 'linear-gradient(to right, #82a365, #6b8950)', boxShadow: '0 10px 15px -3px rgba(56, 64, 49, 0.25)' }}>
-                <Plus className="w-4 h-4 mr-2" />
-                New Deal
+              
+              {/* New Deal button - responsive */}
+              <button className="inline-flex items-center px-3 lg:px-4 py-2 text-white text-sm font-medium rounded-xl transition-all duration-300 shadow-lg hover:opacity-90" style={{ background: 'linear-gradient(to right, #82a365, #6b8950)', boxShadow: '0 10px 15px -3px rgba(56, 64, 49, 0.25)' }}>
+                <Plus className="w-4 h-4 lg:mr-2" />
+                <span className="hidden lg:inline">New Deal</span>
               </button>
             </div>
-            <div className="flex items-center space-x-4">
-              <button className="p-3 text-gray-400 hover:text-gray-600 hover:bg-gray-50 rounded-xl transition-all duration-300">
+            <div className="flex items-center space-x-2 lg:space-x-4">
+              {/* Filter button - hidden on mobile */}
+              <button className="hidden sm:block p-3 text-gray-400 hover:text-gray-600 hover:bg-gray-50 rounded-xl transition-all duration-300">
                 <Filter className="w-5 h-5" />
               </button>
+              
+              {/* Notifications */}
               <button className="relative p-3 text-gray-400 hover:text-gray-600 hover:bg-gray-50 rounded-xl transition-all duration-300">
                 <Bell className="w-5 h-5" />
                 <span className="absolute top-1 right-1 w-2 h-2 bg-red-500 rounded-full"></span>
               </button>
-              <div className="h-8 w-px bg-gray-200"></div>
-              <div className="flex items-center space-x-3 px-4 py-2 bg-gray-50 rounded-xl">
+              
+              {/* Divider - hidden on mobile */}
+              <div className="hidden lg:block h-8 w-px bg-gray-200"></div>
+              
+              {/* Date display - hidden on mobile */}
+              <div className="hidden lg:flex items-center space-x-3 px-4 py-2 bg-gray-50 rounded-xl">
                 <div className="text-sm font-medium text-gray-700">
                   <DateDisplay />
                 </div>
               </div>
-              <button className="p-3 text-gray-400 hover:text-gray-600 hover:bg-gray-50 rounded-xl transition-all duration-300">
+              
+              {/* More menu - hidden on mobile */}
+              <button className="hidden sm:block p-3 text-gray-400 hover:text-gray-600 hover:bg-gray-50 rounded-xl transition-all duration-300">
                 <MoreHorizontal className="w-5 h-5" />
               </button>
             </div>
@@ -228,7 +273,7 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
         </div>
 
         {/* Page content */}
-        <main className="p-8">
+        <main className="flex-1 p-4 lg:p-8 overflow-auto">
           {children}
         </main>
       </div>

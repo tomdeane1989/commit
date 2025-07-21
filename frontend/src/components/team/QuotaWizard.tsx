@@ -38,6 +38,7 @@ interface WizardData {
   // Step 3: Set Amounts
   annual_quota: number;
   commission_rate: number;
+  commission_payment_schedule: 'monthly' | 'quarterly';
   
   // Step 4: Preview data
   breakdown?: any[];
@@ -73,6 +74,7 @@ export const QuotaWizard: React.FC<QuotaWizardProps> = ({
     distribution: 'even',
     annual_quota: 0,
     commission_rate: 0,
+    commission_payment_schedule: 'monthly',
     breakdown: [],
     conflicts: []
   });
@@ -141,6 +143,7 @@ export const QuotaWizard: React.FC<QuotaWizardProps> = ({
       period_end: calculateEndDate(data.start_date, data.year_type, data.fiscal_start_month),
       quota_amount: data.annual_quota,
       commission_rate: data.commission_rate / 100,
+      commission_payment_schedule: data.commission_payment_schedule,
       distribution_method: data.distribution
     };
   };
@@ -191,6 +194,7 @@ export const QuotaWizard: React.FC<QuotaWizardProps> = ({
       distribution: 'even',
       annual_quota: 0,
       commission_rate: 0,
+      commission_payment_schedule: 'monthly',
       breakdown: [],
       conflicts: []
     });
@@ -679,6 +683,42 @@ const Step3SetAmounts: React.FC<{
         </div>
       </div>
 
+      {/* Commission Payment Schedule */}
+      <div>
+        <label className="block text-sm font-medium text-gray-700 mb-2">
+          Commission Payment Schedule
+        </label>
+        <p className="text-sm text-gray-600 mb-3">
+          How often should commissions be paid out?
+        </p>
+        <div className="grid grid-cols-2 gap-4">
+          <button
+            type="button"
+            onClick={() => updateData({ commission_payment_schedule: 'monthly' })}
+            className={`p-4 border rounded-lg text-left transition-colors ${
+              data.commission_payment_schedule === 'monthly'
+                ? 'border-green-500 bg-green-50'
+                : 'border-gray-300 hover:border-gray-400'
+            }`}
+          >
+            <div className="font-medium text-gray-900">Monthly</div>
+            <div className="text-sm text-gray-600">Commissions paid every month</div>
+          </button>
+          <button
+            type="button"
+            onClick={() => updateData({ commission_payment_schedule: 'quarterly' })}
+            className={`p-4 border rounded-lg text-left transition-colors ${
+              data.commission_payment_schedule === 'quarterly'
+                ? 'border-green-500 bg-green-50'
+                : 'border-gray-300 hover:border-gray-400'
+            }`}
+          >
+            <div className="font-medium text-gray-900">Quarterly</div>
+            <div className="text-sm text-gray-600">Commissions paid every quarter</div>
+          </button>
+        </div>
+      </div>
+
       {/* Preview Breakdown */}
       {data.annual_quota > 0 && (
         <div className="bg-gray-50 p-4 rounded-lg">
@@ -807,6 +847,10 @@ const Step4ReviewAndConflicts: React.FC<{
           <div className="flex justify-between">
             <span className="text-gray-600">Commission Rate:</span>
             <span className="font-medium">{data.commission_rate}%</span>
+          </div>
+          <div className="flex justify-between">
+            <span className="text-gray-600">Payment Schedule:</span>
+            <span className="font-medium capitalize">{data.commission_payment_schedule}</span>
           </div>
         </div>
       </div>

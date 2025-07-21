@@ -17,8 +17,8 @@ router.post('/calculate', async (req, res) => {
       return res.status(403).json({ error: 'Access denied' });
     }
 
-    // Find active sales target for the period
-    const salesTarget = await prisma.sales_targets.findFirst({
+    // Find active target for the period
+    const target = await prisma.targets.findFirst({
       where: {
         user_id: targetUserId,
         period_start: { lte: new Date(period_end) },
@@ -27,8 +27,8 @@ router.post('/calculate', async (req, res) => {
       }
     });
 
-    if (!salesTarget) {
-      return res.status(404).json({ error: 'No active sales target found for this period' });
+    if (!target) {
+      return res.status(404).json({ error: 'No active target found for this period' });
     }
 
     // Get closed deals for the period
@@ -45,58 +45,64 @@ router.post('/calculate', async (req, res) => {
 
     // Calculate totals
     const totalClosedAmount = closedDeals.reduce((sum, deal) => sum + Number(deal.amount), 0);
-    const totalCommissionEarned = totalClosedAmount * Number(salesTarget.commission_rate);
-    const quotaAttainmentPercentage = (totalClosedAmount / Number(salesTarget.target_amount)) * 100;
+    const totalCommissionEarned = totalClosedAmount * Number(target.commission_rate);
+    const quotaAttainmentPercentage = (totalClosedAmount / Number(target.quota_amount)) * 100;
 
-    // Create or update commission calculation
-    let commissionCalculation = await prisma.commission_calculations.findFirst({
+    // Create or update commission record
+    let commission = await prisma.commissions.findFirst({
       where: {
         user_id: targetUserId,
-        sales_target_id: salesTarget.id,
-        calculation_period_start: new Date(period_start),
-        calculation_period_end: new Date(period_end)
+        target_id: target.id,
+        period_start: new Date(period_start),
+        period_end: new Date(period_end)
       }
     });
 
-    if (commissionCalculation) {
-      // Update existing calculation
-      commissionCalculation = await prisma.commission_calculations.update({
-        where: { id: commissionCalculation.id },
+    if (commission) {
+      // Update existing commission
+      commission = await prisma.commissions.update({
+        where: { id: commission.id },
         data: {
-          total_closed_amount: totalClosedAmount,
-          total_commission_earned: totalCommissionEarned,
-          quota_attainment_percentage: quotaAttainmentPercentage,
+          actual_amount: totalClosedAmount,
+          commission_earned: totalCommissionEarned,
+          attainment_pct: quotaAttainmentPercentage,
+          quota_amount: Number(target.quota_amount),
+          commission_rate: Number(target.commission_rate),
+          base_commission: totalCommissionEarned,
           calculated_at: new Date()
         }
       });
     } else {
-      // Create new calculation
-      commissionCalculation = await prisma.commission_calculations.create({
+      // Create new commission
+      commission = await prisma.commissions.create({
         data: {
           user_id: targetUserId,
-          sales_target_id: salesTarget.id,
-          calculation_period_start: new Date(period_start),
-          calculation_period_end: new Date(period_end),
-          total_closed_amount: totalClosedAmount,
-          total_commission_earned: totalCommissionEarned,
-          quota_attainment_percentage: quotaAttainmentPercentage
+          target_id: target.id,
+          company_id: req.user.company_id,
+          period_start: new Date(period_start),
+          period_end: new Date(period_end),
+          quota_amount: Number(target.quota_amount),
+          actual_amount: totalClosedAmount,
+          attainment_pct: quotaAttainmentPercentage,
+          commission_rate: Number(target.commission_rate),
+          commission_earned: totalCommissionEarned,
+          base_commission: totalCommissionEarned
         }
       });
     }
 
-    // Delete existing deal commissions and create new ones
-    await prisma.deal_commissions.deleteMany({
-      where: { commission_calculation_id: commissionCalculation.id }
+    // Delete existing deal commission details and create new ones
+    await prisma.commission_details.deleteMany({
+      where: { commission_id: commission.id }
     });
 
     const dealCommissions = await Promise.all(
       closedDeals.map(deal => 
-        prisma.deal_commissions.create({
+        prisma.commission_details.create({
           data: {
             deal_id: deal.id,
-            commission_calculation_id: commissionCalculation.id,
-            commission_amount: Number(deal.amount) * Number(salesTarget.commission_rate),
-            commission_rate: Number(salesTarget.commission_rate)
+            commission_id: commission.id,
+            commission_amount: Number(deal.amount) * Number(target.commission_rate)
           }
         })
       )
@@ -106,27 +112,29 @@ router.post('/calculate', async (req, res) => {
     await prisma.activity_log.create({
       data: {
         user_id: req.user.id,
+        company_id: req.user.company_id,
         action: 'commission_calculated',
         entity_type: 'commission',
-        entity_id: commissionCalculation.id,
-        details: {
+        entity_id: commission.id,
+        context: {
           period_start,
           period_end,
           total_commission_earned: totalCommissionEarned,
           quota_attainment_percentage: quotaAttainmentPercentage
-        }
+        },
+        success: true
       }
     });
 
     res.json({
-      commission_calculation: commissionCalculation,
+      commission: commission,
       deal_commissions: dealCommissions,
       summary: {
         closed_deals_count: closedDeals.length,
         total_closed_amount: totalClosedAmount,
         total_commission_earned: totalCommissionEarned,
         quota_attainment_percentage: quotaAttainmentPercentage,
-        commission_rate: Number(salesTarget.commission_rate)
+        commission_rate: Number(target.commission_rate)
       }
     });
   } catch (error) {
@@ -138,7 +146,7 @@ router.post('/calculate', async (req, res) => {
 // Get commission calculations
 router.get('/', async (req, res) => {
   try {
-    const { user_id, status } = req.query;
+    const { user_id, status, include_historical } = req.query;
 
     const targetUserId = user_id || req.user.id;
 
@@ -152,7 +160,15 @@ router.get('/', async (req, res) => {
       ...(status && { status })
     };
 
-    const commissions = await prisma.commission_calculations.findMany({
+    // Get user's active target to determine payment schedule
+    const activeTarget = await prisma.targets.findFirst({
+      where: {
+        user_id: targetUserId,
+        is_active: true
+      }
+    });
+
+    const commissions = await prisma.commissions.findMany({
       where,
       include: {
         user: {
@@ -163,15 +179,89 @@ router.get('/', async (req, res) => {
             email: true
           }
         },
-        sales_target: true,
-        deal_commissions: {
+        target: {
+          select: {
+            id: true,
+            commission_payment_schedule: true,
+            period_type: true,
+            quota_amount: true,
+            commission_rate: true
+          }
+        },
+        commission_details: {
           include: {
-            deal: true
+            deal: {
+              select: {
+                id: true,
+                deal_name: true,
+                account_name: true,
+                amount: true,
+                close_date: true,
+                closed_date: true
+              }
+            }
           }
         }
       },
-      orderBy: { created_at: 'desc' }
+      orderBy: { period_start: 'desc' }
     });
+
+    // If historical data is requested, calculate missing periods
+    if (include_historical === 'true' && activeTarget) {
+      const paymentSchedule = activeTarget.commission_payment_schedule || 'monthly';
+      const periodsToGenerate = paymentSchedule === 'quarterly' ? 4 : 12;
+      
+      // Generate period suggestions for periods without commissions
+      const suggestions = [];
+      const now = new Date();
+      
+      for (let i = 0; i < periodsToGenerate; i++) {
+        let periodStart, periodEnd, periodLabel;
+        
+        if (paymentSchedule === 'quarterly') {
+          const quarterDate = new Date(now.getFullYear(), now.getMonth() - (i * 3), 1);
+          const year = quarterDate.getFullYear();
+          const quarter = Math.floor(quarterDate.getMonth() / 3);
+          const quarterStartMonth = quarter * 3;
+          
+          periodStart = new Date(year, quarterStartMonth, 1);
+          periodEnd = new Date(year, quarterStartMonth + 3, 0);
+          periodLabel = `Q${quarter + 1} ${year}`;
+        } else {
+          const monthDate = new Date(now.getFullYear(), now.getMonth() - i, 1);
+          const year = monthDate.getFullYear();
+          const month = monthDate.getMonth();
+          
+          periodStart = new Date(year, month, 1);
+          periodEnd = new Date(year, month + 1, 0);
+          periodLabel = monthDate.toLocaleDateString('en-GB', { 
+            month: 'long', 
+            year: 'numeric' 
+          });
+        }
+        
+        // Check if commission exists for this period
+        const existingCommission = commissions.find(c => {
+          const commissionStart = new Date(c.period_start);
+          return commissionStart.getTime() === periodStart.getTime();
+        });
+        
+        if (!existingCommission && periodEnd < now) {
+          suggestions.push({
+            period_start: periodStart.toISOString().split('T')[0],
+            period_end: periodEnd.toISOString().split('T')[0],
+            label: periodLabel,
+            can_calculate: true
+          });
+        }
+      }
+      
+      return res.json({
+        commissions,
+        payment_schedule: paymentSchedule,
+        missing_periods: suggestions
+      });
+    }
 
     res.json(commissions);
   } catch (error) {
@@ -190,15 +280,15 @@ router.patch('/:id/approve', async (req, res) => {
       return res.status(403).json({ error: 'Access denied' });
     }
 
-    const commission = await prisma.commission_calculations.findUnique({
+    const commission = await prisma.commissions.findUnique({
       where: { id }
     });
 
     if (!commission) {
-      return res.status(404).json({ error: 'Commission calculation not found' });
+      return res.status(404).json({ error: 'Commission not found' });
     }
 
-    const updatedCommission = await prisma.commission_calculations.update({
+    const updatedCommission = await prisma.commissions.update({
       where: { id },
       data: { status: 'approved' }
     });
@@ -207,10 +297,12 @@ router.patch('/:id/approve', async (req, res) => {
     await prisma.activity_log.create({
       data: {
         user_id: req.user.id,
+        company_id: req.user.company_id,
         action: 'commission_approved',
         entity_type: 'commission',
         entity_id: id,
-        details: {}
+        context: {},
+        success: true
       }
     });
 

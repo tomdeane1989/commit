@@ -99,7 +99,7 @@ router.post('/', async (req, res) => {
       return res.status(403).json({ error: 'Only admins and managers can create targets' });
     }
 
-    const { target_type, user_id, role, period_type, period_start, period_end, quota_amount, commission_rate, distribution_method, wizard_data } = req.body;
+    const { target_type, user_id, role, period_type, period_start, period_end, quota_amount, commission_rate, commission_payment_schedule, distribution_method, wizard_data } = req.body;
 
     // Validate required fields
     if (!target_type || !period_type || !period_start || !period_end || !quota_amount || !commission_rate) {
@@ -238,6 +238,7 @@ router.post('/', async (req, res) => {
           period_end: new Date(period_end),
           quota_amount: finalQuotaAmount,
           commission_rate,
+          commission_payment_schedule: commission_payment_schedule || 'monthly',
           is_active: true,
           role: target_type === 'role' ? role : null
         }
@@ -467,6 +468,7 @@ router.post('/resolve-conflicts', async (req, res) => {
               period_end: new Date(proposed_target.period_end),
               quota_amount: finalQuotaAmount,
               commission_rate: proposed_target.commission_rate,
+              commission_payment_schedule: proposed_target.commission_payment_schedule || 'monthly',
               is_active: true,
               role: proposed_target.role || null
             }

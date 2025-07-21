@@ -12,6 +12,7 @@ import authRoutes from './routes/auth.js';
 import teamsRoutes from './routes/teams.js';
 import targetsRoutes from './routes/targets.js';
 import dealsRoutes from './routes/deals.js';
+import commissionsRoutes from './routes/commissions.js';
 
 dotenv.config();
 
@@ -56,6 +57,7 @@ const authMiddleware = authenticateToken;
 app.use('/api/team', authMiddleware, teamsRoutes);
 app.use('/api/targets', authMiddleware, targetsRoutes);
 app.use('/api/deals', authMiddleware, dealsRoutes);
+app.use('/api/commissions', authMiddleware, commissionsRoutes);
 
 // Dashboard routes
 app.get('/api/dashboard/sales-rep', authMiddleware, async (req, res) => {

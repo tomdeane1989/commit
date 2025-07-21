@@ -36,6 +36,7 @@ const DealsPage = () => {
   const [draggedDeal, setDraggedDeal] = useState<Deal | null>(null);
   const [showAddDeal, setShowAddDeal] = useState(false);
   const [expandedDeals, setExpandedDeals] = useState<Set<string>>(new Set());
+  const [quotaPeriod, setQuotaPeriod] = useState<'weekly' | 'monthly' | 'quarterly' | 'annual'>('quarterly');
   const queryClient = useQueryClient();
 
   // Toggle expanded state for a deal
@@ -74,6 +75,95 @@ const DealsPage = () => {
   // Helper function to calculate commission (using 10% for demo)
   const calculateCommission = (amount: number) => {
     return amount * 0.10;
+  };
+
+  // Calculate quota amount based on selected period
+  const calculateQuotaForPeriod = (annualQuota: number, period: string) => {
+    switch (period) {
+      case 'weekly':
+        return annualQuota / 52; // 52 weeks per year
+      case 'monthly':
+        return annualQuota / 12; // 12 months per year
+      case 'quarterly':
+        return annualQuota / 4; // 4 quarters per year
+      case 'annual':
+        return annualQuota;
+      default:
+        return annualQuota / 4; // Default to quarterly
+    }
+  };
+
+  // Get current period date range based on selected quota period
+  const getCurrentPeriodRange = (period: string) => {
+    const now = new Date();
+    let startDate, endDate;
+
+    switch (period) {
+      case 'weekly':
+        // Current week (Monday to Sunday)
+        const dayOfWeek = now.getDay();
+        const mondayOffset = dayOfWeek === 0 ? -6 : 1 - dayOfWeek;
+        startDate = new Date(now);
+        startDate.setDate(now.getDate() + mondayOffset);
+        startDate.setHours(0, 0, 0, 0);
+        endDate = new Date(startDate);
+        endDate.setDate(startDate.getDate() + 6);
+        endDate.setHours(23, 59, 59, 999);
+        break;
+
+      case 'monthly':
+        // Current month
+        startDate = new Date(now.getFullYear(), now.getMonth(), 1);
+        endDate = new Date(now.getFullYear(), now.getMonth() + 1, 0, 23, 59, 59, 999);
+        break;
+
+      case 'quarterly':
+        // Current quarter (Q1: Jan-Mar, Q2: Apr-Jun, Q3: Jul-Sep, Q4: Oct-Dec)
+        const quarter = Math.floor(now.getMonth() / 3);
+        startDate = new Date(now.getFullYear(), quarter * 3, 1);
+        endDate = new Date(now.getFullYear(), quarter * 3 + 3, 0, 23, 59, 59, 999);
+        break;
+
+      case 'annual':
+        // Current year
+        startDate = new Date(now.getFullYear(), 0, 1);
+        endDate = new Date(now.getFullYear(), 11, 31, 23, 59, 59, 999);
+        break;
+
+      default:
+        // Default to quarterly
+        const defaultQuarter = Math.floor(now.getMonth() / 3);
+        startDate = new Date(now.getFullYear(), defaultQuarter * 3, 1);
+        endDate = new Date(now.getFullYear(), defaultQuarter * 3 + 3, 0, 23, 59, 59, 999);
+    }
+
+    return { startDate, endDate };
+  };
+
+  // Check if a deal is overdue (close date has passed)
+  const isDealOverdue = (deal: Deal): boolean => {
+    if (deal.status !== 'open' || !deal.close_date) return false;
+    const closeDate = new Date(deal.close_date);
+    const today = new Date();
+    today.setHours(0, 0, 0, 0); // Set to start of today
+    return closeDate < today;
+  };
+
+  // Filter deals by current period, including overdue deals
+  const filterDealsByPeriod = (deals: Deal[], period: string) => {
+    const { startDate, endDate } = getCurrentPeriodRange(period);
+    
+    return deals.filter((deal: Deal) => {
+      if (deal.status === 'closed_won' && deal.closed_date) {
+        const closedDate = new Date(deal.closed_date);
+        return closedDate >= startDate && closedDate <= endDate;
+      } else if (deal.status === 'open' && deal.close_date) {
+        const expectedCloseDate = new Date(deal.close_date);
+        // Include deals that are in the current period OR overdue
+        return (expectedCloseDate >= startDate && expectedCloseDate <= endDate) || isDealOverdue(deal);
+      }
+      return false;
+    });
   };
 
   // Initialize session tracking for ML data
@@ -152,21 +242,47 @@ const DealsPage = () => {
     }
   };
 
-  // Group deals by category
+  // Filter deals by current quota period
+  const periodFilteredDeals = filterDealsByPeriod(deals, quotaPeriod);
+  
+  // Group deals by category (only include deals from current period)
   const dealsByCategory = {
+    pipeline: periodFilteredDeals.filter((deal: Deal) => 
+      deal.deal_type === 'pipeline' && deal.status === 'open'
+    ),
+    commit: periodFilteredDeals.filter((deal: Deal) => 
+      deal.deal_type === 'commit' && deal.status === 'open'
+    ),
+    best_case: periodFilteredDeals.filter((deal: Deal) => 
+      deal.deal_type === 'best_case' && deal.status === 'open'
+    ),
+    closed: periodFilteredDeals.filter((deal: Deal) => 
+      deal.status === 'closed_won' && (deal.deal_type === 'closed_won' || !deal.deal_type)
+    )
+  };
+
+  // Also keep all deals (unfiltered) for display purposes in the columns
+  const allDealsByCategory = {
     pipeline: deals.filter((deal: Deal) => 
       deal.deal_type === 'pipeline' && deal.status === 'open'
     ),
-    commit: deals.filter((deal: Deal) => deal.deal_type === 'commit'),
-    best_case: deals.filter((deal: Deal) => deal.deal_type === 'best_case'),
-    closed: deals.filter((deal: Deal) => deal.status === 'closed_won')
+    commit: deals.filter((deal: Deal) => 
+      deal.deal_type === 'commit' && deal.status === 'open'
+    ),
+    best_case: deals.filter((deal: Deal) => 
+      deal.deal_type === 'best_case' && deal.status === 'open'
+    ),
+    closed: deals.filter((deal: Deal) => 
+      deal.status === 'closed_won' && (deal.deal_type === 'closed_won' || !deal.deal_type)
+    )
   };
 
   // Calculate progress values
   const closedAmount = dealsByCategory.closed.reduce((sum: number, deal: Deal) => sum + Number(deal.amount), 0);
   const commitAmount = dealsByCategory.commit.reduce((sum: number, deal: Deal) => sum + Number(deal.amount), 0);
   const bestCaseAmount = dealsByCategory.best_case.reduce((sum: number, deal: Deal) => sum + Number(deal.amount), 0);
-  const quotaTarget = Number(currentTarget?.quota_amount) || 100000;
+  const annualQuotaTarget = Number(currentTarget?.quota_amount) || 240000; // Default annual quota
+  const quotaTarget = calculateQuotaForPeriod(annualQuotaTarget, quotaPeriod);
   
   const totalCategorized = closedAmount + commitAmount + bestCaseAmount;
   const closedProgress = (closedAmount / quotaTarget) * 100;
@@ -227,10 +343,13 @@ const DealsPage = () => {
 
   const DealCard = ({ deal }: { deal: Deal }) => {
     const commission = calculateCommission(Number(deal.amount));
-    const daysToClose = deal.close_date ? 
-      Math.max(0, Math.ceil((new Date(deal.close_date).getTime() - new Date().getTime()) / (1000 * 60 * 60 * 24))) : 
+    const daysToCloseRaw = deal.close_date ? 
+      Math.ceil((new Date(deal.close_date).getTime() - new Date().getTime()) / (1000 * 60 * 60 * 24)) : 
       null;
+    const daysToClose = daysToCloseRaw ? Math.max(0, daysToCloseRaw) : null;
     const isExpanded = expandedDeals.has(deal.id);
+    const isOverdue = isDealOverdue(deal);
+    const daysOverdue = isOverdue && daysToCloseRaw ? Math.abs(daysToCloseRaw) : 0;
 
     const handleCardClick = (e: React.MouseEvent) => {
       e.stopPropagation();
@@ -255,6 +374,14 @@ const DealsPage = () => {
           <div className="text-sm font-semibold text-gray-900 mb-2 truncate">
             {deal.account_name}
           </div>
+          
+          {/* Overdue Warning */}
+          {isOverdue && (
+            <div className="flex items-center space-x-1 mb-2 px-2 py-1 bg-red-50 border border-red-200 rounded text-xs">
+              <div className="w-2 h-2 bg-red-500 rounded-full"></div>
+              <span className="text-red-700 font-medium">CRM Close Date Passed</span>
+            </div>
+          )}
           
           {/* Deal Amount */}
           <div className="flex items-center space-x-1">
@@ -298,11 +425,16 @@ const DealsPage = () => {
             {/* Time Remaining */}
             {daysToClose !== null && (
               <div className="flex items-center justify-between mb-3">
-                <span className="text-xs font-medium text-gray-600">Time to close</span>
+                <span className="text-xs font-medium text-gray-600">
+                  {isOverdue ? 'Days overdue' : 'Time to close'}
+                </span>
                 <div className="flex items-center space-x-1">
-                  <Clock className="w-3 h-3 text-orange-500" />
-                  <span className="text-sm font-medium text-orange-600">
-                    {daysToClose === 0 ? 'Today' : daysToClose === 1 ? '1 day' : `${daysToClose} days`}
+                  <Clock className={`w-3 h-3 ${isOverdue ? 'text-red-500' : 'text-orange-500'}`} />
+                  <span className={`text-sm font-medium ${isOverdue ? 'text-red-600' : 'text-orange-600'}`}>
+                    {isOverdue 
+                      ? `${daysOverdue} days ago` 
+                      : daysToClose === 0 ? 'Today' : daysToClose === 1 ? '1 day' : `${daysToClose} days`
+                    }
                   </span>
                 </div>
               </div>
@@ -421,18 +553,23 @@ const DealsPage = () => {
   };
 
   const QuotaProgress = () => {
+    // Calculate actual vs total projected progress correctly
     const actualAttainment = (closedAmount / quotaTarget) * 100;
-    const projectedTotal = commitAmount + bestCaseAmount;
-    const totalPotential = closedAmount + projectedTotal;
-    const totalPotentialAttainment = (totalPotential / quotaTarget) * 100;
+    const projectedAmount = commitAmount + bestCaseAmount; // Only projected pipeline
+    const totalProjected = closedAmount + projectedAmount; // Actual + Projected
+    const totalProjectedAttainment = (totalProjected / quotaTarget) * 100;
+
     
-    // Calculate progress percentages based on quota
-    const actualProgress = Math.min(actualAttainment, 100);
-    const projectedProgress = Math.min(((projectedTotal / quotaTarget) * 100), 100);
+    // Dynamic scale: if projected exceeds quota, scale the ring to show the full projected amount
+    const ringScale = Math.max(100, totalProjectedAttainment); // Scale to at least 100%, but more if projected exceeds quota
+    
+    // Progress percentages for rings (scaled appropriately)
+    const actualProgress = (actualAttainment / ringScale) * 100; // Inner ring: actual scaled to ring
+    const projectedProgress = (totalProjectedAttainment / ringScale) * 100; // Outer ring: total projected scaled to ring
     
     // Commission calculations
     const actualCommission = calculateCommission(closedAmount);
-    const projectedCommission = calculateCommission(projectedTotal);
+    const projectedCommission = calculateCommission(projectedAmount);
     const totalCommission = actualCommission + projectedCommission;
 
     const [hoveredSegment, setHoveredSegment] = useState<string | null>(null);
@@ -454,7 +591,7 @@ const DealsPage = () => {
         <div className="relative flex items-center justify-center mb-8 py-8">
           <div className="w-64 h-64 transition-transform duration-500">
             <svg className="w-full h-full -rotate-90 drop-shadow-lg" viewBox="0 0 180 180" style={{ overflow: 'visible' }}>
-              {/* Outer commission ring background */}
+              {/* Outer quota ring background */}
               <circle
                 cx="90"
                 cy="90"
@@ -465,12 +602,12 @@ const DealsPage = () => {
                 className="opacity-60"
               />
               
-              {/* Outer commission ring - Actual (Blue tones for commission) */}
+              {/* Outer quota ring segments - Actual (Green) */}
               <circle
                 cx="90"
                 cy="90"
                 r="80"
-                stroke="url(#blueGradientOuter)"
+                stroke="url(#greenGradientOuter)"
                 strokeWidth="10"
                 fill="none"
                 strokeLinecap="round"
@@ -479,7 +616,7 @@ const DealsPage = () => {
                 style={{ pointerEvents: actualProgress > 0 ? 'stroke' : 'none' }}
                 onMouseEnter={(e) => {
                   e.stopPropagation();
-                  setHoveredSegment('actual');
+                  setHoveredSegment('actual-outer');
                 }}
                 onMouseLeave={(e) => {
                   e.stopPropagation();
@@ -487,32 +624,55 @@ const DealsPage = () => {
                 }}
               />
               
-              {/* Outer commission ring - Projected (Purple tones for projected commission) */}
-              <circle
-                cx="90"
-                cy="90"
-                r="80"
-                stroke="url(#purpleGradientOuter)"
-                strokeWidth="10"
-                fill="none"
-                strokeLinecap="round"
-                strokeDasharray="8 4"
-                strokeDashoffset={-actualProgress * 5.03}
-                className="transition-all duration-300 opacity-85 cursor-pointer hover:stroke-width-[12] hover:opacity-100"
-                style={{
-                  strokeDasharray: `${Math.min(projectedProgress * 5.03, 503)} 503`,
-                  strokeDashoffset: -actualProgress * 5.03,
-                  pointerEvents: projectedProgress > 0 ? 'stroke' : 'none'
-                }}
-                onMouseEnter={(e) => {
-                  e.stopPropagation();
-                  setHoveredSegment('projected');
-                }}
-                onMouseLeave={(e) => {
-                  e.stopPropagation();
-                  setHoveredSegment(null);
-                }}
-              />
+              {/* Outer quota ring segments - Commit (Amber) */}
+              {commitAmount > 0 && (
+                <circle
+                  cx="90"
+                  cy="90"
+                  r="80"
+                  stroke="url(#amberGradientOuter)"
+                  strokeWidth="10"
+                  fill="none"
+                  strokeLinecap="round"
+                  strokeDasharray={`${(((commitAmount / quotaTarget) * 100) / ringScale) * 100 * 5.03} 503`}
+                  strokeDashoffset={-actualProgress * 5.03}
+                  className="transition-all duration-300 cursor-pointer hover:stroke-width-[12]"
+                  style={{ pointerEvents: 'stroke' }}
+                  onMouseEnter={(e) => {
+                    e.stopPropagation();
+                    setHoveredSegment('commit-outer');
+                  }}
+                  onMouseLeave={(e) => {
+                    e.stopPropagation();
+                    setHoveredSegment(null);
+                  }}
+                />
+              )}
+              
+              {/* Outer quota ring segments - Best Case (Purple) */}
+              {bestCaseAmount > 0 && (
+                <circle
+                  cx="90"
+                  cy="90"
+                  r="80"
+                  stroke="url(#purpleGradientOuter)"
+                  strokeWidth="10"
+                  fill="none"
+                  strokeLinecap="round"
+                  strokeDasharray={`${(((bestCaseAmount / quotaTarget) * 100) / ringScale) * 100 * 5.03} 503`}
+                  strokeDashoffset={-(actualProgress + (((commitAmount / quotaTarget) * 100) / ringScale) * 100) * 5.03}
+                  className="transition-all duration-300 cursor-pointer hover:stroke-width-[12]"
+                  style={{ pointerEvents: 'stroke' }}
+                  onMouseEnter={(e) => {
+                    e.stopPropagation();
+                    setHoveredSegment('bestcase-outer');
+                  }}
+                  onMouseLeave={(e) => {
+                    e.stopPropagation();
+                    setHoveredSegment(null);
+                  }}
+                />
+              )}
               
               {/* Inner quota ring background */}
               <circle
@@ -525,7 +685,7 @@ const DealsPage = () => {
                 className="transition-colors duration-300"
               />
               
-              {/* Inner quota ring - Actual Progress (Green for quota attainment) */}
+              {/* Inner quota ring - Actual Progress Only (Green for actual attainment) */}
               <circle
                 cx="90"
                 cy="90"
@@ -549,34 +709,69 @@ const DealsPage = () => {
                   setHoveredSegment(null);
                 }}
               />
+
+              {/* Quota Achievement Markers - show where 100% quota falls when exceeded */}
+              {actualAttainment > 100 && (
+                <>
+                  {/* Inner ring quota marker */}
+                  <circle
+                    cx="90"
+                    cy="90"
+                    r="64"
+                    stroke="#FFD700"
+                    strokeWidth="3"
+                    fill="none"
+                    strokeDasharray="6 6"
+                    strokeDashoffset={-(100 / ringScale) * 100 * 4.02}
+                    className="opacity-90"
+                    style={{ 
+                      strokeLinecap: 'round',
+                      filter: 'drop-shadow(0 0 4px rgba(255, 215, 0, 0.6))'
+                    }}
+                  />
+                  {/* Inner ring quota indicator dot */}
+                  <circle
+                    cx={90 + 64 * Math.cos(((100 / ringScale) * 100 * 2 * Math.PI / 100) - Math.PI / 2)}
+                    cy={90 + 64 * Math.sin(((100 / ringScale) * 100 * 2 * Math.PI / 100) - Math.PI / 2)}
+                    r="4"
+                    fill="#FFD700"
+                    stroke="#FFF"
+                    strokeWidth="2"
+                    className="drop-shadow-md"
+                  />
+                </>
+              )}
               
-              {/* Inner quota ring - Projected Progress (Amber for projected quota) */}
-              <circle
-                cx="90"
-                cy="90"
-                r="64"
-                stroke="url(#amberGradient)"
-                strokeWidth="12"
-                fill="none"
-                strokeLinecap="round"
-                strokeDasharray="8 4"
-                strokeDashoffset={-actualProgress * 4.02}
-                className="transition-all duration-300 opacity-80 cursor-pointer hover:stroke-width-[14] hover:opacity-100"
-                style={{
-                  strokeDasharray: `${Math.min(projectedProgress * 4.02, 402)} 402`,
-                  strokeDashoffset: -actualProgress * 4.02,
-                  filter: 'drop-shadow(0 0 6px rgba(245, 158, 11, 0.2))',
-                  pointerEvents: projectedProgress > 0 ? 'stroke' : 'none'
-                }}
-                onMouseEnter={(e) => {
-                  e.stopPropagation();
-                  setHoveredSegment('projected');
-                }}
-                onMouseLeave={(e) => {
-                  e.stopPropagation();
-                  setHoveredSegment(null);
-                }}
-              />
+              {totalProjectedAttainment > 100 && (
+                <>
+                  {/* Outer ring quota marker */}
+                  <circle
+                    cx="90"
+                    cy="90"
+                    r="80"
+                    stroke="#FFD700"
+                    strokeWidth="3"
+                    fill="none"
+                    strokeDasharray="8 8"
+                    strokeDashoffset={-(100 / ringScale) * 100 * 5.03}
+                    className="opacity-90"
+                    style={{ 
+                      strokeLinecap: 'round',
+                      filter: 'drop-shadow(0 0 4px rgba(255, 215, 0, 0.6))'
+                    }}
+                  />
+                  {/* Outer ring quota indicator dot */}
+                  <circle
+                    cx={90 + 80 * Math.cos(((100 / ringScale) * 100 * 2 * Math.PI / 100) - Math.PI / 2)}
+                    cy={90 + 80 * Math.sin(((100 / ringScale) * 100 * 2 * Math.PI / 100) - Math.PI / 2)}
+                    r="5"
+                    fill="#FFD700"
+                    stroke="#FFF"
+                    strokeWidth="2"
+                    className="drop-shadow-md"
+                  />
+                </>
+              )}
 
               {/* Gradient definitions */}
               <defs>
@@ -584,16 +779,20 @@ const DealsPage = () => {
                   <stop offset="0%" stopColor="#10B981" />
                   <stop offset="100%" stopColor="#059669" />
                 </linearGradient>
+                <linearGradient id="greenGradientOuter" x1="0%" y1="0%" x2="100%" y2="100%">
+                  <stop offset="0%" stopColor="#10B981" />
+                  <stop offset="100%" stopColor="#059669" />
+                </linearGradient>
                 <linearGradient id="amberGradient" x1="0%" y1="0%" x2="100%" y2="100%">
                   <stop offset="0%" stopColor="#F59E0B" />
                   <stop offset="100%" stopColor="#D97706" />
                 </linearGradient>
-                <linearGradient id="blueGradientOuter" x1="0%" y1="0%" x2="100%" y2="100%">
-                  <stop offset="0%" stopColor="#3B82F6" />
-                  <stop offset="100%" stopColor="#1D4ED8" />
+                <linearGradient id="amberGradientOuter" x1="0%" y1="0%" x2="100%" y2="100%">
+                  <stop offset="0%" stopColor="#F59E0B" />
+                  <stop offset="100%" stopColor="#D97706" />
                 </linearGradient>
                 <linearGradient id="purpleGradientOuter" x1="0%" y1="0%" x2="100%" y2="100%">
-                  <stop offset="0%" stopColor="#8B5CF6" />
+                  <stop offset="0%" stopColor="#9333EA" />
                   <stop offset="100%" stopColor="#7C3AED" />
                 </linearGradient>
               </defs>
@@ -601,28 +800,61 @@ const DealsPage = () => {
             
             {/* Center content with hover details */}
             <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none">
-              {hoveredSegment === 'actual' ? (
+              {hoveredSegment === 'actual' || hoveredSegment === 'actual-outer' ? (
                 <div className="text-center">
                   <div className="text-3xl font-bold text-green-600">
                     {actualAttainment.toFixed(0)}%
                   </div>
                   <div className="text-sm text-green-700 font-medium">
+                    Actual Closed
+                  </div>
+                  <div className="text-lg font-bold text-green-800">
                     £{closedAmount.toLocaleString()}
                   </div>
-                  <div className="text-xs text-blue-600 font-semibold">
+                  <div className="text-xs text-green-600 font-semibold">
                     Commission: £{actualCommission.toLocaleString()}
+                  </div>
+                </div>
+              ) : hoveredSegment === 'commit-outer' ? (
+                <div className="text-center">
+                  <div className="text-3xl font-bold text-amber-600">
+                    {(((commitAmount / quotaTarget) * 100) / ringScale * 100).toFixed(0)}%
+                  </div>
+                  <div className="text-sm text-amber-700 font-medium">
+                    Commit Pipeline
+                  </div>
+                  <div className="text-lg font-bold text-amber-800">
+                    £{commitAmount.toLocaleString()}
+                  </div>
+                  <div className="text-xs text-amber-600 font-semibold">
+                    Potential: £{(commitAmount * 0.10).toLocaleString()}
+                  </div>
+                </div>
+              ) : hoveredSegment === 'bestcase-outer' ? (
+                <div className="text-center">
+                  <div className="text-3xl font-bold text-purple-600">
+                    {(((bestCaseAmount / quotaTarget) * 100) / ringScale * 100).toFixed(0)}%
+                  </div>
+                  <div className="text-sm text-purple-700 font-medium">
+                    Best Case Pipeline
+                  </div>
+                  <div className="text-lg font-bold text-purple-800">
+                    £{bestCaseAmount.toLocaleString()}
+                  </div>
+                  <div className="text-xs text-purple-600 font-semibold">
+                    Potential: £{(bestCaseAmount * 0.10).toLocaleString()}
                   </div>
                 </div>
               ) : hoveredSegment === 'projected' ? (
                 <div className="text-center">
-                  <div className="text-3xl font-bold text-amber-600">
-                    {((projectedTotal / quotaTarget) * 100).toFixed(0)}%
+                  <div className="text-3xl font-bold text-blue-600">
+                    {totalProjectedAttainment.toFixed(0)}%
                   </div>
-                  <div className="text-sm text-amber-700 font-medium">
-                    £{projectedTotal.toLocaleString()}
+                  <div className="text-sm text-blue-700 font-medium">
+                    £{totalProjected.toLocaleString()} total
                   </div>
-                  <div className="text-xs text-purple-600 font-semibold">
-                    Commission: £{projectedCommission.toLocaleString()}
+                  <div className="text-xs text-blue-600 font-semibold">
+                    Commission: £{totalCommission.toLocaleString()}
                   </div>
                 </div>
               ) : (
@@ -630,23 +862,23 @@ const DealsPage = () => {
                   <div className="text-4xl font-bold text-gray-900 transition-all duration-300">
                     {actualAttainment.toFixed(0)}%
                   </div>
-                  <div className="text-sm text-gray-500">Quota Attainment</div>
+                  <div className="text-sm text-gray-500">Actual Attainment</div>
                   <div className="text-xs text-gray-400 mt-1">
-                    Hover segments for details
+                    {totalProjectedAttainment.toFixed(0)}% projected total
                   </div>
                 </div>
               )}
             </div>
 
-            {/* Commission labels around the outer ring */}
+            {/* Progress labels around the rings */}
             <div className="absolute -top-6 left-1/2 transform -translate-x-1/2">
-              <div className="text-xs font-semibold text-gray-600 bg-white px-3 py-1 rounded-full shadow-sm border">
-                Total Commission
+              <div className="text-xs font-semibold text-blue-600 bg-blue-50 px-3 py-1 rounded-full shadow-sm border border-blue-200">
+                Projected: {totalProjectedAttainment.toFixed(0)}%
               </div>
             </div>
             <div className="absolute -bottom-6 left-1/2 transform -translate-x-1/2">
-              <div className="text-sm font-bold text-gray-800 bg-gray-50 px-3 py-1 rounded-full shadow-sm border">
-                £{totalCommission.toLocaleString()}
+              <div className="text-xs font-semibold text-green-600 bg-green-50 px-3 py-1 rounded-full shadow-sm border border-green-200">
+                Actual: {actualAttainment.toFixed(0)}%
               </div>
             </div>
           </div>
@@ -664,7 +896,7 @@ const DealsPage = () => {
             <div className="flex justify-between items-center mb-2">
               <span className="text-sm font-medium text-gray-700">Projected Total</span>
               <span className="text-lg font-bold text-gray-900">
-                £{projectedTotal.toLocaleString()}
+                £{totalProjected.toLocaleString()}
               </span>
             </div>
             <div className="flex justify-between items-center mb-2">
@@ -684,33 +916,49 @@ const DealsPage = () => {
 
         {/* Legend */}
         <div className="space-y-3">
-          <div className="flex items-center justify-between p-3 bg-green-50 rounded-lg">
+          <div className="flex items-center justify-between p-3 bg-green-50 rounded-lg border border-green-200">
             <div className="flex items-center space-x-3">
-              <div className="w-3 h-3 bg-green-500 rounded-full"></div>
-              <span className="text-sm font-medium text-green-800">Actual (Closed Won)</span>
+              <div className="w-4 h-4 bg-green-500 rounded-full"></div>
+              <span className="text-sm font-medium text-green-800">Actual Quota Gap</span>
             </div>
             <div className="text-right">
-              <div className="text-sm font-bold text-green-800">
-                £{closedAmount.toLocaleString()}
-              </div>
-              <div className="text-xs text-green-600">
-                Commission: £{calculateCommission(closedAmount).toLocaleString()}
-              </div>
+              {quotaTarget - closedAmount <= 0 ? (
+                <div className="text-sm font-bold text-green-800">
+                  Quota Exceeded! 🎉
+                </div>
+              ) : (
+                <>
+                  <div className="text-sm font-bold text-green-800">
+                    £{(quotaTarget - closedAmount).toLocaleString()} needed
+                  </div>
+                  <div className="text-xs text-green-600">
+                    to reach quota
+                  </div>
+                </>
+              )}
             </div>
           </div>
 
-          <div className="flex items-center justify-between p-3 bg-orange-50 rounded-lg">
+          <div className="flex items-center justify-between p-3 bg-blue-50 rounded-lg border border-blue-200">
             <div className="flex items-center space-x-3">
-              <div className="w-3 h-3 bg-orange-500 rounded-full border-2 border-orange-300" style={{backgroundImage: 'repeating-linear-gradient(45deg, transparent, transparent 2px, rgba(255,255,255,0.3) 2px, rgba(255,255,255,0.3) 4px)'}}></div>
-              <span className="text-sm font-medium text-orange-800">Projected (Commit + Best Case)</span>
+              <div className="w-4 h-4 bg-blue-500 rounded-full opacity-80"></div>
+              <span className="text-sm font-medium text-blue-800">Projected Quota Gap</span>
             </div>
             <div className="text-right">
-              <div className="text-sm font-bold text-orange-800">
-                £{projectedTotal.toLocaleString()}
-              </div>
-              <div className="text-xs text-orange-600">
-                Commission: £{calculateCommission(projectedTotal).toLocaleString()}
-              </div>
+              {quotaTarget - totalProjected <= 0 ? (
+                <div className="text-sm font-bold text-blue-800">
+                  {totalProjected > quotaTarget ? `£${(totalProjected - quotaTarget).toLocaleString()} over` : 'On target! 🎯'}
+                </div>
+              ) : (
+                <>
+                  <div className="text-sm font-bold text-blue-800">
+                    £{(quotaTarget - totalProjected).toLocaleString()} at risk
+                  </div>
+                  <div className="text-xs text-blue-600">
+                    additional pipe needed to meet quota
+                  </div>
+                </>
+              )}
             </div>
           </div>
         </div>
@@ -742,6 +990,21 @@ const DealsPage = () => {
             </p>
           </div>
           <div className="flex items-center space-x-3">
+            {/* Quota Period Selector */}
+            <div className="flex items-center space-x-2">
+              <label className="text-sm font-medium text-gray-700">View:</label>
+              <select
+                value={quotaPeriod}
+                onChange={(e) => setQuotaPeriod(e.target.value as 'weekly' | 'monthly' | 'quarterly' | 'annual')}
+                className="px-3 py-2 bg-white border border-gray-300 rounded-lg text-sm font-medium text-gray-700 hover:bg-gray-50 transition-colors shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+              >
+                <option value="weekly">Weekly</option>
+                <option value="monthly">Monthly</option>
+                <option value="quarterly">Quarterly</option>
+                <option value="annual">Annual</option>
+              </select>
+            </div>
+            
             <button
               onClick={() => refetch()}
               disabled={isLoading}
@@ -788,7 +1051,9 @@ const DealsPage = () => {
             <div className="text-center md:text-left">
               <div className="flex items-center justify-center md:justify-start mb-2">
                 <Target className="w-5 h-5 mr-2 text-blue-200" />
-                <span className="text-sm font-medium text-green-100">Quota Target</span>
+                <span className="text-sm font-medium text-green-100">
+                  {quotaPeriod.charAt(0).toUpperCase() + quotaPeriod.slice(1)} Quota
+                </span>
               </div>
               <div className="text-3xl font-bold text-white">
                 £{quotaTarget.toLocaleString()}
@@ -868,7 +1133,7 @@ const DealsPage = () => {
               <DealsSection
                 title="Pipeline"
                 icon={Package}
-                deals={dealsByCategory.pipeline}
+                deals={allDealsByCategory.pipeline}
                 bgColor="bg-gray-100"
                 borderColor="border-gray-300"
                 iconColor="text-gray-500"
@@ -883,7 +1148,7 @@ const DealsPage = () => {
               <DealsSection
                 title="Commit"
                 icon={Star}
-                deals={dealsByCategory.commit}
+                deals={allDealsByCategory.commit}
                 bgColor="bg-amber-100"
                 borderColor="border-amber-300"
                 iconColor="text-amber-600"
@@ -898,7 +1163,7 @@ const DealsPage = () => {
               <DealsSection
                 title="Best Case"
                 icon={TrendingUp}
-                deals={dealsByCategory.best_case}
+                deals={allDealsByCategory.best_case}
                 bgColor="bg-purple-100"
                 borderColor="border-purple-300"
                 iconColor="text-purple-600"

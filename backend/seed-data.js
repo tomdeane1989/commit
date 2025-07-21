@@ -49,7 +49,7 @@ async function seedDatabase() {
     console.log(`✓ Company: ${testCompany.name} (${testCompany.id})`);
     console.log(`✓ User: ${testUser.first_name} ${testUser.last_name} (${testUser.id})`);
 
-    // Create active target for Q1 2025
+    // Create active target for Q3 2025 (current quarter)
     console.log('Creating active target...');
     const existingTarget = await prisma.targets.findFirst({
       where: {
@@ -64,10 +64,10 @@ async function seedDatabase() {
         data: {
           user_id: testUser.id,
           company_id: testCompany.id,
-          period_type: 'quarterly',
+          period_type: 'annual', // Annual quota to be divided by periods
           period_start: new Date('2025-01-01'),
-          period_end: new Date('2025-03-31'),
-          quota_amount: 250000.00,
+          period_end: new Date('2025-12-31'),
+          quota_amount: 250000.00, // Annual quota
           commission_rate: 0.0750, // 7.5%
           is_active: true
         }
@@ -76,7 +76,7 @@ async function seedDatabase() {
       activeTarget = existingTarget;
     }
 
-    console.log(`✓ Active Target: £${activeTarget.quota_amount.toLocaleString()} Q1 2025`);
+    console.log(`✓ Active Target: £${activeTarget.quota_amount.toLocaleString()} Annual 2025`);
 
     // Clear existing data for clean seed
     console.log('Clearing existing data...');
@@ -145,6 +145,34 @@ async function seedDatabase() {
         crm_id: 'HS001'
       },
 
+      // Current Quarter Closed Won Deals (Q3 2025 - for quota tracking)
+      {
+        deal_name: 'Security Assessment - SecureBank',
+        account_name: 'SecureBank Financial',
+        amount: 22000.00,
+        probability: 100,
+        status: 'closed_won',
+        stage: 'Closed Won',
+        close_date: new Date('2025-07-05'),
+        closed_date: new Date('2025-07-05'),
+        created_date: new Date('2025-05-15'),
+        crm_type: 'salesforce',
+        crm_id: 'SF008'
+      },
+      {
+        deal_name: 'Quick Implementation - StartupXYZ',
+        account_name: 'StartupXYZ Inc',
+        amount: 15000.00,
+        probability: 100,
+        status: 'closed_won',
+        stage: 'Closed Won',
+        close_date: new Date('2025-07-12'),
+        closed_date: new Date('2025-07-12'),
+        created_date: new Date('2025-06-01'),
+        crm_type: 'hubspot',
+        crm_id: 'HS005'
+      },
+
       // Open Opportunities - Pipeline (Uncategorized)
       {
         deal_name: 'Digital Transformation - MegaCorp',
@@ -153,10 +181,35 @@ async function seedDatabase() {
         probability: 75,
         status: 'open',
         stage: 'Proposal Submitted',
-        close_date: new Date('2025-02-28'),
-        created_date: new Date('2024-12-01'),
+        close_date: new Date('2025-08-28'),
+        created_date: new Date('2025-06-01'),
         crm_type: 'salesforce',
         crm_id: 'SF003'
+      },
+      // Overdue deals for testing
+      {
+        deal_name: 'Overdue Implementation - TechLate',
+        account_name: 'TechLate Solutions',
+        amount: 35000.00,
+        probability: 80,
+        status: 'open',
+        stage: 'Final Approval',
+        close_date: new Date('2025-07-10'), // 11 days overdue
+        created_date: new Date('2025-05-20'),
+        crm_type: 'salesforce',
+        crm_id: 'SF009'
+      },
+      {
+        deal_name: 'Delayed Migration - SlowCorp',
+        account_name: 'SlowCorp Industries',
+        amount: 48000.00,
+        probability: 65,
+        status: 'open',
+        stage: 'Contract Negotiation',
+        close_date: new Date('2025-07-05'), // 16 days overdue
+        created_date: new Date('2025-04-15'),
+        crm_type: 'hubspot',
+        crm_id: 'HS006'
       },
       {
         deal_name: 'Security Audit & Implementation - FinanceFirst',
@@ -165,8 +218,8 @@ async function seedDatabase() {
         probability: 60,
         status: 'open',
         stage: 'Needs Analysis',
-        close_date: new Date('2025-03-15'),
-        created_date: new Date('2024-11-15'),
+        close_date: new Date('2025-09-15'),
+        created_date: new Date('2025-05-15'),
         crm_type: 'salesforce',
         crm_id: 'SF004'
       },
@@ -177,8 +230,8 @@ async function seedDatabase() {
         probability: 45,
         status: 'open',
         stage: 'Initial Meeting',
-        close_date: new Date('2025-02-15'),
-        created_date: new Date('2025-01-05'),
+        close_date: new Date('2025-08-15'),
+        created_date: new Date('2025-07-05'),
         crm_type: 'hubspot',
         crm_id: 'HS002'
       },
@@ -227,8 +280,8 @@ async function seedDatabase() {
         probability: 85,
         status: 'open',
         stage: 'Contract Review',
-        close_date: new Date('2025-01-25'),
-        created_date: new Date('2024-11-01'),
+        close_date: new Date('2025-07-25'), // Current month
+        created_date: new Date('2025-06-01'),
         crm_type: 'salesforce',
         crm_id: 'SF006'
       },
@@ -251,8 +304,8 @@ async function seedDatabase() {
         probability: 35,
         status: 'open',
         stage: 'Exploratory',
-        close_date: new Date('2025-03-31'),
-        created_date: new Date('2024-10-15'),
+        close_date: new Date('2025-07-30'), // Current month
+        created_date: new Date('2025-05-15'),
         crm_type: 'salesforce',
         crm_id: 'SF007'
       },
@@ -298,7 +351,8 @@ async function seedDatabase() {
     // Only categorize 1-2 deals to demonstrate the functionality
     // Most deals should remain in "pipeline" to show realistic CRM sync
     const commitDeals = [
-      'Enterprise License Renewal - GlobalTech'  // Only 1 high-confidence deal
+      'Enterprise License Renewal - GlobalTech',  // High-confidence deal
+      'Overdue Implementation - TechLate'         // Overdue deal to test quota calculation
     ];
     
     const bestCaseDeals = [
