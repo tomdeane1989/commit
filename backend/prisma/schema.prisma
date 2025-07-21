@@ -297,6 +297,13 @@ model crm_integrations {
   last_sync       DateTime?
   sync_frequency  String    @default("daily") // daily, hourly, manual
   
+  // Google Sheets specific fields
+  spreadsheet_id  String?   // Google Sheets spreadsheet ID
+  sheet_name      String?   // Specific sheet tab name
+  header_row      Int       @default(1) // Row containing headers
+  data_start_row  Int       @default(2) // First row with data
+  column_mapping  Json?     // Maps sheet columns to deal fields
+  
   // AI Integration
   ai_enabled      Boolean   @default(false)
   ai_model_version String?

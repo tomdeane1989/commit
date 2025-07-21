@@ -14,6 +14,25 @@ router.get('/', async (req, res) => {
       return res.status(403).json({ error: 'Insufficient permissions' });
     }
 
+    // Get period filter (default to quarterly)
+    const { period = 'quarterly' } = req.query;
+    
+    // Calculate date range for the period filter
+    const now = new Date();
+    let startDate, endDate;
+    
+    if (period === 'monthly') {
+      startDate = new Date(now.getFullYear(), now.getMonth(), 1);
+      endDate = new Date(now.getFullYear(), now.getMonth() + 1, 0, 23, 59, 59, 999);
+    } else if (period === 'quarterly') {
+      const quarter = Math.floor(now.getMonth() / 3);
+      startDate = new Date(now.getFullYear(), quarter * 3, 1);
+      endDate = new Date(now.getFullYear(), quarter * 3 + 3, 0, 23, 59, 59, 999);
+    } else { // yearly
+      startDate = new Date(now.getFullYear(), 0, 1);
+      endDate = new Date(now.getFullYear(), 11, 31, 23, 59, 59, 999);
+    }
+
     // Optimized query to avoid N+1 issues
     const teamMembers = await prisma.users.findMany({
       where: { company_id: req.user.company_id },
@@ -40,12 +59,16 @@ router.get('/', async (req, res) => {
     // Get aggregated data for all team members in batch queries
     const teamMemberIds = teamMembers.map(member => member.id);
     
-    // Batch query for open deals
-    const dealsData = await prisma.deals.groupBy({
+    // Batch query for open deals - filter by expected close date within the period
+    const openDealsData = await prisma.deals.groupBy({
       by: ['user_id'],
       where: {
         user_id: { in: teamMemberIds },
-        status: 'open'
+        status: 'open',
+        close_date: {
+          gte: startDate,
+          lte: endDate
+        }
       },
       _sum: {
         amount: true
@@ -55,15 +78,94 @@ router.get('/', async (req, res) => {
       }
     });
 
-    // Batch query for active targets
-    const targetsData = await prisma.targets.groupBy({
+    // Batch query for closed won deals - show all closed won deals for this year
+    // (Achievement view - not filtered by period, just by year and status)
+    const yearStart = new Date(now.getFullYear(), 0, 1);
+    const closedWonDealsData = await prisma.deals.groupBy({
       by: ['user_id'],
       where: {
         user_id: { in: teamMemberIds },
-        is_active: true
+        status: 'closed_won',
+        OR: [
+          {
+            closed_date: {
+              gte: yearStart,
+              lte: endDate
+            }
+          },
+          {
+            closed_date: null, // Include deals without closed_date if they're marked closed_won
+            updated_at: { gte: yearStart } // Use updated_at as fallback
+          }
+        ]
       },
       _sum: {
-        quota_amount: true
+        amount: true
+      },
+      _count: {
+        id: true
+      }
+    });
+
+    // Batch query for active targets with period information
+    // Filter targets that overlap with the selected period
+    const targetsData = await prisma.targets.findMany({
+      where: {
+        user_id: { in: teamMemberIds },
+        is_active: true,
+        AND: [
+          { period_start: { lte: endDate } },
+          { period_end: { gte: startDate } }
+        ]
+      },
+      select: {
+        user_id: true,
+        quota_amount: true,
+        period_type: true,
+        period_start: true,
+        period_end: true
+      }
+    });
+
+    // Batch query for commit deals (categorized as commit by reps)
+    const commitDealsData = await prisma.deals.findMany({
+      where: {
+        user_id: { in: teamMemberIds },
+        status: 'open',
+        close_date: {
+          gte: startDate,
+          lte: endDate
+        },
+        deal_categorizations: {
+          some: {
+            category: 'commit'
+          }
+        }
+      },
+      select: {
+        user_id: true,
+        amount: true
+      }
+    });
+
+    // Batch query for best case deals (categorized as best_case by reps)
+    const bestCaseDealsData = await prisma.deals.findMany({
+      where: {
+        user_id: { in: teamMemberIds },
+        status: 'open',
+        close_date: {
+          gte: startDate,
+          lte: endDate
+        },
+        deal_categorizations: {
+          some: {
+            category: 'best_case'
+          }
+        }
+      },
+      select: {
+        user_id: true,
+        amount: true
       }
     });
 
@@ -79,15 +181,93 @@ router.get('/', async (req, res) => {
     });
 
     // Create lookup maps for O(1) access
-    const dealsMap = new Map(dealsData.map(d => [d.user_id, d]));
+    const openDealsMap = new Map(openDealsData.map(d => [d.user_id, d]));
+    const closedWonDealsMap = new Map(closedWonDealsData.map(d => [d.user_id, d]));
     const targetsMap = new Map(targetsData.map(t => [t.user_id, t]));
     const commissionsMap = new Map(commissionsData.map(c => [c.user_id, c]));
 
+    // Create lookup maps for categorized deals
+    const commitDealsMap = new Map();
+    const bestCaseDealsMap = new Map();
+    
+    commitDealsData.forEach(deal => {
+      const userId = deal.user_id;
+      if (!commitDealsMap.has(userId)) {
+        commitDealsMap.set(userId, { amount: 0, count: 0 });
+      }
+      const current = commitDealsMap.get(userId);
+      current.amount += Number(deal.amount);
+      current.count += 1;
+    });
+
+    bestCaseDealsData.forEach(deal => {
+      const userId = deal.user_id;
+      if (!bestCaseDealsMap.has(userId)) {
+        bestCaseDealsMap.set(userId, { amount: 0, count: 0 });
+      }
+      const current = bestCaseDealsMap.get(userId);
+      current.amount += Number(deal.amount);
+      current.count += 1;
+    });
+
     // Calculate performance metrics using batch data
     const teamWithMetrics = teamMembers.map(member => {
-      const deals = dealsMap.get(member.id);
-      const targets = targetsMap.get(member.id);
+      const openDeals = openDealsMap.get(member.id);
+      const closedWonDeals = closedWonDealsMap.get(member.id);
+      const commitDeals = commitDealsMap.get(member.id);
+      const bestCaseDeals = bestCaseDealsMap.get(member.id);
+      const target = targetsMap.get(member.id);
       const commissions = commissionsMap.get(member.id);
+      
+      const openDealsAmount = openDeals?._sum?.amount ? Number(openDeals._sum.amount) : 0;
+      const closedWonAmount = closedWonDeals?._sum?.amount ? Number(closedWonDeals._sum.amount) : 0;
+      const commitAmount = commitDeals?.amount || 0;
+      const bestCaseAmount = bestCaseDeals?.amount || 0;
+      
+      // Total progress = closed + commit + best case (for quota progress bar)
+      const quotaProgressAmount = closedWonAmount + commitAmount + bestCaseAmount;
+      // Pipeline amount is separate (for reference in key)
+      const pipelineAmount = openDealsAmount;
+      
+      // Calculate pro-rated quota for the selected period
+      let currentQuota = 0;
+      let displayPeriod = null;
+      
+      if (target) {
+        const targetStart = new Date(target.period_start);
+        const targetEnd = new Date(target.period_end);
+        const originalQuota = Number(target.quota_amount);
+        
+        // Calculate overlap between target period and selected period
+        const overlapStart = new Date(Math.max(targetStart.getTime(), startDate.getTime()));
+        const overlapEnd = new Date(Math.min(targetEnd.getTime(), endDate.getTime()));
+        
+        if (overlapStart <= overlapEnd) {
+          // Calculate pro-rated quota based on period type (simple division)
+          let proRatio = 1; // Default to full quota
+          
+          // Calculate pro-rated quota based on period filter
+          if (target.period_type === 'annual' && period === 'quarterly') {
+            proRatio = 1 / 4; // Annual target, quarterly view
+          } else if (target.period_type === 'annual' && period === 'monthly') {
+            proRatio = 1 / 12; // Annual target, monthly view
+          } else if (target.period_type === 'quarterly' && period === 'monthly') {
+            proRatio = 1 / 3; // Quarterly target, monthly view
+          } else {
+            // Same period type or viewing a larger period than target - show full amount
+            proRatio = 1;
+          }
+          
+          currentQuota = originalQuota * proRatio;
+          
+          // Set display period based on the filter
+          displayPeriod = {
+            period_type: period,
+            period_start: overlapStart.toISOString(),
+            period_end: overlapEnd.toISOString()
+          };
+        }
+      }
       
       return {
         id: member.id,
@@ -102,10 +282,19 @@ router.get('/', async (req, res) => {
         manager: member.manager,
         reports_count: member._count.reports,
         performance: {
-          open_deals_amount: deals?._sum?.amount ? Number(deals._sum.amount) : 0,
-          current_quota: targets?._sum?.quota_amount ? Number(targets._sum.quota_amount) : 0,
+          open_deals_amount: pipelineAmount, // All open pipeline deals (for reference)
+          closed_won_amount: closedWonAmount,
+          commit_amount: commitAmount,
+          best_case_amount: bestCaseAmount,
+          quota_progress_amount: quotaProgressAmount, // closed + commit + best case
+          current_quota: currentQuota,
           total_commissions: commissions?._sum?.commission_earned ? Number(commissions._sum.commission_earned) : 0,
-          open_deals_count: deals?._count?.id || 0
+          open_deals_count: openDeals?._count?.id || 0,
+          closed_won_count: closedWonDeals?._count?.id || 0,
+          commit_count: commitDeals?.count || 0,
+          best_case_count: bestCaseDeals?.count || 0,
+          quota_attainment: currentQuota > 0 ? (quotaProgressAmount / currentQuota) * 100 : 0,
+          target_period: displayPeriod
         }
       };
     });

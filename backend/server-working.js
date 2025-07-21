@@ -13,6 +13,7 @@ import teamsRoutes from './routes/teams.js';
 import targetsRoutes from './routes/targets.js';
 import dealsRoutes from './routes/deals.js';
 import commissionsRoutes from './routes/commissions.js';
+import integrationsRoutes from './routes/integrations.js';
 
 dotenv.config();
 
@@ -50,6 +51,47 @@ app.use(express.urlencoded({ extended: true }));
 // Use secure authentication routes (no auth required)
 app.use('/api/auth', authRoutes);
 
+// Public template downloads (no auth required)
+app.get('/api/integrations/template/sheets', async (req, res) => {
+  try {
+    const { format = 'csv' } = req.query;
+
+    // Sample data that matches our expected format
+    const templateData = [
+      // Header row
+      ['Deal Name', 'Account Name', 'Amount', 'Probability', 'Status', 'Stage', 'Close Date', 'Created Date', 'Owned By'],
+      // Sample rows with realistic B2B deal data
+      ['Enterprise Software License', 'TechCorp Industries', '45000', '75', 'Open', 'Proposal Submitted', '2025-08-15', '2025-06-01', 'john.smith@company.com'],
+      ['Annual Support Contract', 'DataFlow Solutions', '28000', '90', 'Open', 'Contract Review', '2025-07-30', '2025-05-15', 'sarah.jones@company.com'],
+      ['Cloud Migration Services', 'RetailPlus Ltd', '67000', '100', 'Closed Won', 'Closed Won', '2025-07-12', '2025-04-20', 'test@company.com'],
+      ['Marketing Automation Setup', 'GrowthTech Startup', '15000', '60', 'Open', 'Discovery Call', '2025-09-01', '2025-07-10', 'john.smith@company.com'],
+      ['Data Analytics Platform', 'InsightCorp', '89000', '85', 'Open', 'Technical Demo', '2025-08-20', '2025-05-30', 'sarah.jones@company.com']
+    ];
+
+    if (format.toLowerCase() === 'csv') {
+      // Generate CSV content
+      const csvContent = templateData
+        .map(row => row.map(field => `"${field}"`).join(','))
+        .join('\n');
+
+      res.setHeader('Content-Type', 'text/csv');
+      res.setHeader('Content-Disposition', 'attachment; filename="sales-pipeline-template.csv"');
+      res.send(csvContent);
+    } else {
+      return res.status(400).json({
+        success: false,
+        error: 'Only CSV format is currently supported'
+      });
+    }
+  } catch (error) {
+    console.error('Template download error:', error);
+    res.status(500).json({
+      success: false,
+      error: 'Failed to generate template'
+    });
+  }
+});
+
 // Use secure auth middleware for all protected routes
 const authMiddleware = authenticateToken;
 
@@ -58,6 +100,7 @@ app.use('/api/team', authMiddleware, teamsRoutes);
 app.use('/api/targets', authMiddleware, targetsRoutes);
 app.use('/api/deals', authMiddleware, dealsRoutes);
 app.use('/api/commissions', authMiddleware, commissionsRoutes);
+app.use('/api/integrations', authMiddleware, integrationsRoutes);
 
 // Dashboard routes
 app.get('/api/dashboard/sales-rep', authMiddleware, async (req, res) => {
@@ -307,316 +350,6 @@ app.post('/api/analytics/categorization-log', authMiddleware, async (req, res) =
   }
 });
 
-// Team management routes
-app.get('/api/team', authMiddleware, async (req, res) => {
-  try {
-    // Only admins and managers can view team
-    if (req.user.role !== 'admin' && req.user.role !== 'manager') {
-      return res.status(403).json({ error: 'Insufficient permissions' });
-    }
-
-    const teamMembers = await prisma.users.findMany({
-      where: { company_id: req.user.company_id },
-      include: {
-        manager: {
-          select: { first_name: true, last_name: true, email: true }
-        },
-        reports: {
-          select: { id: true, first_name: true, last_name: true, email: true }
-        },
-        deals: {
-          where: { status: 'open' },
-          select: { amount: true }
-        },
-        targets: {
-          where: { is_active: true },
-          select: { quota_amount: true }
-        },
-        commissions: {
-          select: { commission_earned: true }
-        }
-      },
-      orderBy: { created_at: 'desc' }
-    });
-
-    // Calculate performance metrics for each team member
-    const teamWithMetrics = teamMembers.map(member => {
-      const openDealsAmount = member.deals.reduce((sum, deal) => sum + Number(deal.amount), 0);
-      const currentQuota = member.targets.length > 0 ? Number(member.targets[0].quota_amount) : 0;
-      const totalCommissions = member.commissions.reduce((sum, comm) => sum + Number(comm.commission_earned), 0);
-      
-      return {
-        id: member.id,
-        email: member.email,
-        first_name: member.first_name,
-        last_name: member.last_name,
-        role: member.role,
-        is_active: member.is_active,
-        hire_date: member.hire_date,
-        territory: member.territory,
-        created_at: member.created_at,
-        manager: member.manager,
-        reports_count: member.reports.length,
-        performance: {
-          open_deals_amount: openDealsAmount,
-          current_quota: currentQuota,
-          total_commissions: totalCommissions,
-          open_deals_count: member.deals.length
-        }
-      };
-    });
-
-    res.json({
-      team_members: teamWithMetrics,
-      success: true
-    });
-  } catch (error) {
-    console.error('Get team error:', error);
-    res.status(500).json({ error: 'Internal server error' });
-  }
-});
-
-app.post('/api/team/invite', authMiddleware, async (req, res) => {
-  try {
-    // Only admins can invite team members
-    if (req.user.role !== 'admin') {
-      return res.status(403).json({ error: 'Only admins can invite team members' });
-    }
-
-    const { email, first_name, last_name, role, territory, manager_id } = req.body;
-
-    // Validate required fields
-    if (!email || !first_name || !last_name || !role) {
-      return res.status(400).json({ error: 'Missing required fields' });
-    }
-
-    // Check if user already exists
-    const existingUser = await prisma.users.findUnique({
-      where: { email }
-    });
-
-    if (existingUser) {
-      return res.status(400).json({ error: 'User with this email already exists' });
-    }
-
-    // Validate manager exists if provided
-    if (manager_id) {
-      const manager = await prisma.users.findUnique({
-        where: { 
-          id: manager_id,
-          company_id: req.user.company_id
-        }
-      });
-
-      if (!manager) {
-        return res.status(400).json({ error: 'Invalid manager ID' });
-      }
-    }
-
-    // Generate temporary password
-    const tempPassword = Math.random().toString(36).slice(-8) + Math.random().toString(36).slice(-8).toUpperCase();
-    const hashedPassword = await bcrypt.hash(tempPassword, 10);
-
-    // Create user
-    const newUser = await prisma.users.create({
-      data: {
-        email,
-        password: hashedPassword,
-        first_name,
-        last_name,
-        role,
-        territory,
-        manager_id,
-        company_id: req.user.company_id
-      },
-      include: {
-        manager: {
-          select: { first_name: true, last_name: true, email: true }
-        }
-      }
-    });
-
-    // Log the invitation
-    await prisma.activity_log.create({
-      data: {
-        user_id: req.user.id,
-        company_id: req.user.company_id,
-        action: 'team_member_invited',
-        entity_type: 'user',
-        entity_id: newUser.id,
-        context: {
-          invited_email: email,
-          invited_role: role,
-          invited_by: req.user.email
-        },
-        success: true
-      }
-    });
-
-    res.status(201).json({
-      user: {
-        id: newUser.id,
-        email: newUser.email,
-        first_name: newUser.first_name,
-        last_name: newUser.last_name,
-        role: newUser.role,
-        territory: newUser.territory,
-        manager: newUser.manager,
-        created_at: newUser.created_at
-      },
-      temp_password: tempPassword,
-      message: 'Team member invited successfully'
-    });
-  } catch (error) {
-    console.error('Team invite error:', error);
-    res.status(500).json({ error: 'Internal server error' });
-  }
-});
-
-app.patch('/api/team/:userId', authMiddleware, async (req, res) => {
-  try {
-    // Only admins can edit team members
-    if (req.user.role !== 'admin') {
-      return res.status(403).json({ error: 'Only admins can edit team members' });
-    }
-
-    const { userId } = req.params;
-    const { first_name, last_name, role, territory, manager_id, is_active } = req.body;
-
-    // Validate user exists and is in same company
-    const existingUser = await prisma.users.findUnique({
-      where: { 
-        id: userId,
-        company_id: req.user.company_id
-      }
-    });
-
-    if (!existingUser) {
-      return res.status(404).json({ error: 'User not found' });
-    }
-
-    // Validate manager exists if provided
-    if (manager_id) {
-      const manager = await prisma.users.findUnique({
-        where: { 
-          id: manager_id,
-          company_id: req.user.company_id
-        }
-      });
-
-      if (!manager) {
-        return res.status(400).json({ error: 'Invalid manager ID' });
-      }
-    }
-
-    // Update user
-    const updatedUser = await prisma.users.update({
-      where: { id: userId },
-      data: {
-        first_name,
-        last_name,
-        role,
-        territory,
-        manager_id,
-        is_active
-      },
-      include: {
-        manager: {
-          select: { first_name: true, last_name: true, email: true }
-        }
-      }
-    });
-
-    // Log the update
-    await prisma.activity_log.create({
-      data: {
-        user_id: req.user.id,
-        company_id: req.user.company_id,
-        action: 'team_member_updated',
-        entity_type: 'user',
-        entity_id: userId,
-        context: {
-          updated_fields: { first_name, last_name, role, territory, manager_id, is_active },
-          updated_by: req.user.email
-        },
-        success: true
-      }
-    });
-
-    res.json({
-      user: {
-        id: updatedUser.id,
-        email: updatedUser.email,
-        first_name: updatedUser.first_name,
-        last_name: updatedUser.last_name,
-        role: updatedUser.role,
-        territory: updatedUser.territory,
-        is_active: updatedUser.is_active,
-        manager: updatedUser.manager,
-        updated_at: updatedUser.updated_at
-      },
-      message: 'Team member updated successfully'
-    });
-  } catch (error) {
-    console.error('Team update error:', error);
-    res.status(500).json({ error: 'Internal server error' });
-  }
-});
-
-app.delete('/api/team/:userId', authMiddleware, async (req, res) => {
-  try {
-    // Only admins can delete team members
-    if (req.user.role !== 'admin') {
-      return res.status(403).json({ error: 'Only admins can delete team members' });
-    }
-
-    const { userId } = req.params;
-
-    // Validate user exists and is in same company
-    const existingUser = await prisma.users.findUnique({
-      where: { 
-        id: userId,
-        company_id: req.user.company_id
-      }
-    });
-
-    if (!existingUser) {
-      return res.status(404).json({ error: 'User not found' });
-    }
-
-    // Cannot delete self
-    if (userId === req.user.id) {
-      return res.status(400).json({ error: 'Cannot delete yourself' });
-    }
-
-    // Deactivate instead of delete to preserve data integrity
-    await prisma.users.update({
-      where: { id: userId },
-      data: { is_active: false }
-    });
-
-    // Log the deactivation
-    await prisma.activity_log.create({
-      data: {
-        user_id: req.user.id,
-        company_id: req.user.company_id,
-        action: 'team_member_deactivated',
-        entity_type: 'user',
-        entity_id: userId,
-        context: {
-          deactivated_email: existingUser.email,
-          deactivated_by: req.user.email
-        },
-        success: true
-      }
-    });
-
-    res.json({ message: 'Team member deactivated successfully' });
-  } catch (error) {
-    console.error('Team delete error:', error);
-    res.status(500).json({ error: 'Internal server error' });
-  }
-});
 
 // Health check
 app.get('/health', (req, res) => {

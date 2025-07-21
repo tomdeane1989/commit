@@ -201,8 +201,8 @@ export const crmApi = {
 
 // Team API
 export const teamApi = {
-  getTeam: async (): Promise<ApiResponse<any[]>> => {
-    const response = await api.get('/team');
+  getTeam: async (params?: { period?: 'monthly' | 'quarterly' | 'yearly' }): Promise<ApiResponse<any[]>> => {
+    const response = await api.get('/team', { params });
     return response.data;
   },
 

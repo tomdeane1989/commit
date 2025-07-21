@@ -28,10 +28,23 @@ interface TeamMember {
   } | null;
   reports_count: number;
   performance: {
-    open_deals_amount: number;
+    open_deals_amount: number; // Pipeline deals (for reference)
+    closed_won_amount: number;
+    commit_amount: number;
+    best_case_amount: number;
+    quota_progress_amount: number; // closed + commit + best case
     current_quota: number;
     total_commissions: number;
     open_deals_count: number;
+    closed_won_count: number;
+    commit_count: number;
+    best_case_count: number;
+    quota_attainment: number;
+    target_period: {
+      period_type: string;
+      period_start: string;
+      period_end: string;
+    } | null;
   };
 }
 
@@ -59,6 +72,9 @@ const TeamPage = () => {
   const queryClient = useQueryClient();
   const [activeTab, setActiveTab] = useState<'members' | 'targets'>('members');
   
+  // Period filter - default to quarterly
+  const [periodFilter, setPeriodFilter] = useState<'monthly' | 'quarterly' | 'yearly'>('quarterly');
+  
   // Filters
   const [searchTerm, setSearchTerm] = useState('');
   const [roleFilter, setRoleFilter] = useState('');
@@ -78,9 +94,9 @@ const TeamPage = () => {
 
   // Fetch team data
   const { data: teamData, isLoading: teamLoading } = useQuery({
-    queryKey: ['team'],
+    queryKey: ['team', periodFilter],
     queryFn: async () => {
-      const response = await teamApi.getTeam();
+      const response = await teamApi.getTeam({ period: periodFilter });
       return response.team_members || [];
     },
     enabled: canManageTeam
@@ -312,8 +328,45 @@ const TeamPage = () => {
             </p>
           </div>
           
-          {/* Tab Navigation */}
-          <div className="flex bg-gray-100 rounded-lg p-1">
+          <div className="flex items-center space-x-4">
+            {/* Period Filter - only show on members tab */}
+            {activeTab === 'members' && (
+              <div className="flex bg-gray-100 rounded-lg p-1">
+                <button
+                  onClick={() => setPeriodFilter('monthly')}
+                  className={`px-3 py-2 rounded-md text-sm font-medium transition-colors ${
+                    periodFilter === 'monthly'
+                      ? 'bg-white text-indigo-600 shadow-sm'
+                      : 'text-gray-600 hover:text-gray-900'
+                  }`}
+                >
+                  Monthly
+                </button>
+                <button
+                  onClick={() => setPeriodFilter('quarterly')}
+                  className={`px-3 py-2 rounded-md text-sm font-medium transition-colors ${
+                    periodFilter === 'quarterly'
+                      ? 'bg-white text-indigo-600 shadow-sm'
+                      : 'text-gray-600 hover:text-gray-900'
+                  }`}
+                >
+                  Quarterly
+                </button>
+                <button
+                  onClick={() => setPeriodFilter('yearly')}
+                  className={`px-3 py-2 rounded-md text-sm font-medium transition-colors ${
+                    periodFilter === 'yearly'
+                      ? 'bg-white text-indigo-600 shadow-sm'
+                      : 'text-gray-600 hover:text-gray-900'
+                  }`}
+                >
+                  Yearly
+                </button>
+              </div>
+            )}
+            
+            {/* Tab Navigation */}
+            <div className="flex bg-gray-100 rounded-lg p-1">
             <button
               onClick={() => setActiveTab('members')}
               className={`px-4 py-2 rounded-md text-sm font-medium transition-colors ${
@@ -336,6 +389,7 @@ const TeamPage = () => {
               <Target className="w-4 h-4 inline mr-2" />
               Targets & Quotas
             </button>
+          </div>
           </div>
         </div>
 

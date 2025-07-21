@@ -77,11 +77,20 @@
   - Grouped table display with expandable team member rows
   - Active/inactive target filtering
 - **Team management system with role-based access control**
+- **Advanced Team Performance View:**
+  - **Period filtering with toggle buttons (Monthly/Quarterly/Yearly)**
+  - **Three-tier progress visualization consistent with deals page logic**
+  - **Deal date filtering for accurate period-based reporting**
+  - **Pro-rated quota calculations (£480K annual → £120K quarterly → £40K monthly)**
+  - **Closed won deals shown as cumulative year-to-date achievements**
+  - **Pipeline deals filtered by expected close date within selected period**
+  - **Commit/Best Case deals from deal categorizations count toward quota progress**
 - **Modular component architecture (5 team components)**
 - **Protected routes with proper authentication flow**
 - **Session tracking for ML data collection**
 - **Comprehensive seed data** with realistic UK B2B deal scenarios
 - **Smooth client-side navigation without page refreshes**
+- **Google Sheets integration with real-time data sync and template downloads**
 
 ### **🎨 Modern UI Features**
 - Glassmorphism effects with backdrop blur
@@ -95,34 +104,42 @@
 
 ### **🔧 Recent Technical Improvements (This Session)**
 
-#### **✅ Complete Conflict Resolution System**
-- **Conflict Detection**: Automatically detects overlapping targets during creation
-- **Conflict Resolution Modal**: Side-by-side comparison of existing vs proposed targets
-- **User Choice**: Interactive modal to keep existing or replace with new targets
-- **Seamless Integration**: Built into quota wizard workflow
-- **Database Schema**: Added `role` field to properly track target types
-- **Error Handling**: Proper conflict detection without breaking target creation flow
+#### **✅ Advanced Team Performance System**
+- **Period Filter Toggle Buttons**: Monthly/Quarterly/Yearly period selection in team view
+- **Three-Tier Progress Visualization**: 
+  - Green (Closed Won) - actual achievements 
+  - Blue (Commit) - high-confidence categorized deals
+  - Yellow (Best Case) - potential upside deals
+  - Gray (Pipeline) - uncategorized deals (reference only)
+- **Smart Deal Filtering**: 
+  - Open deals filtered by expected close date within selected period
+  - Closed deals shown as cumulative year-to-date achievements
+  - Deal categorizations integrated from deals page logic
+- **Pro-rated Quota Calculations**:
+  - Annual targets: £480K → £120K quarterly → £40K monthly
+  - Quarterly targets: £120K → £40K monthly  
+  - Simple division logic instead of complex day-based calculations
 
-#### **✅ Enhanced Targets Management**
-- **Grouped Display**: Role-based targets show once instead of duplicating per user
-- **Expandable Rows**: Click chevron to expand and see all affected team members
-- **Smart Badges**: "Role-based (6 members)" vs "Individual" with color coding
-- **Member Count**: Shows how many people are affected by each target
-- **Visual Hierarchy**: Clear indentation and icons for better UX
-- **Inactive Targets Toggle**: Hide/show inactive targets with checkbox
+#### **✅ Google Sheets Integration**
+- **Real-time Data Sync**: Live integration with public Google Sheets
+- **Template Downloads**: CSV template with proper column formatting
+- **User Assignment**: "Owned By" field maps deals to users via email
+- **Data Preview**: Live preview of sheet data during setup
+- **Column Mapping**: Flexible mapping between sheet columns and deal fields
 
-#### **✅ UI/UX Improvements**
-- **Improved Table Headers**: "Assigned To" instead of redundant "Target" column
-- **Better Assignment Context**: Clear indication of individual vs role-based
-- **Commission Rate Fix**: Proper percentage display (10.0% instead of 0.1%)
-- **Professional Icons**: Target icons for role-based, user icons for individual
-- **Responsive Design**: Expandable rows work smoothly on all screen sizes
+#### **✅ Backend Enhancements**
+- **Deal Categorization Queries**: Separate queries for commit/best case deals
+- **Date-based Filtering**: Proper filtering by close_date for period accuracy
+- **Pro-rating Logic**: Fixed period type matching (annual vs yearly)
+- **Performance Optimization**: Batch queries with lookup maps for O(1) access
+- **Enhanced Performance Object**: Added commit_amount, best_case_amount, quota_progress_amount
 
-#### **✅ Database & Backend Fixes**
-- **Schema Migration**: Added `role` field to targets table
-- **Proper Filtering**: Admin/manager users see all targets, regular users see only their own
-- **Role Storage**: Backend properly stores and retrieves role information for targets
-- **Conflict Resolution API**: New `/resolve-conflicts` endpoint for handling overlaps
+#### **✅ Frontend Improvements**
+- **Stacked Progress Bars**: Visual layering of different deal types
+- **2x2 Grid Legend**: Clear breakdown of all deal categories with amounts
+- **Dynamic Period Display**: Shows actual quota period based on target data
+- **Responsive Period Toggles**: Clean UI with active state highlighting
+- **TypeScript Interfaces**: Updated to match new backend data structure
 
 ### **⚠️ Next Phase Priorities**
 - CRM sync implementations (Salesforce, HubSpot, Pipedrive)
@@ -419,3 +436,34 @@ npm run seed
 - **Deals**: 13 test deals with proper categorization and amounts
 - **Active Target**: £250,000 Q1 2025 quota with real progress tracking
 - **Navigation**: Smooth transitions between all pages without refreshes
+
+---
+
+**Last Updated**: 2025-07-21  
+**Status**: Phase 1 COMPLETE + Advanced Team Performance System + Google Sheets Integration  
+**Current Phase**: Phase 2 - Team performance analytics and CRM integrations  
+**Next Session Priority**: Salesforce/HubSpot/Pipedrive integration implementations
+
+## 🎯 **Key Achievements This Session**
+1. ✅ **Advanced Team Performance System** - Period filtering with Monthly/Quarterly/Yearly toggles
+2. ✅ **Three-Tier Progress Visualization** - Closed/Commit/Best Case stacked progress bars consistent with deals page logic  
+3. ✅ **Smart Deal Filtering** - Date-based filtering for accurate period reporting
+4. ✅ **Pro-rated Quota Calculations** - Simple division logic (£480K → £120K → £40K)
+5. ✅ **Google Sheets Integration** - Real-time sync with template downloads and user assignment
+6. ✅ **Enhanced Backend Architecture** - Optimized queries with deal categorization support
+
+## 🔧 **Technical Achievements Completed**
+- **Period-Based Team Analytics**: Complete filtering system with pro-rated quota calculations
+- **Deal Categorization Integration**: Backend queries for commit/best case deals with proper date filtering
+- **Google Sheets Real-time Integration**: CSV export access with column mapping and data preview
+- **Enhanced Progress Visualization**: Three-tier stacked progress bars with 2x2 grid legend
+- **Performance Optimization**: Batch queries with lookup maps for efficient team data loading
+- **Frontend/Backend Sync**: Updated TypeScript interfaces and API endpoints for new data structure
+
+## 🎮 **Working Features (Production-Ready)**
+- ✅ **Complete Team Performance Analytics**: Period filtering, progress visualization, quota tracking
+- ✅ **Google Sheets Integration**: Real-time data sync with template downloads and user assignment  
+- ✅ **Advanced Quota System**: Pro-rated calculations with period-aware display
+- ✅ **Deal Categorization Logic**: Consistent with deals page logic (closed/commit/best case count toward quota)
+- ✅ **Responsive Team Management**: Role-based access with modular component architecture
+- ✅ **Real-time Data**: Live database integration with proper relationships and performance metrics
