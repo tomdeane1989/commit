@@ -2,6 +2,7 @@
 import express from 'express';
 import { PrismaClient } from '@prisma/client';
 import Joi from 'joi';
+import { isAdmin, isManager, canManageTeam } from '../middleware/roleHelpers.js';
 
 const router = express.Router();
 const prisma = new PrismaClient();
@@ -50,13 +51,15 @@ router.get('/', async (req, res) => {
     }
     
     const where = {
-      // Admin/Manager can see all targets if no user_id specified
-      ...(user_id ? { user_id } : (req.user.role === 'admin' || req.user.role === 'manager') ? {} : { user_id: req.user.id }),
+      // Admin/Manager can see all targets in their company if no user_id specified
+      ...(user_id ? { user_id } : (req.user.role === 'admin' || req.user.role === 'manager') ? { 
+        user: { company_id: req.user.company_id } 
+      } : { user_id: req.user.id }),
       ...(active_only === 'true' && { is_active: true })
     };
 
     // Check permissions
-    if (user_id && user_id !== req.user.id && req.user.role !== 'manager' && req.user.role !== 'admin') {
+    if (user_id && user_id !== req.user.id && !canManageTeam(req.user)) {
       return res.status(403).json({ error: 'Access denied' });
     }
 
@@ -94,12 +97,15 @@ router.post('/', async (req, res) => {
       return res.status(401).json({ error: 'Authentication required' });
     }
     
-    // Only admins and managers can create targets
-    if (req.user.role !== 'admin' && req.user.role !== 'manager') {
-      return res.status(403).json({ error: 'Only admins and managers can create targets' });
+    // Only managers (including admins) can create targets
+    if (!canManageTeam(req.user)) {
+      return res.status(403).json({ error: 'Only managers can create targets' });
     }
 
     const { target_type, user_id, role, period_type, period_start, period_end, quota_amount, commission_rate, commission_payment_schedule, distribution_method, wizard_data } = req.body;
+
+    console.log('Create target request data:', JSON.stringify(req.body, null, 2));
+    console.log('User making request:', req.user.email, req.user.role, req.user.is_admin ? '(ADMIN)' : '');
 
     // Validate required fields
     if (!target_type || !period_type || !period_start || !period_end || !quota_amount || !commission_rate) {
@@ -319,7 +325,7 @@ router.put('/:id', async (req, res) => {
       return res.status(404).json({ error: 'Target not found' });
     }
 
-    if (existingTarget.user_id !== req.user.id && req.user.role !== 'manager' && req.user.role !== 'admin') {
+    if (existingTarget.user_id !== req.user.id && !canManageTeam(req.user)) {
       return res.status(403).json({ error: 'Access denied' });
     }
 
@@ -361,7 +367,7 @@ router.patch('/:id/deactivate', async (req, res) => {
       return res.status(404).json({ error: 'Target not found' });
     }
 
-    if (existingTarget.user_id !== req.user.id && req.user.role !== 'manager' && req.user.role !== 'admin') {
+    if (existingTarget.user_id !== req.user.id && !canManageTeam(req.user)) {
       return res.status(403).json({ error: 'Access denied' });
     }
 
@@ -397,9 +403,9 @@ router.post('/resolve-conflicts', async (req, res) => {
       return res.status(401).json({ error: 'Authentication required' });
     }
     
-    // Only admins and managers can resolve conflicts
-    if (req.user.role !== 'admin' && req.user.role !== 'manager') {
-      return res.status(403).json({ error: 'Only admins and managers can resolve conflicts' });
+    // Only managers (including admins) can resolve conflicts
+    if (!canManageTeam(req.user)) {
+      return res.status(403).json({ error: 'Only managers can resolve conflicts' });
     }
 
     const { conflicts, wizard_data } = req.body;

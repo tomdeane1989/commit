@@ -83,19 +83,105 @@ export const QuotaWizard: React.FC<QuotaWizardProps> = ({
     setWizardData(prev => ({ ...prev, ...updates }));
   };
 
+  // Validation functions for each step
+  const validateStep1 = (): { isValid: boolean; errors: string[] } => {
+    const errors: string[] = [];
+    
+    if (!wizardData.scope) {
+      errors.push('Please select a scope');
+    }
+    
+    if (wizardData.scope === 'individual' && !wizardData.user_id) {
+      errors.push('Please select a team member');
+    }
+    
+    if (wizardData.scope === 'role' && !wizardData.role) {
+      errors.push('Please select a role');
+    }
+    
+    if (!wizardData.start_date) {
+      errors.push('Please select a start date');
+    }
+    
+    return { isValid: errors.length === 0, errors };
+  };
+
+  const validateStep2 = (): { isValid: boolean; errors: string[] } => {
+    const errors: string[] = [];
+    
+    if (!wizardData.distribution) {
+      errors.push('Please select a distribution method');
+    }
+    
+    return { isValid: errors.length === 0, errors };
+  };
+
+  const validateStep3 = (): { isValid: boolean; errors: string[] } => {
+    const errors: string[] = [];
+    
+    if (!wizardData.annual_quota || wizardData.annual_quota <= 0) {
+      errors.push('Please enter a valid annual quota amount');
+    }
+    
+    if (!wizardData.commission_rate || wizardData.commission_rate <= 0 || wizardData.commission_rate > 100) {
+      errors.push('Please enter a valid commission rate (1-100%)');
+    }
+    
+    if (!wizardData.commission_payment_schedule) {
+      errors.push('Please select a commission payment schedule');
+    }
+    
+    return { isValid: errors.length === 0, errors };
+  };
+
+  const validateCurrentStep = () => {
+    switch (currentStep) {
+      case 1: return validateStep1();
+      case 2: return validateStep2();
+      case 3: return validateStep3();
+      case 4: return { isValid: true, errors: [] }; // Review step, no validation needed
+      default: return { isValid: true, errors: [] };
+    }
+  };
+
+  // State for validation errors
+  const [validationErrors, setValidationErrors] = useState<string[]>([]);
+
   const nextStep = () => {
-    if (currentStep < 4) {
-      setCurrentStep(prev => prev + 1);
+    const validation = validateCurrentStep();
+    
+    if (validation.isValid) {
+      setValidationErrors([]);
+      if (currentStep < 4) {
+        setCurrentStep(prev => prev + 1);
+      }
+    } else {
+      setValidationErrors(validation.errors);
     }
   };
 
   const prevStep = () => {
+    setValidationErrors([]); // Clear validation errors when going back
     if (currentStep > 1) {
       setCurrentStep(prev => prev - 1);
     }
   };
 
   const handleSubmit = () => {
+    // Validate all steps before submitting
+    const step1Validation = validateStep1();
+    const step2Validation = validateStep2();
+    const step3Validation = validateStep3();
+    
+    const allErrors = [...step1Validation.errors, ...step2Validation.errors, ...step3Validation.errors];
+    
+    if (allErrors.length > 0) {
+      setValidationErrors(allErrors);
+      return;
+    }
+    
+    setValidationErrors([]);
+    
     // Transform wizard data to API format
     const apiData = transformWizardDataToApiFormat(wizardData);
     onSubmit(apiData);
@@ -309,6 +395,23 @@ export const QuotaWizard: React.FC<QuotaWizardProps> = ({
           )}
         </div>
 
+        {/* Validation Errors */}
+        {validationErrors.length > 0 && (
+          <div className="px-6 py-4 bg-red-50 border-t border-red-200">
+            <div className="flex items-start">
+              <AlertCircle className="w-5 h-5 text-red-500 mt-0.5 mr-2" />
+              <div>
+                <h3 className="text-sm font-medium text-red-800">Please fix the following errors:</h3>
+                <ul className="mt-1 text-sm text-red-700 list-disc list-inside">
+                  {validationErrors.map((error, index) => (
+                    <li key={index}>{error}</li>
+                  ))}
+                </ul>
+              </div>
+            </div>
+          </div>
+        )}
+
         {/* Footer */}
         <div className="flex items-center justify-between p-6 border-t border-gray-200">
           <button
@@ -419,7 +522,7 @@ const Step1ScopeAndTiming: React.FC<{
       {/* Scope Selection */}
       <div>
         <label className="block text-sm font-medium text-gray-700 mb-3">
-          Target Scope
+          Target Scope <span className="text-red-500">*</span>
         </label>
         <div className="grid grid-cols-3 gap-3">
           {[
@@ -520,7 +623,7 @@ const Step1ScopeAndTiming: React.FC<{
       {/* Start Date */}
       <div>
         <label className="block text-sm font-medium text-gray-700 mb-2">
-          Start Date
+          Start Date <span className="text-red-500">*</span>
         </label>
         <input
           type="date"
@@ -649,34 +752,39 @@ const Step3SetAmounts: React.FC<{
       <div className="grid grid-cols-2 gap-6">
         <div>
           <label className="block text-sm font-medium text-gray-700 mb-2">
-            Annual Quota Amount
+            Annual Quota Amount <span className="text-red-500">*</span>
           </label>
           <div className="relative">
             <span className="absolute left-3 top-3 text-gray-500">£</span>
             <input
               type="number"
+              min="1"
               value={data.annual_quota || ''}
               onChange={(e) => updateData({ annual_quota: parseFloat(e.target.value) || 0 })}
               className="w-full pl-8 pr-3 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:border-transparent"
               style={{ '--tw-ring-color': '#82a365' } as any}
               placeholder="250000"
+              required
             />
           </div>
         </div>
 
         <div>
           <label className="block text-sm font-medium text-gray-700 mb-2">
-            Commission Rate
+            Commission Rate <span className="text-red-500">*</span>
           </label>
           <div className="relative">
             <input
               type="number"
               step="0.1"
+              min="0.1"
+              max="100"
               value={data.commission_rate || ''}
               onChange={(e) => updateData({ commission_rate: parseFloat(e.target.value) || 0 })}
               className="w-full pr-8 pl-3 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:border-transparent"
               style={{ '--tw-ring-color': '#82a365' } as any}
               placeholder="7.5"
+              required
             />
             <span className="absolute right-3 top-3 text-gray-500">%</span>
           </div>
@@ -686,7 +794,7 @@ const Step3SetAmounts: React.FC<{
       {/* Commission Payment Schedule */}
       <div>
         <label className="block text-sm font-medium text-gray-700 mb-2">
-          Commission Payment Schedule
+          Commission Payment Schedule <span className="text-red-500">*</span>
         </label>
         <p className="text-sm text-gray-600 mb-3">
           How often should commissions be paid out?

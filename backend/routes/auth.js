@@ -25,7 +25,7 @@ const registerSchema = Joi.object({
   first_name: Joi.string().required(),
   last_name: Joi.string().required(),
   company_name: Joi.string().required(),
-  company_domain: Joi.string().optional()
+  company_domain: Joi.string().allow('').optional()
 });
 
 const loginSchema = Joi.object({
@@ -59,7 +59,7 @@ router.post('/register', async (req, res) => {
     const company = await prisma.companies.create({
       data: {
         name: company_name,
-        domain: company_domain
+        domain: company_domain || null // Convert empty string to null for unique constraint
       }
     });
 

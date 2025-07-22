@@ -7,6 +7,7 @@ interface TeamMember {
   first_name: string;
   last_name: string;
   role: string;
+  is_admin: boolean;
   is_active: boolean;
   hire_date: string | null;
   territory: string | null;
@@ -178,7 +179,10 @@ export const TeamMemberCard: React.FC<TeamMemberCardProps> = ({
             
             <div className="flex items-center text-sm text-gray-600">
               <Building className="w-4 h-4 mr-2" />
-              <span className="capitalize">{member.role.replace('_', ' ')}</span>
+              <span className="capitalize">
+                {member.role.replace('_', ' ')}
+                {member.role === 'manager' && member.is_admin && ' (ADMIN)'}
+              </span>
               {member.territory && (
                 <span className="ml-2 px-2 py-1 bg-gray-100 text-xs rounded">
                   {member.territory}

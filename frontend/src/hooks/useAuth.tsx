@@ -1,4 +1,5 @@
 import { createContext, useContext, useEffect, useState } from 'react';
+import { useQueryClient } from '@tanstack/react-query';
 import { authApi } from '../lib/api';
 import { useRouter } from 'next/router';
 import type { User } from '../types';
@@ -7,6 +8,7 @@ interface AuthContextType {
   user: User | null;
   login: (email: string, password: string) => Promise<void>;
   logout: () => void;
+  setUser: (user: User | null) => void;
   loading: boolean;
 }
 
@@ -17,6 +19,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [loading, setLoading] = useState(true);
   const [mounted, setMounted] = useState(false);
   const router = useRouter();
+  const queryClient = useQueryClient();
 
   useEffect(() => {
     setMounted(true);
@@ -63,6 +66,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       
       // Store token in localStorage
       if (response.success && response.token && response.user) {
+        // CRITICAL SECURITY FIX: Clear all cached data to prevent cross-user data leakage
+        console.log('🔄 Login: Clearing all React Query cache to prevent cross-user data leakage');
+        queryClient.clear();
+        
         localStorage.setItem('token', response.token);
         setUser(response.user);
         router.push('/dashboard');
@@ -78,6 +85,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const logout = async () => {
     try {
+      // CRITICAL SECURITY FIX: Clear all cached data to prevent cross-user data leakage
+      console.log('🔄 Logout: Clearing all React Query cache to prevent cross-user data leakage');
+      queryClient.clear();
+      
       // Clear token from localStorage
       localStorage.removeItem('token');
       setUser(null);
@@ -92,14 +103,14 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   // Prevent hydration mismatches by not rendering until mounted
   if (!mounted) {
     return (
-      <AuthContext.Provider value={{ user: null, login, logout, loading: true }}>
+      <AuthContext.Provider value={{ user: null, login, logout, setUser, loading: true }}>
         {children}
       </AuthContext.Provider>
     );
   }
 
   return (
-    <AuthContext.Provider value={{ user, login, logout, loading }}>
+    <AuthContext.Provider value={{ user, login, logout, setUser, loading }}>
       {children}
     </AuthContext.Provider>
   );

@@ -7,6 +7,8 @@ interface TeamFiltersProps {
   setRoleFilter: (role: string) => void;
   statusFilter: string;
   setStatusFilter: (status: string) => void;
+  showInactiveMembers: boolean;
+  setShowInactiveMembers: (show: boolean) => void;
   onInviteClick: () => void;
 }
 
@@ -17,6 +19,8 @@ export const TeamFilters: React.FC<TeamFiltersProps> = ({
   setRoleFilter,
   statusFilter,
   setStatusFilter,
+  showInactiveMembers,
+  setShowInactiveMembers,
   onInviteClick
 }) => {
   return (
@@ -44,7 +48,6 @@ export const TeamFilters: React.FC<TeamFiltersProps> = ({
               className="px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:border-transparent\n            style={{ '--tw-ring-color': '#82a365' } as React.CSSProperties} text-sm"
             >
               <option value="">All Roles</option>
-              <option value="admin">Admin</option>
               <option value="manager">Manager</option>
               <option value="sales_rep">Sales Rep</option>
             </select>
@@ -59,6 +62,17 @@ export const TeamFilters: React.FC<TeamFiltersProps> = ({
             <option value="active">Active</option>
             <option value="inactive">Inactive</option>
           </select>
+
+          {/* Show Inactive Toggle */}
+          <label className="flex items-center space-x-2 px-3 py-2 bg-gray-50 rounded-lg">
+            <input
+              type="checkbox"
+              checked={showInactiveMembers}
+              onChange={(e) => setShowInactiveMembers(e.target.checked)}
+              className="rounded border-gray-300 text-green-600 focus:ring-green-500"
+            />
+            <span className="text-sm text-gray-700">Show inactive members</span>
+          </label>
 
           <button
             onClick={onInviteClick}

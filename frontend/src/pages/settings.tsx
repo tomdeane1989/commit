@@ -33,7 +33,7 @@ const SettingsPage = () => {
   });
 
   const { data: targetsData, isLoading: targetsLoading } = useQuery({
-    queryKey: ['targets'],
+    queryKey: ['targets', user?.id], // User-specific cache key
     queryFn: async () => {
       const response = await api.get('/targets');
       return response.data;
@@ -46,7 +46,7 @@ const SettingsPage = () => {
       return response.data;
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['targets'] });
+      queryClient.invalidateQueries({ queryKey: ['targets', user?.id] });
       setShowAddTarget(false);
       setTargetForm({
         period_type: 'quarterly',
@@ -64,7 +64,7 @@ const SettingsPage = () => {
       return response.data;
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['targets'] });
+      queryClient.invalidateQueries({ queryKey: ['targets', user?.id] });
       setEditingTarget(null);
     }
   });
@@ -75,7 +75,7 @@ const SettingsPage = () => {
       return response.data;
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['targets'] });
+      queryClient.invalidateQueries({ queryKey: ['targets', user?.id] });
     }
   });
 

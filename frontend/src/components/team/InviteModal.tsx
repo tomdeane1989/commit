@@ -31,7 +31,8 @@ export const InviteModal: React.FC<InviteModalProps> = ({
     last_name: '',
     role: 'sales_rep',
     territory: '',
-    manager_id: ''
+    manager_id: '',
+    is_admin: false
   });
 
   const handleSubmit = (e: React.FormEvent) => {
@@ -45,7 +46,8 @@ export const InviteModal: React.FC<InviteModalProps> = ({
       last_name: '',
       role: 'sales_rep',
       territory: '',
-      manager_id: ''
+      manager_id: '',
+      is_admin: false
     });
   };
 
@@ -56,7 +58,8 @@ export const InviteModal: React.FC<InviteModalProps> = ({
       last_name: '',
       role: 'sales_rep',
       territory: '',
-      manager_id: ''
+      manager_id: '',
+      is_admin: false
     });
     onClose();
   };
@@ -157,7 +160,6 @@ export const InviteModal: React.FC<InviteModalProps> = ({
               >
                 <option value="sales_rep">Sales Representative</option>
                 <option value="manager">Manager</option>
-                <option value="admin">Admin</option>
               </select>
             </div>
           </div>
@@ -181,8 +183,25 @@ export const InviteModal: React.FC<InviteModalProps> = ({
             </div>
           </div>
 
+          {/* Admin Permission - only for managers */}
+          {formData.role === 'manager' && (
+            <div>
+              <label className="flex items-center">
+                <input
+                  type="checkbox"
+                  checked={formData.is_admin || false}
+                  onChange={(e) => setFormData({ ...formData, is_admin: e.target.checked })}
+                  className="rounded border-gray-300 text-indigo-600 focus:ring-indigo-500"
+                  disabled={loading}
+                />
+                <span className="ml-2 text-sm text-gray-700">Grant admin permissions</span>
+              </label>
+              <p className="text-xs text-gray-500 mt-1">Admin managers can invite team members and modify user accounts</p>
+            </div>
+          )}
+
           {/* Manager */}
-          {formData.role !== 'admin' && managers.length > 0 && (
+          {managers.length > 0 && (
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">
                 Manager

@@ -93,6 +93,7 @@ export const authenticateToken = async (req, res, next) => {
         first_name: true,
         last_name: true,
         role: true,
+        is_admin: true,
         company_id: true,
         is_active: true
       }
@@ -107,7 +108,7 @@ export const authenticateToken = async (req, res, next) => {
 
     // Attach user to request
     req.user = user;
-    console.log('Auth middleware: User attached to request:', user.email, user.role);
+    console.log('Auth middleware: User attached to request:', user.email, user.role, user.is_admin ? '(ADMIN)' : '');
     next();
   } catch (error) {
     console.error('Auth middleware error:', error);

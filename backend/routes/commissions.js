@@ -1,6 +1,7 @@
 // routes/commissions.js
 import express from 'express';
 import { PrismaClient } from '@prisma/client';
+import { isAdmin, isManager, canManageTeam } from '../middleware/roleHelpers.js';
 
 const router = express.Router();
 const prisma = new PrismaClient();
@@ -8,16 +9,24 @@ const prisma = new PrismaClient();
 // Calculate commission for a period
 router.post('/calculate', async (req, res) => {
   try {
+    console.log('🎯 COMMISSIONS CALCULATE ENDPOINT HIT!');
+    console.log('🎯 Request URL:', req.url);
+    console.log('🎯 Request path:', req.path);
+    console.log('🎯 Request body:', req.body);
     const { user_id, period_start, period_end } = req.body;
 
     const targetUserId = user_id || req.user.id;
 
     // Check permissions
-    if (targetUserId !== req.user.id && req.user.role !== 'manager' && req.user.role !== 'admin') {
+    if (targetUserId !== req.user.id && !canManageTeam(req.user)) {
       return res.status(403).json({ error: 'Access denied' });
     }
 
     // Find active target for the period
+    console.log('🔍 Looking for target with overlapping period:');
+    console.log('🔍 Requested period:', period_start, 'to', period_end);
+    console.log('🔍 User ID:', targetUserId);
+    
     const target = await prisma.targets.findFirst({
       where: {
         user_id: targetUserId,
@@ -26,9 +35,20 @@ router.post('/calculate', async (req, res) => {
         is_active: true
       }
     });
+    
+    console.log('🔍 Found target:', target ? 'YES' : 'NO');
+    if (target) {
+      console.log('🔍 Target period:', target.period_start, 'to', target.period_end);
+    }
 
     if (!target) {
-      return res.status(404).json({ error: 'No active target found for this period' });
+      console.log('🚫 No target found for period:', period_start, 'to', period_end);
+      console.log('🚫 User ID:', targetUserId);
+      return res.status(400).json({ 
+        error: 'No active target found for this period',
+        message: 'Please ensure you have an active target that covers the requested period.',
+        requested_period: { period_start, period_end }
+      });
     }
 
     // Get closed deals for the period
@@ -151,7 +171,7 @@ router.get('/', async (req, res) => {
     const targetUserId = user_id || req.user.id;
 
     // Check permissions
-    if (targetUserId !== req.user.id && req.user.role !== 'manager' && req.user.role !== 'admin') {
+    if (targetUserId !== req.user.id && !canManageTeam(req.user)) {
       return res.status(403).json({ error: 'Access denied' });
     }
 
@@ -275,8 +295,8 @@ router.patch('/:id/approve', async (req, res) => {
   try {
     const { id } = req.params;
 
-    // Only managers and admins can approve
-    if (req.user.role !== 'manager' && req.user.role !== 'admin') {
+    // Only managers can approve
+    if (!canManageTeam(req.user)) {
       return res.status(403).json({ error: 'Access denied' });
     }
 

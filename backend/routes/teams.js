@@ -2,6 +2,7 @@
 import express from 'express';
 import bcrypt from 'bcrypt';
 import { PrismaClient } from '@prisma/client';
+import { isAdmin, isManager, canManageTeam } from '../middleware/roleHelpers.js';
 
 const router = express.Router();
 const prisma = new PrismaClient();
@@ -9,13 +10,13 @@ const prisma = new PrismaClient();
 // Get team members
 router.get('/', async (req, res) => {
   try {
-    // Only admins and managers can view team
-    if (req.user.role !== 'admin' && req.user.role !== 'manager') {
+    // Only managers (including admins) can view team
+    if (!canManageTeam(req.user)) {
       return res.status(403).json({ error: 'Insufficient permissions' });
     }
 
-    // Get period filter (default to quarterly)
-    const { period = 'quarterly' } = req.query;
+    // Get period filter (default to quarterly) and active filter
+    const { period = 'quarterly', show_inactive = 'false' } = req.query;
     
     // Calculate date range for the period filter
     const now = new Date();
@@ -35,13 +36,17 @@ router.get('/', async (req, res) => {
 
     // Optimized query to avoid N+1 issues
     const teamMembers = await prisma.users.findMany({
-      where: { company_id: req.user.company_id },
+      where: { 
+        company_id: req.user.company_id,
+        ...(show_inactive === 'false' && { is_active: true })
+      },
       select: {
         id: true,
         email: true,
         first_name: true,
         last_name: true,
         role: true,
+        is_admin: true,
         is_active: true,
         hire_date: true,
         territory: true,
@@ -78,9 +83,7 @@ router.get('/', async (req, res) => {
       }
     });
 
-    // Batch query for closed won deals - show all closed won deals for this year
-    // (Achievement view - not filtered by period, just by year and status)
-    const yearStart = new Date(now.getFullYear(), 0, 1);
+    // Batch query for closed won deals - include all closed_won deals for the selected period
     const closedWonDealsData = await prisma.deals.groupBy({
       by: ['user_id'],
       where: {
@@ -88,14 +91,19 @@ router.get('/', async (req, res) => {
         status: 'closed_won',
         OR: [
           {
+            // Use actual closed_date if available
             closed_date: {
-              gte: yearStart,
+              gte: startDate,
               lte: endDate
             }
           },
           {
-            closed_date: null, // Include deals without closed_date if they're marked closed_won
-            updated_at: { gte: yearStart } // Use updated_at as fallback
+            // If no closed_date, use close_date (expected close date) as fallback
+            closed_date: null,
+            close_date: {
+              gte: startDate,
+              lte: endDate
+            }
           }
         ]
       },
@@ -121,6 +129,7 @@ router.get('/', async (req, res) => {
       select: {
         user_id: true,
         quota_amount: true,
+        commission_rate: true,
         period_type: true,
         period_start: true,
         period_end: true
@@ -229,6 +238,15 @@ router.get('/', async (req, res) => {
       // Pipeline amount is separate (for reference in key)
       const pipelineAmount = openDealsAmount;
       
+      // Calculate commission earned on-the-fly if we have a target
+      let calculatedCommissions = 0;
+      if (target && closedWonAmount > 0) {
+        calculatedCommissions = closedWonAmount * Number(target.commission_rate);
+        console.log(`Commission calculation for ${member.email}: £${closedWonAmount} × ${Number(target.commission_rate)} = £${calculatedCommissions}`);
+      } else {
+        console.log(`No commission calculation for ${member.email}: target=${!!target}, closedWonAmount=${closedWonAmount}`);
+      }
+      
       // Calculate pro-rated quota for the selected period
       let currentQuota = 0;
       let displayPeriod = null;
@@ -288,7 +306,7 @@ router.get('/', async (req, res) => {
           best_case_amount: bestCaseAmount,
           quota_progress_amount: quotaProgressAmount, // closed + commit + best case
           current_quota: currentQuota,
-          total_commissions: commissions?._sum?.commission_earned ? Number(commissions._sum.commission_earned) : 0,
+          total_commissions: calculatedCommissions || (commissions?._sum?.commission_earned ? Number(commissions._sum.commission_earned) : 0),
           open_deals_count: openDeals?._count?.id || 0,
           closed_won_count: closedWonDeals?._count?.id || 0,
           commit_count: commitDeals?.count || 0,
@@ -313,7 +331,7 @@ router.get('/', async (req, res) => {
 router.post('/invite', async (req, res) => {
   try {
     // Only admins can invite team members
-    if (req.user.role !== 'admin') {
+    if (!isAdmin(req.user)) {
       return res.status(403).json({ error: 'Only admins can invite team members' });
     }
 
@@ -359,8 +377,8 @@ router.post('/invite', async (req, res) => {
         first_name,
         last_name,
         role,
-        territory,
-        manager_id,
+        territory: territory || null,
+        manager_id: manager_id || null,
         company_id: req.user.company_id
       },
       include: {
@@ -411,12 +429,12 @@ router.post('/invite', async (req, res) => {
 router.patch('/:userId', async (req, res) => {
   try {
     // Only admins can edit team members
-    if (req.user.role !== 'admin') {
+    if (!isAdmin(req.user)) {
       return res.status(403).json({ error: 'Only admins can edit team members' });
     }
 
     const { userId } = req.params;
-    const { first_name, last_name, role, territory, manager_id, is_active } = req.body;
+    const { first_name, last_name, role, territory, manager_id, is_active, is_admin } = req.body;
 
     // Validate user exists and is in same company
     const existingUser = await prisma.users.findUnique({
@@ -453,7 +471,8 @@ router.patch('/:userId', async (req, res) => {
         role,
         territory,
         manager_id,
-        is_active
+        is_active,
+        is_admin
       },
       include: {
         manager: {
@@ -502,7 +521,7 @@ router.patch('/:userId', async (req, res) => {
 router.delete('/:userId', async (req, res) => {
   try {
     // Only admins can delete team members
-    if (req.user.role !== 'admin') {
+    if (!isAdmin(req.user)) {
       return res.status(403).json({ error: 'Only admins can delete team members' });
     }
 

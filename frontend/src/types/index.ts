@@ -3,10 +3,13 @@ export interface User {
   email: string;
   first_name: string;
   last_name: string;
-  role: 'rep' | 'manager' | 'admin';
+  role: 'sales_rep' | 'manager';
+  is_admin?: boolean;
+  is_active?: boolean;
   company_id: string;
   territory?: string;
   manager_id?: string;
+  hire_date?: string;
   created_at: string;
   updated_at: string;
 }
@@ -169,4 +172,5 @@ export interface RegisterData {
   first_name: string;
   last_name: string;
   company_name: string;
+  company_domain?: string;
 }

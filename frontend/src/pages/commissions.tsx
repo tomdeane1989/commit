@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 import Layout from '../components/layout';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useAuth } from '../hooks/useAuth';
-import api from '../lib/api';
+import api, { commissionsApi } from '../lib/api';
 import { 
   PoundSterling, 
   TrendingUp, 
@@ -62,7 +62,7 @@ const CommissionsPage = () => {
 
   // Fetch commissions data with historical analysis
   const { data: commissionsResponse, isLoading, error } = useQuery({
-    queryKey: ['commissions'],
+    queryKey: ['commissions', user?.id], // User-specific cache key to prevent cross-user data leakage
     queryFn: async () => {
       const response = await api.get('/commissions?include_historical=true');
       return response.data;
@@ -77,8 +77,8 @@ const CommissionsPage = () => {
   const missingPeriods = commissionsResponse?.missing_periods || [];
 
   // Fetch user's target to determine payment schedule
-  const { data: targets } = useQuery({
-    queryKey: ['user-targets'],
+  const { data: targetsResponse } = useQuery({
+    queryKey: ['user-targets', user?.id], // User-specific cache key to prevent cross-user data leakage
     queryFn: async () => {
       const response = await api.get('/targets');
       return response.data;
@@ -86,17 +86,18 @@ const CommissionsPage = () => {
     enabled: !!user
   });
 
+  const targets = targetsResponse?.targets || [];
+
   // Calculate commission for current period
   const calculateCurrentPeriodMutation = useMutation({
     mutationFn: async (period: { start: string; end: string }) => {
-      const response = await api.post('/commissions/calculate', {
+      return await commissionsApi.calculateCommissions({
         period_start: period.start,
         period_end: period.end
       });
-      return response.data;
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['commissions'] });
+      queryClient.invalidateQueries({ queryKey: ['commissions', user?.id] });
     }
   });
 

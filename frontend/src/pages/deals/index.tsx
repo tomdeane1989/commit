@@ -174,7 +174,7 @@ const DealsPage = () => {
   }, []);
 
   const { data: dealsData, isLoading, refetch } = useQuery({
-    queryKey: ['deals', filters],
+    queryKey: ['deals', user?.id, filters], // User-specific cache key
     queryFn: async () => {
       const params = new URLSearchParams();
       Object.entries(filters).forEach(([key, value]) => {
@@ -212,8 +212,8 @@ const DealsPage = () => {
       return response.data;
     },
     onSuccess: (data, variables) => {
-      queryClient.invalidateQueries({ queryKey: ['deals'] });
-      queryClient.invalidateQueries({ queryKey: ['dashboard'] });
+      queryClient.invalidateQueries({ queryKey: ['deals', user?.id] });
+      queryClient.invalidateQueries({ queryKey: ['dashboard', user?.id] });
       logCategorizationChange(variables.dealId, variables.previousCategory, variables.category);
     }
   });

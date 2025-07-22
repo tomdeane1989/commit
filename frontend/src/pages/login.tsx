@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import Link from 'next/link';
 import { useAuth } from '../hooks/useAuth';
 import { Eye, EyeOff, AlertTriangle, Loader2 } from 'lucide-react';
 
@@ -139,13 +140,13 @@ const LoginPage = () => {
           {/* Register link */}
           <p className="text-center text-sm text-gray-500 pt-2">
             Don't have an account?{' '}
-            <a
+            <Link
               href="/register"
               className="font-medium hover:opacity-80 transition"
               style={{ color: '#82a365' }}
             >
               Sign up
-            </a>
+            </Link>
           </p>
         </form>
       </div>

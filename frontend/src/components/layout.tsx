@@ -75,11 +75,11 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
     // Always show non-admin items
     if (!item.adminOnly) return true;
     
-    // For admin-only items, check if user has proper role
+    // For admin-only items, check if user has proper permissions
     // If user is not loaded yet, temporarily show the item to prevent flashing
     if (!user) return true;
     
-    return user.role === 'admin' || user.role === 'manager';
+    return user.role === 'manager';
   });
 
   const handleNavigation = (href: string) => {

@@ -171,6 +171,8 @@ export const commissionsApi = {
   },
 
   calculateCommissions: async (data: { period_start: string; period_end: string }): Promise<Commission> => {
+    console.log('🚀 Making API call to:', `${API_BASE_URL}/api/commissions/calculate`);
+    console.log('🚀 Request data:', data);
     const response = await api.post('/commissions/calculate', data);
     return response.data;
   },

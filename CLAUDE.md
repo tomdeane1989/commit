@@ -102,44 +102,49 @@
 - **Error boundaries and comprehensive error handling**
 - **Loading states and user feedback throughout the app**
 
-### **🔧 Recent Technical Improvements (This Session)**
+### **🔧 Recent Technical Improvements (Latest Session)**
 
-#### **✅ Advanced Team Performance System**
-- **Period Filter Toggle Buttons**: Monthly/Quarterly/Yearly period selection in team view
-- **Three-Tier Progress Visualization**: 
-  - Green (Closed Won) - actual achievements 
-  - Blue (Commit) - high-confidence categorized deals
-  - Yellow (Best Case) - potential upside deals
-  - Gray (Pipeline) - uncategorized deals (reference only)
-- **Smart Deal Filtering**: 
-  - Open deals filtered by expected close date within selected period
-  - Closed deals shown as cumulative year-to-date achievements
-  - Deal categorizations integrated from deals page logic
-- **Pro-rated Quota Calculations**:
-  - Annual targets: £480K → £120K quarterly → £40K monthly
-  - Quarterly targets: £120K → £40K monthly  
-  - Simple division logic instead of complex day-based calculations
+#### **✅ Complete Role & Permission System Overhaul**
+- **Admin Permission Model**: Admin is now a permission for managers, not a separate role
+- **Database Schema**: Added `is_admin` boolean field to users table with migration
+- **Role Consistency**: Only `sales_rep` and `manager` roles exist; admins are `manager` + `is_admin: true`
+- **Permission Helpers**: Created `roleHelpers.js` middleware with functions like `isAdmin()`, `canManageTeam()`
+- **Comprehensive Updates**: Updated all role checks across backend APIs (teams, targets, deals, etc.)
+- **Authentication Fix**: Added `is_admin` field to authentication middleware user query
 
-#### **✅ Google Sheets Integration**
-- **Real-time Data Sync**: Live integration with public Google Sheets
-- **Template Downloads**: CSV template with proper column formatting
-- **User Assignment**: "Owned By" field maps deals to users via email
-- **Data Preview**: Live preview of sheet data during setup
-- **Column Mapping**: Flexible mapping between sheet columns and deal fields
+#### **✅ Enhanced Team Management System**
+- **User Editing**: Full CRUD operations for team member management (name, role, admin status, territory, manager)
+- **Inactive Users Toggle**: Checkbox to show/hide inactive team members (default: hidden)
+- **Admin-Only Operations**: Only users with admin permission can invite, edit, or delete team members
+- **Backend Filtering**: `show_inactive` parameter for team API with proper company-based filtering
+- **Real-time Updates**: Team data refreshes based on inactive filter selection
 
-#### **✅ Backend Enhancements**
-- **Deal Categorization Queries**: Separate queries for commit/best case deals
-- **Date-based Filtering**: Proper filtering by close_date for period accuracy
-- **Pro-rating Logic**: Fixed period type matching (annual vs yearly)
-- **Performance Optimization**: Batch queries with lookup maps for O(1) access
-- **Enhanced Performance Object**: Added commit_amount, best_case_amount, quota_progress_amount
+#### **✅ Target Creation Validation System**
+- **Step-by-Step Validation**: Comprehensive validation for each step of quota wizard
+- **Required Field Gates**: Visual indicators (*) and validation prevent empty mandatory fields
+- **Input Constraints**: HTML validation (min/max values, required attributes) on form inputs
+- **Real-time Feedback**: Error display with specific messages and blocked navigation until valid
+- **Commission Rate Validation**: Must be between 0.1% and 100% with proper number formatting
 
-#### **✅ Frontend Improvements**
-- **Stacked Progress Bars**: Visual layering of different deal types
-- **2x2 Grid Legend**: Clear breakdown of all deal categories with amounts
-- **Dynamic Period Display**: Shows actual quota period based on target data
-- **Responsive Period Toggles**: Clean UI with active state highlighting
-- **TypeScript Interfaces**: Updated to match new backend data structure
+#### **✅ Commission Calculation System**
+- **Real-time Calculation**: On-the-fly commission calculation based on closed deals and active targets
+- **Proper Data Queries**: Fixed closed deals query to use `close_date` when `closed_date` is null
+- **Period-Aware**: Commissions calculated only for deals within selected time period
+- **Formula**: `closedWonAmount × commission_rate` with fallback to stored commission records
+- **Database Query Fix**: Added missing `commission_rate` field to targets query in team API
+
+#### **✅ Security & Data Integrity**
+- **Cross-Company Data Leak Fix**: Fixed targets API to filter by company_id, preventing data bleeding
+- **Authentication Security**: Enhanced JWT middleware with proper role and admin permission checks
+- **Company-Based Filtering**: All queries now properly filter by company to ensure multi-tenant security
+- **Input Validation**: Server-side validation for all target creation and user management operations
+
+#### **✅ User Experience Improvements**
+- **Professional Success Messages**: Replaced browser alerts with styled in-app notifications
+- **Copy-to-Clipboard**: Email and password copy buttons for team invitations
+- **Validation Error Display**: Clear error panels with specific validation messages
+- **Required Field Indicators**: Red asterisks (*) on mandatory form fields
+- **Smooth Navigation**: Step-by-step validation prevents advancing with incomplete data
 
 ### **⚠️ Next Phase Priorities**
 - CRM sync implementations (Salesforce, HubSpot, Pipedrive)

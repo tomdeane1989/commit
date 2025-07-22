@@ -8,6 +8,7 @@ import { TeamStats } from '../components/team/TeamStats';
 import { TeamFilters } from '../components/team/TeamFilters';
 import { TeamMemberCard } from '../components/team/TeamMemberCard';
 import { InviteModal } from '../components/team/InviteModal';
+import { InviteSuccessMessage } from '../components/team/InviteSuccessMessage';
 import { QuotaWizard } from '../components/team/QuotaWizard';
 import { Target, Users, Settings, TrendingUp, Plus, ChevronRight, ChevronDown } from 'lucide-react';
 
@@ -17,6 +18,7 @@ interface TeamMember {
   first_name: string;
   last_name: string;
   role: string;
+  is_admin: boolean;
   is_active: boolean;
   hire_date: string | null;
   territory: string | null;
@@ -83,20 +85,30 @@ const TeamPage = () => {
   // Modals
   const [inviteModalOpen, setInviteModalOpen] = useState(false);
   const [quotaWizardOpen, setQuotaWizardOpen] = useState(false);
-  const [editingMember, setEditingMember] = useState<TeamMember | null>(null);
+  
+  // Success message state
+  const [successMessageOpen, setSuccessMessageOpen] = useState(false);
+  const [invitedUserData, setInvitedUserData] = useState<{ email: string; tempPassword: string } | null>(null);
   
   // Target filters
   const [showInactiveTargets, setShowInactiveTargets] = useState(false);
   const [expandedTargets, setExpandedTargets] = useState<Set<string>>(new Set());
+  
+  // Team member filters
+  const [showInactiveMembers, setShowInactiveMembers] = useState(false);
 
   // Check if user has admin/manager permissions
-  const canManageTeam = user?.role === 'admin' || user?.role === 'manager';
+  const canManageTeam = user?.role === 'manager';
+  const isAdmin = user?.is_admin === true && user?.role === 'manager';
 
   // Fetch team data
   const { data: teamData, isLoading: teamLoading } = useQuery({
-    queryKey: ['team', periodFilter],
+    queryKey: ['team', user?.id, periodFilter, showInactiveMembers], // User-specific cache key
     queryFn: async () => {
-      const response = await teamApi.getTeam({ period: periodFilter });
+      const response = await teamApi.getTeam({ 
+        period: periodFilter,
+        show_inactive: showInactiveMembers.toString()
+      });
       return response.team_members || [];
     },
     enabled: canManageTeam
@@ -115,9 +127,18 @@ const TeamPage = () => {
   // Invite team member mutation
   const inviteMutation = useMutation({
     mutationFn: teamApi.inviteTeamMember,
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['team'] });
+    onSuccess: (data) => {
+      queryClient.invalidateQueries({ queryKey: ['team', user?.id] });
       setInviteModalOpen(false);
+      
+      // Show success message with temporary password
+      if (data.temp_password) {
+        setInvitedUserData({
+          email: data.user.email,
+          tempPassword: data.temp_password
+        });
+        setSuccessMessageOpen(true);
+      }
     }
   });
 
@@ -188,7 +209,7 @@ const TeamPage = () => {
   const updateMemberMutation = useMutation({
     mutationFn: ({ id, data }: { id: string; data: any }) => teamApi.updateTeamMember(id, data),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['team'] });
+      queryClient.invalidateQueries({ queryKey: ['team', user?.id] });
     }
   });
 
@@ -196,7 +217,7 @@ const TeamPage = () => {
   const deleteMemberMutation = useMutation({
     mutationFn: teamApi.deactivateTeamMember,
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['team'] });
+      queryClient.invalidateQueries({ queryKey: ['team', user?.id] });
     }
   });
 
@@ -278,9 +299,11 @@ const TeamPage = () => {
     resolveConflictsMutation.mutate(data);
   };
 
-  // Handle member edit
+  // Handle member edit (placeholder - not yet implemented)
   const handleMemberEdit = (member: TeamMember) => {
-    setEditingMember(member);
+    console.log('Member edit requested for:', member.email);
+    // TODO: Implement edit modal for team members
+    alert('Member editing functionality is not yet implemented');
   };
 
   // Handle member delete
@@ -407,6 +430,8 @@ const TeamPage = () => {
               setRoleFilter={setRoleFilter}
               statusFilter={statusFilter}
               setStatusFilter={setStatusFilter}
+              showInactiveMembers={showInactiveMembers}
+              setShowInactiveMembers={setShowInactiveMembers}
               onInviteClick={() => setInviteModalOpen(true)}
             />
 
@@ -703,6 +728,16 @@ const TeamPage = () => {
         }}
         mutationError={createTargetMutation.error}
         mutationData={createTargetMutation.data}
+      />
+
+      <InviteSuccessMessage
+        isOpen={successMessageOpen}
+        onClose={() => {
+          setSuccessMessageOpen(false);
+          setInvitedUserData(null);
+        }}
+        email={invitedUserData?.email || ''}
+        tempPassword={invitedUserData?.tempPassword || ''}
       />
     </Layout>
   );
