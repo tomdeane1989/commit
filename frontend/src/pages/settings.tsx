@@ -149,7 +149,6 @@ const SettingsPage = () => {
   });
 
   const targets = targetsData?.targets || [];
-  const integrations = integrationsData?.integrations || [];
 
   // Integration helper functions
   const formatDate = (dateString?: string) => {
