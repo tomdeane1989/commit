@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 import Layout from '../components/layout';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useAuth } from '../hooks/useAuth';
-import api from '../lib/api';
+import api, { integrationsApi } from '../lib/api';
 import { 
   Target, 
   Calendar, 
@@ -60,8 +60,7 @@ const SettingsPage = () => {
   const { data: integrationsData, isLoading: integrationsLoading } = useQuery({
     queryKey: ['integrations'],
     queryFn: async () => {
-      const response = await api.get('/integrations');
-      return response.data;
+      return await integrationsApi.getIntegrations();
     },
     enabled: !!user && user.role === 'manager'
   });
@@ -128,11 +127,10 @@ const SettingsPage = () => {
     }
   });
 
-  // Integration Mutations
+  // Integration Mutations with longer timeout for sync
   const syncMutation = useMutation({
     mutationFn: async (integrationId: string) => {
-      const response = await api.post(`/integrations/${integrationId}/sync`);
-      return response.data;
+      return await integrationsApi.syncIntegration(integrationId);
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['integrations'] });
@@ -142,8 +140,7 @@ const SettingsPage = () => {
 
   const deleteIntegrationMutation = useMutation({
     mutationFn: async (integrationId: string) => {
-      const response = await api.delete(`/integrations/${integrationId}`);
-      return response.data;
+      return await integrationsApi.deleteIntegration(integrationId);
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['integrations'] });

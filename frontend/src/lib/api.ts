@@ -22,30 +22,49 @@ const api = axios.create({
   },
 });
 
-// Request interceptor to add JWT token from localStorage
-api.interceptors.request.use(
-  (config) => {
-    const token = localStorage.getItem('token');
-    if (token) {
-      config.headers.Authorization = `Bearer ${token}`;
-    }
-    return config;
+// Create a separate axios instance for long-running operations like sync
+const longRunningApi = axios.create({
+  baseURL: `${API_BASE_URL}/api`,
+  timeout: 60000, // 60 seconds for sync operations
+  headers: {
+    'Content-Type': 'application/json',
   },
-  (error) => Promise.reject(error)
-);
+});
+
+// Request interceptor to add JWT token from localStorage
+const addAuthInterceptor = (axiosInstance: any) => {
+  axiosInstance.interceptors.request.use(
+    (config: any) => {
+      const token = localStorage.getItem('token');
+      if (token) {
+        config.headers.Authorization = `Bearer ${token}`;
+      }
+      return config;
+    },
+    (error: any) => Promise.reject(error)
+  );
+};
 
 // Response interceptor to handle auth errors
-api.interceptors.response.use(
-  (response) => response,
-  (error) => {
-    if (error.response?.status === 401) {
-      // Clear token and redirect to login
-      localStorage.removeItem('token');
-      window.location.href = '/login';
+const addResponseInterceptor = (axiosInstance: any) => {
+  axiosInstance.interceptors.response.use(
+    (response: any) => response,
+    (error: any) => {
+      if (error.response?.status === 401) {
+        // Clear token and redirect to login
+        localStorage.removeItem('token');
+        window.location.href = '/login';
+      }
+      return Promise.reject(error);
     }
-    return Promise.reject(error);
-  }
-);
+  );
+};
+
+// Apply interceptors to both instances
+addAuthInterceptor(api);
+addResponseInterceptor(api);
+addAuthInterceptor(longRunningApi);
+addResponseInterceptor(longRunningApi);
 
 // Auth API
 export const authApi = {
@@ -234,6 +253,40 @@ export const teamApi = {
 
   deactivateTeamMember: async (userId: string): Promise<any> => {
     const response = await api.delete(`/team/${userId}`);
+    return response.data;
+  },
+};
+
+// Integrations API - separate from CRM API for clarity
+export const integrationsApi = {
+  getIntegrations: async (): Promise<ApiResponse<any[]>> => {
+    const response = await api.get('/integrations');
+    return response.data;
+  },
+
+  testConnection: async (data: { crm_type: string; spreadsheet_url: string }): Promise<any> => {
+    const response = await api.post('/integrations/test-connection', data);
+    return response.data;
+  },
+
+  previewData: async (data: { crm_type: string; spreadsheet_url: string; sheet_name: string }): Promise<any> => {
+    const response = await api.post('/integrations/preview-data', data);
+    return response.data;
+  },
+
+  createIntegration: async (integrationData: any): Promise<any> => {
+    const response = await api.post('/integrations', integrationData);
+    return response.data;
+  },
+
+  syncIntegration: async (integrationId: string): Promise<any> => {
+    // Use longRunningApi for sync operations that can take 30+ seconds
+    const response = await longRunningApi.post(`/integrations/${integrationId}/sync`);
+    return response.data;
+  },
+
+  deleteIntegration: async (integrationId: string): Promise<any> => {
+    const response = await api.delete(`/integrations/${integrationId}`);
     return response.data;
   },
 };

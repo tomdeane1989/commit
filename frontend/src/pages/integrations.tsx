@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 import Layout from '../components/layout';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useAuth } from '../hooks/useAuth';
-import api from '../lib/api';
+import api, { integrationsApi } from '../lib/api';
 import { 
   Plus, 
   Link2, 
@@ -49,19 +49,17 @@ const IntegrationsPage = () => {
   const { data: integrationsData, isLoading } = useQuery({
     queryKey: ['integrations'],
     queryFn: async () => {
-      const response = await api.get('/integrations');
-      return response.data;
+      return await integrationsApi.getIntegrations();
     },
     enabled: !!user
   });
 
   const integrations = integrationsData?.integrations || [];
 
-  // Manual sync mutation
+  // Manual sync mutation with longer timeout
   const syncMutation = useMutation({
     mutationFn: async (integrationId: string) => {
-      const response = await api.post(`/integrations/${integrationId}/sync`);
-      return response.data;
+      return await integrationsApi.syncIntegration(integrationId);
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['integrations'] });
@@ -72,8 +70,7 @@ const IntegrationsPage = () => {
   // Delete integration mutation
   const deleteMutation = useMutation({
     mutationFn: async (integrationId: string) => {
-      const response = await api.delete(`/integrations/${integrationId}`);
-      return response.data;
+      return await integrationsApi.deleteIntegration(integrationId);
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['integrations'] });
@@ -391,20 +388,20 @@ const SetupModal = ({ onClose, onSuccess }: { onClose: () => void; onSuccess: ()
     setError('');
 
     try {
-      const response = await api.post('/integrations/test-connection', {
+      const response = await integrationsApi.testConnection({
         crm_type: selectedType,
         spreadsheet_url: formData.spreadsheet_url
       });
 
-      if (response.data.success) {
+      if (response.success) {
         // Get preview data
-        const previewResponse = await api.post('/integrations/preview-data', {
+        const previewResponse = await integrationsApi.previewData({
           crm_type: selectedType,
           spreadsheet_url: formData.spreadsheet_url,
           sheet_name: formData.sheet_name
         });
 
-        setPreviewData(previewResponse.data.preview);
+        setPreviewData(previewResponse.preview);
         setFormData(prev => ({
           ...prev,
           column_mapping: defaultColumnMapping
@@ -423,7 +420,7 @@ const SetupModal = ({ onClose, onSuccess }: { onClose: () => void; onSuccess: ()
     setError('');
 
     try {
-      const response = await api.post('/integrations', {
+      const response = await integrationsApi.createIntegration({
         crm_type: selectedType,
         name: formData.name || `${selectedType} Integration`,
         spreadsheet_url: formData.spreadsheet_url,
@@ -431,7 +428,7 @@ const SetupModal = ({ onClose, onSuccess }: { onClose: () => void; onSuccess: ()
         column_mapping: formData.column_mapping
       });
 
-      if (response.data.success) {
+      if (response.success) {
         onSuccess();
       }
     } catch (error: any) {
