@@ -142,8 +142,7 @@ router.get('/', async (req, res) => {
           commission_rate: true,
           period_type: true,
           period_start: true,
-          period_end: true,
-          team_target: true
+          period_end: true
         }
       });
 
