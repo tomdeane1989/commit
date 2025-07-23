@@ -1,6 +1,6 @@
 import express from 'express';
 import { PrismaClient } from '@prisma/client';
-import seed from '../seed.js'; // or wherever your seeding logic lives
+import seed from '../seed-data.js'; // or wherever your seeding logic lives
 
 const router = express.Router();
 const prisma = new PrismaClient();
