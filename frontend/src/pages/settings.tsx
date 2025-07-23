@@ -164,19 +164,6 @@ const SettingsPage = () => {
     });
   };
 
-  const getIntegrationIcon = (type: string) => {
-    switch (type) {
-      case 'sheets':
-        return FileSpreadsheet;
-      case 'salesforce':
-      case 'hubspot':
-      case 'pipedrive':
-        return Database;
-      default:
-        return Link;
-    }
-  };
-
   const getIntegrationName = (type: string) => {
     switch (type) {
       case 'sheets':
