@@ -56,16 +56,16 @@ app.get('/api/integrations/template/sheets', async (req, res) => {
   try {
     const { format = 'csv' } = req.query;
 
-    // Sample data that matches our expected format
+    // Sample data that matches our expected format with Deal ID as first column
     const templateData = [
-      // Header row
-      ['Deal Name', 'Account Name', 'Amount', 'Probability', 'Status', 'Stage', 'Close Date', 'Created Date', 'Owned By'],
-      // Sample rows with realistic B2B deal data
-      ['Enterprise Software License', 'TechCorp Industries', '45000', '75', 'Open', 'Proposal Submitted', '2025-08-15', '2025-06-01', 'john.smith@company.com'],
-      ['Annual Support Contract', 'DataFlow Solutions', '28000', '90', 'Open', 'Contract Review', '2025-07-30', '2025-05-15', 'sarah.jones@company.com'],
-      ['Cloud Migration Services', 'RetailPlus Ltd', '67000', '100', 'Closed Won', 'Closed Won', '2025-07-12', '2025-04-20', 'test@company.com'],
-      ['Marketing Automation Setup', 'GrowthTech Startup', '15000', '60', 'Open', 'Discovery Call', '2025-09-01', '2025-07-10', 'john.smith@company.com'],
-      ['Data Analytics Platform', 'InsightCorp', '89000', '85', 'Open', 'Technical Demo', '2025-08-20', '2025-05-30', 'sarah.jones@company.com']
+      // Header row - Deal ID is now the first and primary unique identifier
+      ['Deal ID', 'Deal Name', 'Account Name', 'Amount', 'Probability', 'Status', 'Stage', 'Close Date', 'Created Date', 'Owned By'],
+      // Sample rows with realistic B2B deal data - each has a unique Deal ID
+      ['DEAL-2025-001', 'Enterprise Software License', 'TechCorp Industries', '45000', '75', 'Open', 'Proposal Submitted', '2025-08-15', '2025-06-01', 'john.smith@company.com'],
+      ['DEAL-2025-002', 'Annual Support Contract', 'DataFlow Solutions', '28000', '90', 'Open', 'Contract Review', '2025-07-30', '2025-05-15', 'sarah.jones@company.com'],
+      ['DEAL-2025-003', 'Cloud Migration Services', 'RetailPlus Ltd', '67000', '100', 'Closed Won', 'Closed Won', '2025-07-12', '2025-04-20', 'test@company.com'],
+      ['DEAL-2025-004', 'Marketing Automation Setup', 'GrowthTech Startup', '15000', '60', 'Open', 'Discovery Call', '2025-09-01', '2025-07-10', 'john.smith@company.com'],
+      ['DEAL-2025-005', 'Data Analytics Platform', 'InsightCorp', '89000', '85', 'Open', 'Technical Demo', '2025-08-20', '2025-05-30', 'sarah.jones@company.com']
     ];
 
     if (format.toLowerCase() === 'csv') {
@@ -366,6 +366,6 @@ app.use('*', notFoundHandler);
 // Error handling middleware (must be last)
 app.use(errorHandler);
 
-app.listen(PORT, '127.0.0.1', () => {
-  console.log(`Server running on 127.0.0.1:${PORT}`);
+app.listen(PORT, '0.0.0.0', () => {
+  console.log(`Server running on 0.0.0.0:${PORT}`);
 });
