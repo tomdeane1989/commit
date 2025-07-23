@@ -69,6 +69,24 @@ const SettingsPage = () => {
     enabled: !!user && user.role === 'manager'
   });
 
+  const integrations = integrationsData?.integrations || [];
+
+  // Helper function to get integration icons
+  const getIntegrationIcon = (crmType: string) => {
+    switch (crmType) {
+      case 'sheets':
+        return FileSpreadsheet;
+      case 'salesforce':
+        return Database;
+      case 'hubspot':
+        return Database;
+      case 'pipedrive':
+        return Database;
+      default:
+        return Database;
+    }
+  };
+
   const createTargetMutation = useMutation({
     mutationFn: async (target: any) => {
       const response = await api.post('/targets', target);
@@ -508,11 +526,11 @@ const SettingsPage = () => {
                     <p className="text-gray-600">Connect your CRM and other systems to sync deal data automatically</p>
                   </div>
                   <button
-                    onClick={() => setShowSetupModal(true)}
+                    onClick={() => window.location.href = '/integrations'}
                     className="inline-flex items-center px-4 py-2 bg-gradient-to-r from-indigo-600 to-purple-600 text-white text-sm font-medium rounded-xl hover:from-indigo-700 hover:to-purple-700 transition-all duration-300 shadow-lg"
                   >
                     <Plus className="w-4 h-4 mr-2" />
-                    Add Integration
+                    Manage Integrations
                   </button>
                 </div>
 
@@ -633,7 +651,7 @@ const SettingsPage = () => {
                         Connect your first CRM or data source to start syncing deals automatically.
                       </p>
                       <button
-                        onClick={() => setShowSetupModal(true)}
+                        onClick={() => window.location.href = '/integrations'}
                         className="inline-flex items-center px-4 py-2 bg-gradient-to-r from-indigo-600 to-purple-600 text-white rounded-xl hover:from-indigo-700 hover:to-purple-700 transition-all duration-300 shadow-lg"
                       >
                         <Plus className="w-4 h-4 mr-2" />
@@ -645,7 +663,7 @@ const SettingsPage = () => {
                   {/* Add New Integration Card - only if there are existing integrations */}
                   {integrations.length > 0 && (
                     <div
-                      onClick={() => setShowSetupModal(true)}
+                      onClick={() => window.location.href = '/integrations'}
                       className="bg-gray-50 border-2 border-dashed border-gray-300 rounded-2xl p-6 hover:border-indigo-400 hover:bg-indigo-50 cursor-pointer transition-all duration-300"
                     >
                       <div className="text-center">
