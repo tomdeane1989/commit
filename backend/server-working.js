@@ -16,7 +16,7 @@ import dealsRoutes from './routes/deals.js';
 import commissionsRoutes from './routes/commissions.js';
 import integrationsRoutes from './routes/integrations.js';
 
-app.use('/api/admin', adminRoutes);
+
 
 dotenv.config();
 
@@ -105,6 +105,8 @@ app.get('/api/integrations/template/sheets', async (req, res) => {
 const authMiddleware = authenticateToken;
 
 // Protected routes (require authentication)
+
+app.use('/api/admin', adminRoutes);
 app.use('/api/team', authMiddleware, teamsRoutes);
 app.use('/api/targets', authMiddleware, targetsRoutes);
 app.use('/api/deals', authMiddleware, dealsRoutes);
