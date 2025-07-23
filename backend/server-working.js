@@ -8,12 +8,15 @@ import { PrismaClient } from '@prisma/client';
 import { apiRateLimit, authenticateToken } from './middleware/secureAuth.js';
 import { csrfProtection, csrfTokenHandler } from './middleware/csrfProtection.js';
 import { errorHandler, notFoundHandler } from './middleware/errorHandler.js';
+import adminRoutes from './routes/admin.js';
 import authRoutes from './routes/auth.js';
 import teamsRoutes from './routes/teams.js';
 import targetsRoutes from './routes/targets.js';
 import dealsRoutes from './routes/deals.js';
 import commissionsRoutes from './routes/commissions.js';
 import integrationsRoutes from './routes/integrations.js';
+
+app.use('/api/admin', adminRoutes);
 
 dotenv.config();
 
