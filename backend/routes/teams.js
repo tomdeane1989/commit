@@ -778,8 +778,12 @@ router.get('/manager/:managerId/aggregation', async (req, res) => {
 // Create team aggregated target
 router.post('/aggregated-target', async (req, res) => {
   try {
+    console.log('Team aggregated target creation request:', req.body);
+    console.log('User making request:', { id: req.user.id, email: req.user.email, role: req.user.role });
+    
     // Only managers can create team targets
     if (!canManageTeam(req.user)) {
+      console.log('Access denied for user:', req.user.email);
       return res.status(403).json({ error: 'Access denied' });
     }
 
@@ -804,44 +808,88 @@ router.post('/aggregated-target', async (req, res) => {
     }
 
     // Check if a team target already exists for this manager and period
-    const existingTarget = await prisma.targets.findFirst({
-      where: {
-        user_id: manager_id,
-        is_active: true,
-        period_start: new Date(period_start),
-        period_end: new Date(period_end),
-        team_target: true // Flag to indicate this is a team target
-      }
-    });
+    // Use try-catch to handle case where team_target field doesn't exist yet
+    let existingTarget = null;
+    try {
+      existingTarget = await prisma.targets.findFirst({
+        where: {
+          user_id: manager_id,
+          is_active: true,
+          period_start: new Date(period_start),
+          period_end: new Date(period_end),
+          team_target: true // Flag to indicate this is a team target
+        }
+      });
+    } catch (error) {
+      console.log('team_target field not available, falling back to basic duplicate check');
+      // If team_target field doesn't exist, just check for basic duplicates
+      existingTarget = await prisma.targets.findFirst({
+        where: {
+          user_id: manager_id,
+          is_active: true,
+          period_start: new Date(period_start),
+          period_end: new Date(period_end)
+        }
+      });
+    }
 
     if (existingTarget) {
       return res.status(400).json({ error: 'Team target already exists for this period' });
     }
 
     // Create the team target
-    const teamTarget = await prisma.targets.create({
-      data: {
-        user_id: manager_id,
-        company_id: req.user.company_id,
-        quota_amount: Number(total_quota),
-        commission_rate: Number(avg_commission_rate),
-        period_start: new Date(period_start),
-        period_end: new Date(period_end),
-        period_type: period_type,
-        is_active: true,
-        team_target: true, // Flag to indicate this is a team target
-        role: null // Individual target for the manager
-      },
-      include: {
-        user: {
-          select: {
-            first_name: true,
-            last_name: true,
-            email: true
+    // Try to create with team_target field, fallback if field doesn't exist
+    let teamTarget;
+    try {
+      teamTarget = await prisma.targets.create({
+        data: {
+          user_id: manager_id,
+          company_id: req.user.company_id,
+          quota_amount: Number(total_quota),
+          commission_rate: Number(avg_commission_rate),
+          period_start: new Date(period_start),
+          period_end: new Date(period_end),
+          period_type: period_type,
+          is_active: true,
+          team_target: true, // Flag to indicate this is a team target
+          role: null // Individual target for the manager
+        },
+        include: {
+          user: {
+            select: {
+              first_name: true,
+              last_name: true,
+              email: true
+            }
           }
         }
-      }
-    });
+      });
+    } catch (error) {
+      console.log('team_target field not available, creating target without it');
+      // If team_target field doesn't exist, create without it
+      teamTarget = await prisma.targets.create({
+        data: {
+          user_id: manager_id,
+          company_id: req.user.company_id,
+          quota_amount: Number(total_quota),
+          commission_rate: Number(avg_commission_rate),
+          period_start: new Date(period_start),
+          period_end: new Date(period_end),
+          period_type: period_type,
+          is_active: true,
+          role: null // Individual target for the manager
+        },
+        include: {
+          user: {
+            select: {
+              first_name: true,
+              last_name: true,
+              email: true
+            }
+          }
+        }
+      });
+    }
 
     // Log the creation
     await prisma.activity_log.create({
@@ -869,7 +917,15 @@ router.post('/aggregated-target', async (req, res) => {
 
   } catch (error) {
     console.error('Create team target error:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    console.error('Error details:', {
+      message: error.message,
+      code: error.code,
+      stack: error.stack
+    });
+    res.status(500).json({ 
+      error: 'Internal server error',
+      details: process.env.NODE_ENV === 'development' ? error.message : undefined
+    });
   }
 });
 
