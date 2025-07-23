@@ -70,6 +70,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         console.log('🔄 Login: Clearing all React Query cache to prevent cross-user data leakage');
         queryClient.clear();
         
+        // Clear any persisted login errors on successful login
+        localStorage.removeItem('loginError');
+        
         localStorage.setItem('token', response.token);
         setUser(response.user);
         router.push('/dashboard');
@@ -77,7 +80,30 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         throw new Error('Login failed - invalid response format');
       }
     } catch (error: any) {
-      const errorMsg = error.response?.data?.error || 'Login failed';
+      
+      // Provide user-friendly error messages
+      let errorMsg = 'Login failed. Please try again.';
+      
+      if (error.response?.status === 401) {
+        errorMsg = 'Invalid email or password. Please check your credentials and try again.';
+      } else if (error.response?.status === 429) {
+        errorMsg = 'Too many login attempts. Please wait a moment before trying again.';
+      } else if (error.response?.status >= 500) {
+        errorMsg = 'Server error. Please try again in a moment.';
+      } else if (error.code === 'NETWORK_ERROR' || !error.response) {
+        errorMsg = 'Network error. Please check your internet connection and try again.';
+      } else if (error.response?.data?.error) {
+        // Use backend error if it's user-friendly
+        const backendError = error.response.data.error;
+        if (backendError.includes('Invalid credentials') || backendError.includes('invalid')) {
+          errorMsg = 'Invalid email or password. Please check your credentials and try again.';
+        } else if (backendError.includes('account') && backendError.includes('locked')) {
+          errorMsg = 'Account temporarily locked. Please contact support if this persists.';
+        } else {
+          errorMsg = backendError;
+        }
+      }
+      
       console.error('Login error:', errorMsg);
       throw new Error(errorMsg);
     }
