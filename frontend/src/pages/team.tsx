@@ -10,6 +10,8 @@ import { TeamMemberCard } from '../components/team/TeamMemberCard';
 import { InviteModal } from '../components/team/InviteModal';
 import { InviteSuccessMessage } from '../components/team/InviteSuccessMessage';
 import { QuotaWizard } from '../components/team/QuotaWizard';
+import EditMemberModal from '../components/team/EditMemberModal';
+import TeamAggregationModal from '../components/team/TeamAggregationModal';
 import { Target, Users, Settings, TrendingUp, Plus, ChevronRight, ChevronDown } from 'lucide-react';
 
 interface TeamMember {
@@ -47,6 +49,7 @@ interface TeamMember {
       period_start: string;
       period_end: string;
     } | null;
+    is_team_target: boolean;
   };
 }
 
@@ -96,6 +99,14 @@ const TeamPage = () => {
   
   // Team member filters
   const [showInactiveMembers, setShowInactiveMembers] = useState(false);
+  
+  // Edit member modal state
+  const [editingMember, setEditingMember] = useState<TeamMember | null>(null);
+  const [showEditModal, setShowEditModal] = useState(false);
+  
+  // Team aggregation modal state
+  const [selectedManager, setSelectedManager] = useState<TeamMember | null>(null);
+  const [showTeamAggregationModal, setShowTeamAggregationModal] = useState(false);
 
   // Check if user has admin/manager permissions
   const canManageTeam = user?.role === 'manager';
@@ -299,11 +310,51 @@ const TeamPage = () => {
     resolveConflictsMutation.mutate(data);
   };
 
-  // Handle member edit (placeholder - not yet implemented)
+  // Handle member edit
   const handleMemberEdit = (member: TeamMember) => {
     console.log('Member edit requested for:', member.email);
-    // TODO: Implement edit modal for team members
-    alert('Member editing functionality is not yet implemented');
+    setEditingMember(member);
+    setShowEditModal(true);
+  };
+
+  // Handle saving member edits
+  const handleSaveMemberEdit = (memberData: {
+    id: string;
+    first_name: string;
+    last_name: string;
+    role: string;
+    territory: string;
+    manager_id: string | null;
+  }) => {
+    updateMemberMutation.mutate(
+      { 
+        id: memberData.id, 
+        data: {
+          first_name: memberData.first_name,
+          last_name: memberData.last_name,
+          role: memberData.role,
+          territory: memberData.territory,
+          manager_id: memberData.manager_id
+        }
+      },
+      {
+        onSuccess: () => {
+          setShowEditModal(false);
+          setEditingMember(null);
+          console.log('✅ Team member updated successfully');
+        },
+        onError: (error) => {
+          console.error('❌ Error updating team member:', error);
+        }
+      }
+    );
+  };
+
+  // Handle viewing team aggregation
+  const handleViewTeamTargets = (manager: TeamMember) => {
+    console.log('Team aggregation requested for manager:', manager.email);
+    setSelectedManager(manager);
+    setShowTeamAggregationModal(true);
   };
 
   // Handle member delete
@@ -467,6 +518,7 @@ const TeamPage = () => {
                     onEdit={handleMemberEdit}
                     onDelete={handleMemberDelete}
                     onToggleActive={handleToggleActive}
+                    onViewTeamTargets={handleViewTeamTargets}
                   />
                 ))
               )}
@@ -738,6 +790,25 @@ const TeamPage = () => {
         }}
         email={invitedUserData?.email || ''}
         tempPassword={invitedUserData?.tempPassword || ''}
+      />
+
+      <EditMemberModal
+        member={editingMember}
+        isOpen={showEditModal}
+        onClose={() => {
+          setShowEditModal(false);
+          setEditingMember(null);
+        }}
+        onSave={handleSaveMemberEdit}
+      />
+
+      <TeamAggregationModal
+        manager={selectedManager}
+        isOpen={showTeamAggregationModal}
+        onClose={() => {
+          setShowTeamAggregationModal(false);
+          setSelectedManager(null);
+        }}
       />
     </Layout>
   );

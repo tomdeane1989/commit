@@ -50,12 +50,7 @@ const DateDisplay = () => {
 const Layout: React.FC<LayoutProps> = ({ children }) => {
   const { user, logout } = useAuth();
   const router = useRouter();
-  const [currentPath, setCurrentPath] = React.useState('/dashboard');
   const [isMobileMenuOpen, setIsMobileMenuOpen] = React.useState(false);
-
-  React.useEffect(() => {
-    setCurrentPath(router.pathname);
-  }, [router.pathname]);
 
   // Close mobile menu when route changes
   React.useEffect(() => {
@@ -63,11 +58,10 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
   }, [router.pathname]);
 
   const navigation = [
-    { name: 'Dashboard', href: '/dashboard', icon: Home },
     { name: 'Deals', href: '/deals', icon: BarChart3 },
     { name: 'Commissions', href: '/commissions', icon: PoundSterling },
     { name: 'Team', href: '/team', icon: Users, adminOnly: true },
-    { name: 'Integrations', href: '/integrations', icon: Link, adminOnly: true },
+    { name: 'Dashboard', href: '/dashboard', icon: Home },
     { name: 'Settings', href: '/settings', icon: Settings },
   ];
 
@@ -106,7 +100,7 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
             <div className="flex items-center space-x-4">
               <div className="w-12 h-12 bg-white rounded-lg shadow-lg flex items-center justify-center">
                 <img 
-                  src="/commit_masthead.png" 
+                  src="/commit_logo2.png" 
                   alt="Commit Logo" 
                   className="w-11 h-11 object-contain"
                 />
@@ -135,7 +129,7 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
               </h3>
             </div>
             {filteredNavigation.map((item) => {
-              const isActive = currentPath === item.href;
+              const isActive = router.pathname === item.href;
               return (
                 <button
                   key={item.name}
@@ -202,7 +196,7 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
             {/* Footer with text logo */}
             <div className="mt-4 flex justify-center">
               <img 
-                src="/commit_text_only.jpg" 
+                src="/commit_logo2.png" 
                 alt="Commit" 
                 className="h-6 opacity-40 hover:opacity-60 transition-opacity duration-300"
               />

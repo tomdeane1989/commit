@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { User, Mail, Building, Calendar, MoreVertical, Edit, Trash2, UserCheck, UserX } from 'lucide-react';
+import { User, Mail, Building, Calendar, MoreVertical, Edit, Trash2, UserCheck, UserX, Users, Target } from 'lucide-react';
 
 interface TeamMember {
   id: string;
@@ -36,6 +36,7 @@ interface TeamMember {
       period_start: string;
       period_end: string;
     } | null;
+    is_team_target: boolean;
   };
 }
 
@@ -44,13 +45,15 @@ interface TeamMemberCardProps {
   onEdit: (member: TeamMember) => void;
   onDelete: (id: string) => void;
   onToggleActive: (id: string, active: boolean) => void;
+  onViewTeamTargets?: (member: TeamMember) => void;
 }
 
 export const TeamMemberCard: React.FC<TeamMemberCardProps> = ({
   member,
   onEdit,
   onDelete,
-  onToggleActive
+  onToggleActive,
+  onViewTeamTargets
 }) => {
   const [showActions, setShowActions] = useState(false);
 
@@ -114,6 +117,20 @@ export const TeamMemberCard: React.FC<TeamMemberCardProps> = ({
               <Edit className="w-4 h-4 mr-2" />
               Edit Member
             </button>
+            
+            {/* Team Aggregation option - only for managers */}
+            {member.role === 'manager' && onViewTeamTargets && (
+              <button
+                onClick={() => {
+                  onViewTeamTargets(member);
+                  setShowActions(false);
+                }}
+                className="w-full px-4 py-2 text-left text-sm text-gray-700 hover:bg-gray-50 flex items-center"
+              >
+                <Target className="w-4 h-4 mr-2" />
+                Aggregate Team Sales Target
+              </button>
+            )}
             <button
               onClick={() => {
                 onToggleActive(member.id, !member.is_active);
@@ -230,7 +247,16 @@ export const TeamMemberCard: React.FC<TeamMemberCardProps> = ({
         {member.performance.current_quota > 0 && (
           <div>
             <div className="flex justify-between items-center mb-1">
-              <p className="text-xs text-gray-500">Quota Progress</p>
+              <div className="flex items-center">
+                <p className="text-xs text-gray-500">
+                  {member.performance.is_team_target ? 'Team Quota Progress' : 'Quota Progress'}
+                </p>
+                {member.performance.is_team_target && (
+                  <span className="ml-2 inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-800">
+                    Team Target
+                  </span>
+                )}
+              </div>
               <p className="text-xs text-gray-600">{totalQuotaProgress.toFixed(1)}%</p>
             </div>
             
@@ -297,11 +323,14 @@ export const TeamMemberCard: React.FC<TeamMemberCardProps> = ({
             
             {/* Quota Period Info */}
             <div className="text-xs text-gray-500 mt-2">
-              Quota: {new Intl.NumberFormat('en-GB', {
+              {member.performance.is_team_target ? 'Team Quota: ' : 'Quota: '}{new Intl.NumberFormat('en-GB', {
                 style: 'currency',
                 currency: 'GBP',
                 notation: 'compact'
               }).format(member.performance.current_quota)} ({formatPeriod(member.performance.target_period)})
+              {member.performance.is_team_target && (
+                <span className="ml-1 text-blue-600 font-medium">• Aggregated</span>
+              )}
             </div>
           </div>
         )}

@@ -30,7 +30,7 @@ export default function Document() {
         <meta name="apple-mobile-web-app-status-bar-style" content="default" />
         
         {/* Preload key assets */}
-        <link rel="preload" href="/commit_logo_only.jpg" as="image" type="image/jpeg" />
+        <link rel="preload" href="/commit_logo2.png" as="image" type="image/png" />
       </Head>
       <body>
         <Main />

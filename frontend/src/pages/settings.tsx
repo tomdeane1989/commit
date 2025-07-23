@@ -16,7 +16,18 @@ import {
   User,
   Bell,
   Shield,
-  Palette
+  Palette,
+  Link,
+  FileSpreadsheet,
+  Database,
+  CheckCircle,
+  AlertCircle,
+  RefreshCw,
+  Eye,
+  Clock,
+  AlertTriangle,
+  X,
+  Download
 } from 'lucide-react';
 
 const SettingsPage = () => {
@@ -27,6 +38,8 @@ const SettingsPage = () => {
   const [activeTab, setActiveTab] = useState('targets');
   const [showAddTarget, setShowAddTarget] = useState(false);
   const [editingTarget, setEditingTarget] = useState<any>(null);
+  const [showSetupModal, setShowSetupModal] = useState(false);
+  const [selectedIntegration, setSelectedIntegration] = useState<any>(null);
   const queryClient = useQueryClient();
 
   const [targetForm, setTargetForm] = useState({
@@ -44,6 +57,16 @@ const SettingsPage = () => {
       return response.data;
     },
     enabled: !!user // Only run query when user is available
+  });
+
+  // Fetch integrations
+  const { data: integrationsData, isLoading: integrationsLoading } = useQuery({
+    queryKey: ['integrations'],
+    queryFn: async () => {
+      const response = await api.get('/integrations');
+      return response.data;
+    },
+    enabled: !!user && user.role === 'manager'
   });
 
   const createTargetMutation = useMutation({
@@ -85,7 +108,80 @@ const SettingsPage = () => {
     }
   });
 
+  // Integration Mutations
+  const syncMutation = useMutation({
+    mutationFn: async (integrationId: string) => {
+      const response = await api.post(`/integrations/${integrationId}/sync`);
+      return response.data;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['integrations'] });
+      queryClient.invalidateQueries({ queryKey: ['deals'] });
+    }
+  });
+
+  const deleteIntegrationMutation = useMutation({
+    mutationFn: async (integrationId: string) => {
+      const response = await api.delete(`/integrations/${integrationId}`);
+      return response.data;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['integrations'] });
+    }
+  });
+
   const targets = targetsData?.targets || [];
+  const integrations = integrationsData?.integrations || [];
+
+  // Integration helper functions
+  const formatDate = (dateString?: string) => {
+    if (!dateString) return 'Never';
+    return new Date(dateString).toLocaleDateString('en-GB', {
+      day: 'numeric',
+      month: 'short',
+      year: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit'
+    });
+  };
+
+  const getIntegrationIcon = (type: string) => {
+    switch (type) {
+      case 'sheets':
+        return FileSpreadsheet;
+      case 'salesforce':
+      case 'hubspot':
+      case 'pipedrive':
+        return Database;
+      default:
+        return Link;
+    }
+  };
+
+  const getIntegrationName = (type: string) => {
+    switch (type) {
+      case 'sheets':
+        return 'Google Sheets';
+      case 'salesforce':
+        return 'Salesforce';
+      case 'hubspot':
+        return 'HubSpot';
+      case 'pipedrive':
+        return 'Pipedrive';
+      default:
+        return type;
+    }
+  };
+
+  const handleSync = (integration: any) => {
+    syncMutation.mutate(integration.id);
+  };
+
+  const handleDeleteIntegration = (integration: any) => {
+    if (confirm(`Are you sure you want to delete the ${getIntegrationName(integration.crm_type)} integration?`)) {
+      deleteIntegrationMutation.mutate(integration.id);
+    }
+  };
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -122,6 +218,7 @@ const SettingsPage = () => {
 
   const tabs = [
     { id: 'targets', name: 'Sales Targets', icon: Target },
+    { id: 'integrations', name: 'Integrations', icon: Link, adminOnly: true },
     { id: 'profile', name: 'Profile', icon: User },
     { id: 'notifications', name: 'Notifications', icon: Bell },
     { id: 'security', name: 'Security', icon: Shield },
@@ -242,7 +339,11 @@ const SettingsPage = () => {
           <div className="lg:col-span-1">
             <div className="bg-white/70 backdrop-blur-sm rounded-3xl p-6 shadow-xl border border-gray-200/50 sticky top-8">
               <nav className="space-y-2">
-                {tabs.map((tab) => (
+                {tabs.filter(tab => {
+                  // Show all tabs for managers, hide admin-only tabs for sales reps
+                  if (!tab.adminOnly) return true;
+                  return user.role === 'manager';
+                }).map((tab) => (
                   <TabButton
                     key={tab.id}
                     tab={tab}
@@ -398,7 +499,171 @@ const SettingsPage = () => {
               </div>
             )}
 
-            {activeTab !== 'targets' && (
+            {activeTab === 'integrations' && (
+              <div className="space-y-6">
+                {/* Header */}
+                <div className="flex items-center justify-between">
+                  <div>
+                    <h2 className="text-2xl font-bold text-gray-900">Integrations</h2>
+                    <p className="text-gray-600">Connect your CRM and other systems to sync deal data automatically</p>
+                  </div>
+                  <button
+                    onClick={() => setShowSetupModal(true)}
+                    className="inline-flex items-center px-4 py-2 bg-gradient-to-r from-indigo-600 to-purple-600 text-white text-sm font-medium rounded-xl hover:from-indigo-700 hover:to-purple-700 transition-all duration-300 shadow-lg"
+                  >
+                    <Plus className="w-4 h-4 mr-2" />
+                    Add Integration
+                  </button>
+                </div>
+
+                {/* Integration Cards */}
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                  {integrationsLoading ? (
+                    <div className="flex items-center justify-center h-48 col-span-2">
+                      <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-indigo-600"></div>
+                    </div>
+                  ) : integrations.length > 0 ? (
+                    integrations.map((integration: any) => {
+                      const Icon = getIntegrationIcon(integration.crm_type);
+                      const isActive = integration.status === 'active';
+                      const hasErrors = integration.summary.has_errors;
+
+                      return (
+                        <div
+                          key={integration.id}
+                          className="bg-white rounded-2xl shadow-lg border border-gray-200/50 p-6 hover:shadow-xl transition-all duration-300"
+                        >
+                          {/* Header */}
+                          <div className="flex items-start justify-between mb-4">
+                            <div className="flex items-center">
+                              <div className={`p-3 rounded-xl ${isActive ? 'bg-green-100' : 'bg-gray-100'}`}>
+                                <Icon className={`w-6 h-6 ${isActive ? 'text-green-600' : 'text-gray-500'}`} />
+                              </div>
+                              <div className="ml-4">
+                                <h3 className="text-lg font-semibold text-gray-900">
+                                  {getIntegrationName(integration.crm_type)}
+                                </h3>
+                                <div className="flex items-center space-x-2 mt-1">
+                                  {isActive ? (
+                                    <div className="flex items-center text-green-600">
+                                      <CheckCircle className="w-4 h-4 mr-1" />
+                                      <span className="text-sm font-medium">Active</span>
+                                    </div>
+                                  ) : (
+                                    <div className="flex items-center text-gray-500">
+                                      <AlertCircle className="w-4 h-4 mr-1" />
+                                      <span className="text-sm font-medium">Inactive</span>
+                                    </div>
+                                  )}
+                                  {hasErrors && (
+                                    <div className="flex items-center text-red-600">
+                                      <AlertTriangle className="w-4 h-4" />
+                                    </div>
+                                  )}
+                                </div>
+                              </div>
+                            </div>
+
+                            {/* Actions */}
+                            <div className="flex items-center space-x-2">
+                              <button
+                                onClick={() => handleSync(integration)}
+                                disabled={!isActive || syncMutation.isPending}
+                                className="p-2 text-gray-400 hover:text-gray-600 hover:bg-gray-50 rounded-lg transition-colors disabled:opacity-50"
+                                title="Sync now"
+                              >
+                                <RefreshCw className={`w-4 h-4 ${syncMutation.isPending ? 'animate-spin' : ''}`} />
+                              </button>
+                              <button
+                                onClick={() => setSelectedIntegration(integration)}
+                                className="p-2 text-gray-400 hover:text-gray-600 hover:bg-gray-50 rounded-lg transition-colors"
+                                title="View details"
+                              >
+                                <Eye className="w-4 h-4" />
+                              </button>
+                              <button
+                                onClick={() => handleDeleteIntegration(integration)}
+                                disabled={deleteIntegrationMutation.isPending}
+                                className="p-2 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors disabled:opacity-50"
+                                title="Delete"
+                              >
+                                <Trash2 className="w-4 h-4" />
+                              </button>
+                            </div>
+                          </div>
+
+                          {/* Stats */}
+                          <div className="grid grid-cols-2 gap-4 mb-4">
+                            <div className="bg-gray-50 rounded-xl p-3">
+                              <p className="text-xs font-medium text-gray-600 mb-1">Total Deals</p>
+                              <p className="text-xl font-bold text-gray-900">
+                                {integration.summary.total_deals}
+                              </p>
+                            </div>
+                            <div className="bg-gray-50 rounded-xl p-3">
+                              <p className="text-xs font-medium text-gray-600 mb-1">Last Sync</p>
+                              <p className="text-sm font-semibold text-gray-700">
+                                {integration.summary.last_sync_count} deals
+                              </p>
+                            </div>
+                          </div>
+
+                          {/* Last Sync Date */}
+                          <div className="flex items-center text-sm text-gray-600 mb-3">
+                            <Clock className="w-4 h-4 mr-1" />
+                            <span>Last sync: {formatDate(integration.summary.last_sync)}</span>
+                          </div>
+
+                          {/* Sheet Info for Google Sheets */}
+                          {integration.crm_type === 'sheets' && integration.sheet_name && (
+                            <div className="text-sm text-gray-600 bg-blue-50 rounded-lg p-2">
+                              <span className="font-medium">Sheet:</span> {integration.sheet_name}
+                            </div>
+                          )}
+                        </div>
+                      );
+                    })
+                  ) : (
+                    <div className="col-span-2 text-center py-12 bg-gray-50 rounded-3xl">
+                      <Link className="w-16 h-16 text-gray-400 mx-auto mb-4" />
+                      <h3 className="text-lg font-semibold text-gray-900 mb-2">
+                        No Integrations Yet
+                      </h3>
+                      <p className="text-gray-600 mb-6">
+                        Connect your first CRM or data source to start syncing deals automatically.
+                      </p>
+                      <button
+                        onClick={() => setShowSetupModal(true)}
+                        className="inline-flex items-center px-4 py-2 bg-gradient-to-r from-indigo-600 to-purple-600 text-white rounded-xl hover:from-indigo-700 hover:to-purple-700 transition-all duration-300 shadow-lg"
+                      >
+                        <Plus className="w-4 h-4 mr-2" />
+                        Add Your First Integration
+                      </button>
+                    </div>
+                  )}
+
+                  {/* Add New Integration Card - only if there are existing integrations */}
+                  {integrations.length > 0 && (
+                    <div
+                      onClick={() => setShowSetupModal(true)}
+                      className="bg-gray-50 border-2 border-dashed border-gray-300 rounded-2xl p-6 hover:border-indigo-400 hover:bg-indigo-50 cursor-pointer transition-all duration-300"
+                    >
+                      <div className="text-center">
+                        <Plus className="w-8 h-8 text-gray-400 mx-auto mb-4" />
+                        <h3 className="text-lg font-medium text-gray-900 mb-2">
+                          Add Integration
+                        </h3>
+                        <p className="text-sm text-gray-600">
+                          Connect another CRM or data source
+                        </p>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
+
+            {activeTab !== 'targets' && activeTab !== 'integrations' && (
               <div className="bg-white rounded-3xl border border-gray-200 p-8 shadow-xl">
                 <div className="text-center py-12">
                   <div className="w-16 h-16 bg-gray-100 rounded-full flex items-center justify-center mx-auto mb-4">
@@ -416,6 +681,78 @@ const SettingsPage = () => {
           </div>
         </div>
       </div>
+
+      {/* Setup Modal Placeholder */}
+      {showSetupModal && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+          <div className="bg-white rounded-lg p-6 w-full max-w-md">
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="text-lg font-bold text-gray-900">Add Integration</h3>
+              <button onClick={() => setShowSetupModal(false)} className="text-gray-400 hover:text-gray-600">
+                <X className="w-6 h-6" />
+              </button>
+            </div>
+            <p className="text-gray-600 text-center py-8">
+              Integration setup coming soon. For now, use the dedicated Integrations page.
+            </p>
+            <div className="flex justify-end">
+              <button
+                onClick={() => setShowSetupModal(false)}
+                className="px-4 py-2 bg-gray-200 text-gray-800 rounded-lg hover:bg-gray-300"
+              >
+                Close
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Detail Modal Placeholder */}
+      {selectedIntegration && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+          <div className="bg-white rounded-lg p-6 w-full max-w-md">
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="text-lg font-bold text-gray-900">Integration Details</h3>
+              <button onClick={() => setSelectedIntegration(null)} className="text-gray-400 hover:text-gray-600">
+                <X className="w-6 h-6" />
+              </button>
+            </div>
+            <div className="space-y-3 py-4">
+              <div>
+                <span className="text-sm font-medium text-gray-600">Type:</span>
+                <span className="ml-2 text-sm text-gray-900">{getIntegrationName(selectedIntegration.crm_type)}</span>
+              </div>
+              <div>
+                <span className="text-sm font-medium text-gray-600">Status:</span>
+                <span className={`ml-2 text-sm ${selectedIntegration.status === 'active' ? 'text-green-600' : 'text-gray-500'}`}>
+                  {selectedIntegration.status === 'active' ? 'Active' : 'Inactive'}
+                </span>
+              </div>
+              <div>
+                <span className="text-sm font-medium text-gray-600">Total Deals:</span>
+                <span className="ml-2 text-sm text-gray-900">{selectedIntegration.summary.total_deals}</span>
+              </div>
+            </div>
+            <div className="flex justify-end space-x-3">
+              <button
+                onClick={() => setSelectedIntegration(null)}
+                className="px-4 py-2 text-gray-600 hover:text-gray-800"
+              >
+                Close
+              </button>
+              <button
+                onClick={() => {
+                  handleSync(selectedIntegration);
+                  setSelectedIntegration(null);
+                }}
+                className="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700"
+              >
+                Sync Now
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </Layout>
   );
 };

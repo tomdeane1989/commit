@@ -9,8 +9,8 @@ export default function Home() {
   useEffect(() => {
     if (!loading) {
       if (user) {
-        // User is authenticated, redirect to dashboard
-        router.replace('/dashboard');
+        // User is authenticated, redirect to deals (landing page)
+        router.replace('/deals');
       } else {
         // User is not authenticated, redirect to login
         router.replace('/login');

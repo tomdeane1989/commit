@@ -369,6 +369,7 @@ const SetupModal = ({ onClose, onSuccess }: { onClose: () => void; onSuccess: ()
   ];
 
   const defaultColumnMapping = {
+    deal_id: 'Deal ID',
     deal_name: 'Deal Name',
     account_name: 'Account Name',
     amount: 'Amount',
