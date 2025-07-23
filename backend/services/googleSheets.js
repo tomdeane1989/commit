@@ -181,7 +181,15 @@ class GoogleSheetsService {
    * Validate sheet structure for deal import
    */
   validateSheetStructure(headers, columnMapping) {
-    const requiredFields = ['deal_name', 'account_name', 'amount', 'close_date', 'owned_by'];
+    // Check if this appears to be a sheet with Deal ID as first column (new format)
+    const hasNewDealIdColumn = headers[0] === 'Deal ID';
+    const hasDealIdMapping = columnMapping.deal_id;
+    
+    // For new format sheets, Deal ID is required
+    const requiredFields = hasNewDealIdColumn 
+      ? ['deal_id', 'deal_name', 'account_name', 'amount', 'close_date', 'owned_by']
+      : ['deal_name', 'account_name', 'amount', 'close_date', 'owned_by']; // Legacy format
+    
     const missingFields = [];
     
     // Check if we can map all required fields
@@ -190,6 +198,27 @@ class GoogleSheetsService {
       if (!mappedColumn || !headers.includes(mappedColumn)) {
         missingFields.push(field);
       }
+    }
+
+    // Special case: If sheet has Deal ID but mapping doesn't, suggest migration
+    if (hasNewDealIdColumn && !hasDealIdMapping) {
+      return {
+        isValid: false,
+        missingFields: ['deal_id'],
+        availableColumns: headers,
+        message: 'Sheet has Deal ID column but integration mapping needs updating. This will be handled automatically during sync.',
+        requiresMigration: true
+      };
+    }
+
+    // Special validation for Deal ID - must be first column by convention
+    if (columnMapping.deal_id && headers[0] !== columnMapping.deal_id) {
+      return {
+        isValid: false,
+        missingFields: [],
+        availableColumns: headers,
+        message: 'Deal ID must be the first column for proper deduplication. Please move the Deal ID column to position A.'
+      };
     }
 
     return {
@@ -203,66 +232,119 @@ class GoogleSheetsService {
   }
 
   /**
-   * Transform sheet row to deal object
+   * Transform sheet row to deal object (legacy method - row-based matching)
+   * Used for backward compatibility with existing integrations
+   */
+  async transformRowToDealLegacy(row, columnMapping, companyId, defaultUserId) {
+    try {
+      const deal = {
+        company_id: companyId,
+        user_id: defaultUserId, // Default fallback
+        crm_type: 'sheets',
+        crm_id: `sheet_row_${row._rowNumber}` // Legacy row-based ID
+      };
+
+      // Map basic fields (excluding deal_id)
+      Object.entries(columnMapping).forEach(([dealField, sheetColumn]) => {
+        if (dealField === 'deal_id') return; // Skip deal_id in legacy mode
+        
+        const value = row[sheetColumn];
+        this.mapFieldValue(deal, dealField, value);
+      });
+
+      this.setDealDefaults(deal);
+      return deal;
+    } catch (error) {
+      throw new Error(`Failed to transform legacy row ${row._rowNumber}: ${error.message}`);
+    }
+  }
+
+  /**
+   * Transform sheet row to deal object (new method - Deal ID based matching)
    */
   async transformRowToDeal(row, columnMapping, companyId, defaultUserId) {
     try {
       const deal = {
         company_id: companyId,
         user_id: defaultUserId, // Default fallback
-        crm_type: 'sheets',
-        crm_id: `sheet_row_${row._rowNumber}`,
+        crm_type: 'sheets'
       };
 
       // Map basic fields
       Object.entries(columnMapping).forEach(([dealField, sheetColumn]) => {
         const value = row[sheetColumn];
         
-        switch (dealField) {
-          case 'deal_name':
-            deal.deal_name = String(value || '').trim();
-            break;
-          case 'account_name':
-            deal.account_name = String(value || '').trim();
-            break;
-          case 'amount':
-            deal.amount = this.parseAmount(value);
-            break;
-          case 'probability':
-            deal.probability = this.parseProbability(value);
-            break;
-          case 'status':
-            deal.status = this.parseStatus(value);
-            break;
-          case 'stage':
-            deal.stage = String(value || '').trim() || 'New';
-            break;
-          case 'close_date':
-            deal.close_date = this.parseDate(value);
-            break;
-          case 'created_date':
-            deal.created_date = this.parseDate(value) || new Date();
-            break;
-          case 'owned_by':
-            // Store the owner email for later user lookup
-            deal._owner_email = String(value || '').trim();
-            break;
+        if (dealField === 'deal_id') {
+          // Use Deal ID from sheet as the unique identifier (primary deduplication key)
+          const dealId = String(value || '').trim();
+          if (!dealId) {
+            throw new Error(`Deal ID is required but empty in row ${row._rowNumber}`);
+          }
+          deal.crm_id = dealId;
+        } else {
+          this.mapFieldValue(deal, dealField, value);
         }
       });
 
-      // Set defaults
-      deal.deal_name = deal.deal_name || 'Untitled Deal';
-      deal.account_name = deal.account_name || 'Unknown Account';
-      deal.amount = deal.amount || 0;
-      deal.probability = deal.probability || 50;
-      deal.status = deal.status || 'open';
-      deal.close_date = deal.close_date || new Date();
-      deal.created_date = deal.created_date || new Date();
+      // Ensure Deal ID was provided and mapped
+      if (!deal.crm_id) {
+        throw new Error(`Deal ID is required for deduplication but was not found in row ${row._rowNumber}. Make sure Deal ID column is mapped and contains values.`);
+      }
 
+      this.setDealDefaults(deal);
       return deal;
     } catch (error) {
       throw new Error(`Failed to transform row ${row._rowNumber}: ${error.message}`);
     }
+  }
+
+  /**
+   * Map a field value to the deal object
+   */
+  mapFieldValue(deal, dealField, value) {
+    switch (dealField) {
+      case 'deal_name':
+        deal.deal_name = String(value || '').trim();
+        break;
+      case 'account_name':
+        deal.account_name = String(value || '').trim();
+        break;
+      case 'amount':
+        deal.amount = this.parseAmount(value);
+        break;
+      case 'probability':
+        deal.probability = this.parseProbability(value);
+        break;
+      case 'status':
+        deal.status = this.parseStatus(value);
+        break;
+      case 'stage':
+        deal.stage = String(value || '').trim() || 'New';
+        break;
+      case 'close_date':
+        deal.close_date = this.parseDate(value);
+        break;
+      case 'created_date':
+        deal.created_date = this.parseDate(value) || new Date();
+        break;
+      case 'owned_by':
+        // Store the owner email for later user lookup
+        deal._owner_email = String(value || '').trim();
+        break;
+    }
+  }
+
+  /**
+   * Set default values for deal fields
+   */
+  setDealDefaults(deal) {
+    deal.deal_name = deal.deal_name || 'Untitled Deal';
+    deal.account_name = deal.account_name || 'Unknown Account';
+    deal.amount = deal.amount || 0;
+    deal.probability = deal.probability || 50;
+    deal.status = deal.status || 'open';
+    deal.close_date = deal.close_date || new Date();
+    deal.created_date = deal.created_date || new Date();
   }
 
   /**
@@ -411,12 +493,13 @@ class GoogleSheetsService {
     return {
       success: true,
       headers: [
-        'Deal Name', 'Account Name', 'Amount', 'Probability', 
+        'Deal ID', 'Deal Name', 'Account Name', 'Amount', 'Probability', 
         'Status', 'Stage', 'Close Date', 'Created Date', 'Owned By'
       ],
       data: [
         {
           _rowNumber: 2,
+          'Deal ID': 'DEAL-2025-001',
           'Deal Name': 'Enterprise Software License',
           'Account Name': 'TechCorp Industries',
           'Amount': '45000',
@@ -429,6 +512,7 @@ class GoogleSheetsService {
         },
         {
           _rowNumber: 3,
+          'Deal ID': 'DEAL-2025-002',
           'Deal Name': 'Annual Support Contract',
           'Account Name': 'DataFlow Solutions',
           'Amount': '28000',
@@ -441,6 +525,7 @@ class GoogleSheetsService {
         },
         {
           _rowNumber: 4,
+          'Deal ID': 'DEAL-2025-003',
           'Deal Name': 'Cloud Migration Services',
           'Account Name': 'RetailPlus Ltd',
           'Amount': '67000',

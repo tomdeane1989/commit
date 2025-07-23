@@ -39,6 +39,11 @@ router.post('/calculate', async (req, res) => {
     console.log('🔍 Found target:', target ? 'YES' : 'NO');
     if (target) {
       console.log('🔍 Target period:', target.period_start, 'to', target.period_end);
+      console.log('🔍 Target fields:', {
+        period_type: target.period_type,
+        commission_payment_schedule: target.commission_payment_schedule,
+        quota_amount: target.quota_amount
+      });
     }
 
     if (!target) {
@@ -52,6 +57,7 @@ router.post('/calculate', async (req, res) => {
     }
 
     // Get closed deals for the period
+    console.log('🔍 Looking for closed deals in period:', period_start, 'to', period_end);
     const closedDeals = await prisma.deals.findMany({
       where: {
         user_id: targetUserId,
@@ -66,9 +72,35 @@ router.post('/calculate', async (req, res) => {
     // Calculate totals
     const totalClosedAmount = closedDeals.reduce((sum, deal) => sum + Number(deal.amount), 0);
     const totalCommissionEarned = totalClosedAmount * Number(target.commission_rate);
-    const quotaAttainmentPercentage = (totalClosedAmount / Number(target.quota_amount)) * 100;
+    
+    // Calculate prorated quota amount based on target period and payment schedule
+    let proratedQuotaAmount = Number(target.quota_amount);
+    
+    console.log(`🎯 Target details: period_type=${target.period_type}, payment_schedule=${target.commission_payment_schedule}, quota=${target.quota_amount}`);
+    
+    if (target.period_type === 'annual' && target.commission_payment_schedule === 'monthly') {
+      // For annual targets with monthly payments, divide by 12
+      proratedQuotaAmount = Number(target.quota_amount) / 12;
+      console.log(`📊 Prorated monthly quota: £${target.quota_amount} / 12 = £${proratedQuotaAmount}`);
+    } else if (target.period_type === 'annual' && target.commission_payment_schedule === 'quarterly') {
+      // For annual targets with quarterly payments, divide by 4
+      proratedQuotaAmount = Number(target.quota_amount) / 4;
+      console.log(`📊 Prorated quarterly quota: £${target.quota_amount} / 4 = £${proratedQuotaAmount}`);
+    } else {
+      console.log(`📊 Using full quota amount: £${proratedQuotaAmount}`);
+    }
+    
+    const quotaAttainmentPercentage = (totalClosedAmount / proratedQuotaAmount) * 100;
 
     // Create or update commission record
+    console.log('🔍 Checking for existing commission record...');
+    console.log('🔍 Looking for commission with:', { 
+      user_id: targetUserId, 
+      target_id: target.id, 
+      period_start: period_start, 
+      period_end: period_end 
+    });
+    
     let commission = await prisma.commissions.findFirst({
       where: {
         user_id: targetUserId,
@@ -77,6 +109,8 @@ router.post('/calculate', async (req, res) => {
         period_end: new Date(period_end)
       }
     });
+    
+    console.log('🔍 Existing commission found:', commission ? `YES (id: ${commission.id})` : 'NO');
 
     if (commission) {
       // Update existing commission
@@ -86,7 +120,7 @@ router.post('/calculate', async (req, res) => {
           actual_amount: totalClosedAmount,
           commission_earned: totalCommissionEarned,
           attainment_pct: quotaAttainmentPercentage,
-          quota_amount: Number(target.quota_amount),
+          quota_amount: proratedQuotaAmount,
           commission_rate: Number(target.commission_rate),
           base_commission: totalCommissionEarned,
           calculated_at: new Date()
@@ -101,7 +135,7 @@ router.post('/calculate', async (req, res) => {
           company_id: req.user.company_id,
           period_start: new Date(period_start),
           period_end: new Date(period_end),
-          quota_amount: Number(target.quota_amount),
+          quota_amount: proratedQuotaAmount,
           actual_amount: totalClosedAmount,
           attainment_pct: quotaAttainmentPercentage,
           commission_rate: Number(target.commission_rate),
@@ -163,27 +197,95 @@ router.post('/calculate', async (req, res) => {
   }
 });
 
-// Get commission calculations
+// Get commission calculations with manager filtering support
 router.get('/', async (req, res) => {
   try {
-    const { user_id, status, include_historical } = req.query;
+    const { user_id, status, include_historical, view } = req.query;
+    console.log('🔍 COMMISSIONS MIDDLEWARE: ', req.method, req.url, req.path);
 
-    const targetUserId = user_id || req.user.id;
-
-    // Check permissions
-    if (targetUserId !== req.user.id && !canManageTeam(req.user)) {
-      return res.status(403).json({ error: 'Access denied' });
-    }
-
-    const where = {
-      user_id: targetUserId,
+    let where = {
+      company_id: req.user.company_id,
       ...(status && { status })
     };
 
+    // Manager view filtering
+    if (req.user.role === 'manager' && view) {
+      if (view === 'personal') {
+        // Manager's own commissions only
+        where.user_id = req.user.id;
+      } else if (view === 'team') {
+        // Get all direct reports
+        const directReports = await prisma.users.findMany({
+          where: {
+            manager_id: req.user.id,
+            company_id: req.user.company_id,
+            is_active: true
+          },
+          select: { id: true }
+        });
+        
+        const teamMemberIds = directReports.map(dr => dr.id);
+        if (teamMemberIds.length > 0) {
+          where.user_id = { in: teamMemberIds };
+        } else {
+          // No team members, return empty result
+          return res.json({
+            commissions: [],
+            payment_schedule: 'monthly',
+            missing_periods: [],
+            team_summary: null,
+            view_context: {
+              current_view: view,
+              is_manager: true,
+              selected_user_id: user_id || null
+            }
+          });
+        }
+      } else if (view === 'member' && user_id) {
+        // Specific team member's commissions - verify they report to this manager
+        const teamMember = await prisma.users.findUnique({
+          where: { 
+            id: user_id,
+            manager_id: req.user.id,
+            company_id: req.user.company_id,
+            is_active: true
+          }
+        });
+        
+        if (!teamMember) {
+          return res.status(403).json({ error: 'Access denied - user is not your direct report' });
+        }
+        
+        where.user_id = user_id;
+      } else if (view === 'all') {
+        // Manager's commissions + team's commissions
+        const directReports = await prisma.users.findMany({
+          where: {
+            manager_id: req.user.id,
+            company_id: req.user.company_id,
+            is_active: true
+          },
+          select: { id: true }
+        });
+        
+        const teamMemberIds = directReports.map(dr => dr.id);
+        teamMemberIds.push(req.user.id); // Include manager's own commissions
+        where.user_id = { in: teamMemberIds };
+      }
+    } else {
+      // Default behavior: user's own commissions or specific user (with permission check)
+      const targetUserId = user_id || req.user.id;
+      if (targetUserId !== req.user.id && !canManageTeam(req.user)) {
+        return res.status(403).json({ error: 'Access denied' });
+      }
+      where.user_id = targetUserId;
+    }
+
     // Get user's active target to determine payment schedule
+    const activeTargetUserId = req.user.role === 'manager' && view && view !== 'personal' ? req.user.id : (user_id || req.user.id);
     const activeTarget = await prisma.targets.findFirst({
       where: {
-        user_id: targetUserId,
+        user_id: activeTargetUserId,
         is_active: true
       }
     });
@@ -227,8 +329,23 @@ router.get('/', async (req, res) => {
     });
 
     // If historical data is requested, calculate missing periods
-    if (include_historical === 'true' && activeTarget) {
-      const paymentSchedule = activeTarget.commission_payment_schedule || 'monthly';
+    // Look for ANY targets (not just active ones) to determine payment schedule
+    if (include_historical === 'true') {
+      let paymentSchedule = 'monthly';
+      
+      // Try to find any target to determine payment schedule
+      const anyTarget = activeTarget || await prisma.targets.findFirst({
+        where: {
+          user_id: activeTargetUserId,
+          company_id: req.user.company_id
+        },
+        orderBy: { created_at: 'desc' }
+      });
+      
+      if (anyTarget) {
+        paymentSchedule = anyTarget.commission_payment_schedule || 'monthly';
+      }
+      
       const periodsToGenerate = paymentSchedule === 'quarterly' ? 4 : 12;
       
       // Generate period suggestions for periods without commissions
@@ -239,24 +356,47 @@ router.get('/', async (req, res) => {
         let periodStart, periodEnd, periodLabel;
         
         if (paymentSchedule === 'quarterly') {
-          const quarterDate = new Date(now.getFullYear(), now.getMonth() - (i * 3), 1);
-          const year = quarterDate.getFullYear();
-          const quarter = Math.floor(quarterDate.getMonth() / 3);
+          // Use UTC dates to avoid timezone issues
+          const currentYear = now.getUTCFullYear();
+          const currentMonth = now.getUTCMonth();
+          
+          // Calculate the target quarter
+          let targetYear = currentYear;
+          let targetMonth = currentMonth - (i * 3);
+          
+          // Handle year boundary
+          while (targetMonth < 0) {
+            targetMonth += 12;
+            targetYear -= 1;
+          }
+          
+          const quarter = Math.floor(targetMonth / 3);
           const quarterStartMonth = quarter * 3;
           
-          periodStart = new Date(year, quarterStartMonth, 1);
-          periodEnd = new Date(year, quarterStartMonth + 3, 0);
-          periodLabel = `Q${quarter + 1} ${year}`;
+          periodStart = new Date(Date.UTC(targetYear, quarterStartMonth, 1));
+          periodEnd = new Date(Date.UTC(targetYear, quarterStartMonth + 3, 0, 23, 59, 59, 999));
+          periodLabel = `Q${quarter + 1} ${targetYear}`;
         } else {
-          const monthDate = new Date(now.getFullYear(), now.getMonth() - i, 1);
-          const year = monthDate.getFullYear();
-          const month = monthDate.getMonth();
+          // Use UTC dates to avoid timezone issues
+          const currentYear = now.getUTCFullYear();
+          const currentMonth = now.getUTCMonth();
           
-          periodStart = new Date(year, month, 1);
-          periodEnd = new Date(year, month + 1, 0);
-          periodLabel = monthDate.toLocaleDateString('en-GB', { 
+          // Calculate the target month
+          let targetYear = currentYear;
+          let targetMonth = currentMonth - i;
+          
+          // Handle year boundary
+          while (targetMonth < 0) {
+            targetMonth += 12;
+            targetYear -= 1;
+          }
+          
+          periodStart = new Date(Date.UTC(targetYear, targetMonth, 1));
+          periodEnd = new Date(Date.UTC(targetYear, targetMonth + 1, 0, 23, 59, 59, 999));
+          periodLabel = periodStart.toLocaleDateString('en-GB', { 
             month: 'long', 
-            year: 'numeric' 
+            year: 'numeric',
+            timeZone: 'UTC'
           });
         }
         
@@ -267,23 +407,123 @@ router.get('/', async (req, res) => {
         });
         
         if (!existingCommission && periodEnd < now) {
+          // Check if there's a target that covers this historical period
+          const historicalTarget = await prisma.targets.findFirst({
+            where: {
+              user_id: activeTargetUserId,
+              company_id: req.user.company_id,
+              period_start: { lte: periodEnd },
+              period_end: { gte: periodStart },
+              is_active: true
+            }
+          });
+          
           suggestions.push({
             period_start: periodStart.toISOString().split('T')[0],
             period_end: periodEnd.toISOString().split('T')[0],
             label: periodLabel,
-            can_calculate: true
+            can_calculate: !!historicalTarget,
+            missing_target: !historicalTarget
           });
         }
       }
       
+      // Team member breakdown (for team/all views)
+      let teamSummary = null;
+      if (req.user.role === 'manager' && (view === 'team' || view === 'all')) {
+        const teamStats = {};
+        commissions.forEach(commission => {
+          const ownerId = commission.user_id;
+          const ownerName = `${commission.user.first_name} ${commission.user.last_name}`;
+          
+          if (!teamStats[ownerId]) {
+            teamStats[ownerId] = {
+              user_id: ownerId,
+              name: ownerName,
+              email: commission.user.email,
+              commission_count: 0,
+              total_commission_earned: 0,
+              total_quota: 0,
+              total_actual: 0,
+              avg_attainment: 0
+            };
+          }
+          
+          teamStats[ownerId].commission_count++;
+          teamStats[ownerId].total_commission_earned += Number(commission.commission_earned);
+          teamStats[ownerId].total_quota += Number(commission.quota_amount);
+          teamStats[ownerId].total_actual += Number(commission.actual_amount);
+        });
+        
+        // Calculate average attainment for each team member
+        Object.values(teamStats).forEach(stats => {
+          if (stats.total_quota > 0) {
+            stats.avg_attainment = (stats.total_actual / stats.total_quota) * 100;
+          }
+        });
+        
+        teamSummary = Object.values(teamStats);
+      }
+
       return res.json({
         commissions,
         payment_schedule: paymentSchedule,
-        missing_periods: suggestions
+        missing_periods: suggestions,
+        team_summary: teamSummary,
+        view_context: {
+          current_view: view || 'personal',
+          is_manager: req.user.role === 'manager',
+          selected_user_id: user_id || null
+        }
       });
     }
 
-    res.json(commissions);
+    // Team member breakdown for non-historical requests (for team/all views)
+    let teamSummary = null;
+    if (req.user.role === 'manager' && (view === 'team' || view === 'all')) {
+      const teamStats = {};
+      commissions.forEach(commission => {
+        const ownerId = commission.user_id;
+        const ownerName = `${commission.user.first_name} ${commission.user.last_name}`;
+        
+        if (!teamStats[ownerId]) {
+          teamStats[ownerId] = {
+            user_id: ownerId,
+            name: ownerName,
+            email: commission.user.email,
+            commission_count: 0,
+            total_commission_earned: 0,
+            total_quota: 0,
+            total_actual: 0,
+            avg_attainment: 0
+          };
+        }
+        
+        teamStats[ownerId].commission_count++;
+        teamStats[ownerId].total_commission_earned += Number(commission.commission_earned);
+        teamStats[ownerId].total_quota += Number(commission.quota_amount);
+        teamStats[ownerId].total_actual += Number(commission.actual_amount);
+      });
+      
+      // Calculate average attainment for each team member
+      Object.values(teamStats).forEach(stats => {
+        if (stats.total_quota > 0) {
+          stats.avg_attainment = (stats.total_actual / stats.total_quota) * 100;
+        }
+      });
+      
+      teamSummary = Object.values(teamStats);
+    }
+
+    res.json({
+      commissions,
+      team_summary: teamSummary,
+      view_context: {
+        current_view: view || 'personal',
+        is_manager: req.user.role === 'manager',
+        selected_user_id: user_id || null
+      }
+    });
   } catch (error) {
     console.error('Get commissions error:', error);
     res.status(500).json({ error: 'Internal server error' });
@@ -329,6 +569,41 @@ router.patch('/:id/approve', async (req, res) => {
     res.json(updatedCommission);
   } catch (error) {
     console.error('Approve commission error:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// Get team members for manager (for individual member filtering)
+router.get('/team-members', async (req, res) => {
+  try {
+    // Only managers can access this endpoint
+    if (req.user.role !== 'manager') {
+      return res.status(403).json({ error: 'Access denied - managers only' });
+    }
+
+    const directReports = await prisma.users.findMany({
+      where: {
+        manager_id: req.user.id,
+        company_id: req.user.company_id,
+        is_active: true
+      },
+      select: {
+        id: true,
+        first_name: true,
+        last_name: true,
+        email: true,
+        role: true
+      },
+      orderBy: { first_name: 'asc' }
+    });
+
+    res.json({
+      team_members: directReports,
+      success: true
+    });
+
+  } catch (error) {
+    console.error('Get commission team members error:', error);
     res.status(500).json({ error: 'Internal server error' });
   }
 });

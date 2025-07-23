@@ -200,16 +200,45 @@ router.post('/', async (req, res) => {
         continue;
       }
 
-      // Deactivate any existing active targets for this user (no conflicts found)
-      await prisma.targets.updateMany({
+      // Only deactivate targets that actually overlap with the new period
+      // This allows historical targets alongside current targets
+      console.log(`Checking for overlapping targets for user ${targetUser.email}`);
+      console.log(`New target period: ${period_start} to ${period_end}`);
+      
+      const overlappingTargets = await prisma.targets.findMany({
         where: {
           user_id: targetUser.id,
-          is_active: true
-        },
-        data: {
-          is_active: false
+          is_active: true,
+          AND: [
+            { period_start: { lte: new Date(period_end) } },
+            { period_end: { gte: new Date(period_start) } }
+          ]
         }
       });
+      
+      console.log(`Found ${overlappingTargets.length} overlapping targets for ${targetUser.email}:`);
+      overlappingTargets.forEach(target => {
+        console.log(`  - Target ${target.id}: ${target.period_start.toISOString().split('T')[0]} to ${target.period_end.toISOString().split('T')[0]}`);
+      });
+      
+      if (overlappingTargets.length > 0) {
+        await prisma.targets.updateMany({
+          where: {
+            user_id: targetUser.id,
+            is_active: true,
+            AND: [
+              { period_start: { lte: new Date(period_end) } },
+              { period_end: { gte: new Date(period_start) } }
+            ]
+          },
+          data: {
+            is_active: false
+          }
+        });
+        console.log(`Deactivated ${overlappingTargets.length} overlapping targets for ${targetUser.email}`);
+      } else {
+        console.log(`No overlapping targets found for ${targetUser.email} - keeping existing targets active`);
+      }
 
       // Calculate pro-rated quota if user was hired mid-period
       let finalQuotaAmount = quota_amount;

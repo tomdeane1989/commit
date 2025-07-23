@@ -132,7 +132,8 @@ router.get('/', async (req, res) => {
         commission_rate: true,
         period_type: true,
         period_start: true,
-        period_end: true
+        period_end: true,
+        team_target: true
       }
     });
 
@@ -225,13 +226,52 @@ router.get('/', async (req, res) => {
       const closedWonDeals = closedWonDealsMap.get(member.id);
       const commitDeals = commitDealsMap.get(member.id);
       const bestCaseDeals = bestCaseDealsMap.get(member.id);
-      const target = targetsMap.get(member.id);
+      // Get target - prioritize team target for managers
+      let target = targetsMap.get(member.id);
+      if (member.role === 'manager') {
+        // Check if this manager has a team target, use it instead of individual target
+        const allManagerTargets = targetsData.filter(t => t.user_id === member.id);
+        const teamTarget = allManagerTargets.find(t => t.team_target);
+        if (teamTarget) {
+          target = teamTarget;
+        }
+      }
       const commissions = commissionsMap.get(member.id);
       
-      const openDealsAmount = openDeals?._sum?.amount ? Number(openDeals._sum.amount) : 0;
-      const closedWonAmount = closedWonDeals?._sum?.amount ? Number(closedWonDeals._sum.amount) : 0;
-      const commitAmount = commitDeals?.amount || 0;
-      const bestCaseAmount = bestCaseDeals?.amount || 0;
+      let openDealsAmount = openDeals?._sum?.amount ? Number(openDeals._sum.amount) : 0;
+      let closedWonAmount = closedWonDeals?._sum?.amount ? Number(closedWonDeals._sum.amount) : 0;
+      let commitAmount = commitDeals?.amount || 0;
+      let bestCaseAmount = bestCaseDeals?.amount || 0;
+      
+      // If this is a manager with a team target, aggregate team performance
+      if (member.role === 'manager' && target?.team_target) {
+        // Get all direct reports for this manager
+        const directReports = teamMembers.filter(tm => tm.manager?.email === member.email);
+        const directReportIds = directReports.map(dr => dr.id);
+        
+        if (directReportIds.length > 0) {
+          // Aggregate team performance data
+          openDealsAmount = directReportIds.reduce((sum, userId) => {
+            const deals = openDealsMap.get(userId);
+            return sum + (deals?._sum?.amount ? Number(deals._sum.amount) : 0);
+          }, 0);
+          
+          closedWonAmount = directReportIds.reduce((sum, userId) => {
+            const deals = closedWonDealsMap.get(userId);
+            return sum + (deals?._sum?.amount ? Number(deals._sum.amount) : 0);
+          }, 0);
+          
+          commitAmount = directReportIds.reduce((sum, userId) => {
+            const deals = commitDealsMap.get(userId);
+            return sum + (deals?.amount || 0);
+          }, 0);
+          
+          bestCaseAmount = directReportIds.reduce((sum, userId) => {
+            const deals = bestCaseDealsMap.get(userId);
+            return sum + (deals?.amount || 0);
+          }, 0);
+        }
+      }
       
       // Total progress = closed + commit + best case (for quota progress bar)
       const quotaProgressAmount = closedWonAmount + commitAmount + bestCaseAmount;
@@ -312,7 +352,8 @@ router.get('/', async (req, res) => {
           commit_count: commitDeals?.count || 0,
           best_case_count: bestCaseDeals?.count || 0,
           quota_attainment: currentQuota > 0 ? (quotaProgressAmount / currentQuota) * 100 : 0,
-          target_period: displayPeriod
+          target_period: displayPeriod,
+          is_team_target: target?.team_target || false // Flag to indicate if this is team aggregated data
         }
       };
     });
@@ -513,6 +554,311 @@ router.patch('/:userId', async (req, res) => {
     });
   } catch (error) {
     console.error('Team update error:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// Get team aggregation data for a manager
+router.get('/manager/:managerId/aggregation', async (req, res) => {
+  try {
+    const { managerId } = req.params;
+    
+    // Only managers can view team aggregations
+    if (!canManageTeam(req.user)) {
+      return res.status(403).json({ error: 'Access denied' });
+    }
+
+    // Verify the manager exists and is in the same company
+    const manager = await prisma.users.findUnique({
+      where: { 
+        id: managerId,
+        company_id: req.user.company_id,
+        role: 'manager'
+      }
+    });
+
+    if (!manager) {
+      return res.status(404).json({ error: 'Manager not found' });
+    }
+
+    // Get all direct reports for this manager
+    const directReports = await prisma.users.findMany({
+      where: {
+        manager_id: managerId,
+        company_id: req.user.company_id,
+        is_active: true
+      },
+      select: {
+        id: true,
+        first_name: true,
+        last_name: true,
+        email: true,
+        role: true
+      }
+    });
+
+    if (directReports.length === 0) {
+      return res.json({
+        targets: [],
+        performance: [],
+        message: 'This manager has no direct reports'
+      });
+    }
+
+    const directReportIds = directReports.map(report => report.id);
+
+    // Get active targets for all direct reports
+    const targets = await prisma.targets.findMany({
+      where: {
+        user_id: { in: directReportIds },
+        is_active: true
+      },
+      include: {
+        user: {
+          select: {
+            first_name: true,
+            last_name: true,
+            email: true
+          }
+        }
+      },
+      orderBy: { period_start: 'desc' }
+    });
+
+    // Calculate performance data for each team member
+    const performanceData = await Promise.all(
+      directReportIds.map(async (userId) => {
+        // Get the user's current active target to determine period
+        const userTarget = targets.find(t => t.user_id === userId);
+        
+        if (!userTarget) {
+          return {
+            user_id: userId,
+            closed_won_amount: 0,
+            commit_amount: 0,
+            best_case_amount: 0,
+            quota_progress_amount: 0
+          };
+        }
+
+        const startDate = userTarget.period_start;
+        const endDate = userTarget.period_end;
+
+        // Get closed deals
+        const closedDeals = await prisma.deals.aggregate({
+          where: {
+            user_id: userId,
+            status: 'closed_won',
+            OR: [
+              {
+                closed_date: {
+                  gte: startDate,
+                  lte: endDate
+                }
+              },
+              {
+                closed_date: null,
+                close_date: {
+                  gte: startDate,
+                  lte: endDate
+                }
+              }
+            ]
+          },
+          _sum: {
+            amount: true
+          }
+        });
+
+        // Get commit deals (categorized deals in pipeline)
+        const commitDeals = await prisma.deals.aggregate({
+          where: {
+            user_id: userId,
+            status: 'open',
+            close_date: {
+              gte: startDate,
+              lte: endDate
+            },
+            deal_categorizations: {
+              some: {
+                category: 'commit'
+              }
+            }
+          },
+          _sum: {
+            amount: true
+          }
+        });
+
+        // Get best case deals
+        const bestCaseDeals = await prisma.deals.aggregate({
+          where: {
+            user_id: userId,
+            status: 'open',
+            close_date: {
+              gte: startDate,
+              lte: endDate
+            },
+            deal_categorizations: {
+              some: {
+                category: 'best_case'
+              }
+            }
+          },
+          _sum: {
+            amount: true
+          }
+        });
+
+        const closedWonAmount = Number(closedDeals._sum.amount || 0);
+        const commitAmount = Number(commitDeals._sum.amount || 0);
+        const bestCaseAmount = Number(bestCaseDeals._sum.amount || 0);
+
+        return {
+          user_id: userId,
+          closed_won_amount: closedWonAmount,
+          commit_amount: commitAmount,
+          best_case_amount: bestCaseAmount,
+          quota_progress_amount: closedWonAmount + commitAmount + bestCaseAmount
+        };
+      })
+    );
+
+    // Log activity
+    await prisma.activity_log.create({
+      data: {
+        user_id: req.user.id,
+        company_id: req.user.company_id,
+        action: 'team_aggregation_viewed',
+        entity_type: 'team_aggregation',
+        entity_id: managerId,
+        context: {
+          manager_email: manager.email,
+          direct_reports_count: directReports.length,
+          targets_count: targets.length
+        },
+        success: true
+      }
+    });
+
+    res.json({
+      targets: targets,
+      performance: performanceData,
+      manager: {
+        id: manager.id,
+        first_name: manager.first_name,
+        last_name: manager.last_name,
+        email: manager.email
+      },
+      direct_reports: directReports,
+      summary: {
+        team_size: directReports.length,
+        active_targets: targets.length,
+        total_quota: targets.reduce((sum, target) => sum + Number(target.quota_amount), 0),
+        total_progress: performanceData.reduce((sum, perf) => sum + perf.quota_progress_amount, 0)
+      }
+    });
+
+  } catch (error) {
+    console.error('Team aggregation error:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// Create team aggregated target
+router.post('/aggregated-target', async (req, res) => {
+  try {
+    // Only managers can create team targets
+    if (!canManageTeam(req.user)) {
+      return res.status(403).json({ error: 'Access denied' });
+    }
+
+    const { manager_id, total_quota, avg_commission_rate, period_start, period_end, period_type } = req.body;
+
+    // Validate required fields
+    if (!manager_id || !total_quota || !avg_commission_rate || !period_start || !period_end || !period_type) {
+      return res.status(400).json({ error: 'Missing required fields' });
+    }
+
+    // Verify the manager exists and is in the same company
+    const manager = await prisma.users.findUnique({
+      where: { 
+        id: manager_id,
+        company_id: req.user.company_id,
+        role: 'manager'
+      }
+    });
+
+    if (!manager) {
+      return res.status(404).json({ error: 'Manager not found' });
+    }
+
+    // Check if a team target already exists for this manager and period
+    const existingTarget = await prisma.targets.findFirst({
+      where: {
+        user_id: manager_id,
+        is_active: true,
+        period_start: new Date(period_start),
+        period_end: new Date(period_end),
+        team_target: true // Flag to indicate this is a team target
+      }
+    });
+
+    if (existingTarget) {
+      return res.status(400).json({ error: 'Team target already exists for this period' });
+    }
+
+    // Create the team target
+    const teamTarget = await prisma.targets.create({
+      data: {
+        user_id: manager_id,
+        company_id: req.user.company_id,
+        quota_amount: Number(total_quota),
+        commission_rate: Number(avg_commission_rate),
+        period_start: new Date(period_start),
+        period_end: new Date(period_end),
+        period_type: period_type,
+        is_active: true,
+        team_target: true, // Flag to indicate this is a team target
+        role: null // Individual target for the manager
+      },
+      include: {
+        user: {
+          select: {
+            first_name: true,
+            last_name: true,
+            email: true
+          }
+        }
+      }
+    });
+
+    // Log the creation
+    await prisma.activity_log.create({
+      data: {
+        user_id: req.user.id,
+        company_id: req.user.company_id,
+        action: 'team_target_created',
+        entity_type: 'target',
+        entity_id: teamTarget.id,
+        context: {
+          manager_email: manager.email,
+          total_quota: Number(total_quota),
+          avg_commission_rate: Number(avg_commission_rate),
+          period: { period_start, period_end, period_type },
+          created_by: req.user.email
+        },
+        success: true
+      }
+    });
+
+    res.status(201).json({
+      target: teamTarget,
+      message: 'Team target created successfully'
+    });
+
+  } catch (error) {
+    console.error('Create team target error:', error);
     res.status(500).json({ error: 'Internal server error' });
   }
 });

@@ -288,19 +288,59 @@ async function syncGoogleSheets(integration, user) {
       integration.sheet_name
     );
 
-    const columnMapping = integration.column_mapping;
+    let columnMapping = integration.column_mapping;
+    
+    // MIGRATION LOGIC: Handle existing integrations without Deal ID
+    const hasNewDealIdColumn = sheetData.headers[0] === 'Deal ID';
+    const hasDealIdMapping = columnMapping.deal_id;
+    
+    if (hasNewDealIdColumn && !hasDealIdMapping) {
+      // User added Deal ID column but integration wasn't updated
+      console.log('🔄 MIGRATION: Detected new Deal ID column, updating column mapping...');
+      
+      // Auto-migrate existing column mapping by shifting positions
+      const newColumnMapping = {
+        deal_id: 'Deal ID', // Map to new first column
+        ...columnMapping    // Existing mappings remain the same (columns shifted right)
+      };
+      
+      // Update integration with new mapping
+      await prisma.crm_integrations.update({
+        where: { id: integration.id },
+        data: { column_mapping: newColumnMapping }
+      });
+      
+      columnMapping = newColumnMapping;
+      console.log('✅ MIGRATION: Column mapping updated automatically');
+    }
+    
+    // Handle deals without Deal ID (legacy row-based crm_id)
+    const useLegacyMatching = !hasNewDealIdColumn || !hasDealIdMapping;
     const deals = [];
     const errors = [];
 
     // Transform each row to a deal
     for (const row of sheetData.data) {
       try {
-        const deal = await sheetsService.transformRowToDeal(
-          row, 
-          columnMapping, 
-          user.company_id, 
-          user.id
-        );
+        let deal;
+        
+        if (useLegacyMatching) {
+          // Legacy mode: use row number for crm_id (backward compatibility)
+          deal = await sheetsService.transformRowToDealLegacy(
+            row, 
+            columnMapping, 
+            user.company_id, 
+            user.id
+          );
+        } else {
+          // New mode: use Deal ID for crm_id
+          deal = await sheetsService.transformRowToDeal(
+            row, 
+            columnMapping, 
+            user.company_id, 
+            user.id
+          );
+        }
         
         // If deal has an owner email, look up the user
         if (deal._owner_email) {

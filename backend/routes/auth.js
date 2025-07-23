@@ -66,7 +66,7 @@ router.post('/register', async (req, res) => {
     // Hash password
     const passwordHash = await bcrypt.hash(password, 10);
 
-    // Create user
+    // Create user - First user in company gets manager role with admin privileges
     const user = await prisma.users.create({
       data: {
         email,
@@ -74,7 +74,9 @@ router.post('/register', async (req, res) => {
         first_name,
         last_name,
         company_id: company.id,
-        role: 'admin' // First user is admin
+        role: 'manager',  // Manager role for team/integrations access
+        is_admin: true,   // Admin privileges for full control
+        is_active: true
       }
     });
 
@@ -84,6 +86,7 @@ router.post('/register', async (req, res) => {
         id: user.id, 
         email: user.email,
         role: user.role,
+        is_admin: user.is_admin,
         company_id: user.company_id
       }, 
       process.env.JWT_SECRET, 
@@ -100,6 +103,7 @@ router.post('/register', async (req, res) => {
         first_name: user.first_name,
         last_name: user.last_name,
         role: user.role,
+        is_admin: user.is_admin,
         company_id: user.company_id
       }
     });
@@ -144,6 +148,7 @@ router.post('/login', async (req, res) => {
         id: user.id, 
         email: user.email,
         role: user.role,
+        is_admin: user.is_admin,
         company_id: user.company_id
       }, 
       process.env.JWT_SECRET, 
@@ -160,6 +165,7 @@ router.post('/login', async (req, res) => {
         first_name: user.first_name,
         last_name: user.last_name,
         role: user.role,
+        is_admin: user.is_admin,
         company_id: user.company_id,
         company_name: user.company.name
       }
@@ -198,6 +204,7 @@ router.get('/me', async (req, res) => {
         first_name: user.first_name,
         last_name: user.last_name,
         role: user.role,
+        is_admin: user.is_admin,
         company_id: user.company_id,
         company_name: user.company.name
       }
