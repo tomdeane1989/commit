@@ -32,9 +32,6 @@ import {
 
 const SettingsPage = () => {
   const { user, loading } = useAuth();
-  if (loading || !user) {
-  return null; // or optionally return a spinner/loading component
-}
   const [activeTab, setActiveTab] = useState('targets');
   const [showAddTarget, setShowAddTarget] = useState(false);
   const [editingTarget, setEditingTarget] = useState<any>(null);
@@ -70,6 +67,11 @@ const SettingsPage = () => {
   });
 
   const integrations = integrationsData?.integrations || [];
+
+  // Loading and authentication check
+  if (loading || !user) {
+    return null; // or optionally return a spinner/loading component
+  }
 
   // Helper function to get integration icons
   const getIntegrationIcon = (crmType: string) => {

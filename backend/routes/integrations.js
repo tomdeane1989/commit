@@ -526,4 +526,45 @@ router.delete('/:id', async (req, res) => {
   }
 });
 
+// GET /api/integrations/template/:type - Download template file
+router.get('/template/:type', async (req, res) => {
+  try {
+    const { type } = req.params;
+    const { format } = req.query;
+
+    if (type !== 'sheets') {
+      return res.status(400).json({
+        success: false,
+        error: 'Template only available for Google Sheets'
+      });
+    }
+
+    // CSV template data
+    const csvData = [
+      'Deal ID,Deal Name,Account Name,Amount,Probability,Status,Stage,Close Date,Created Date,Owned By',
+      'DEAL-2025-001,Enterprise Software License,TechCorp Industries,45000,75,Open,Proposal Submitted,2025-08-15,2025-06-01,john.smith@company.com',
+      'DEAL-2025-002,Annual Support Contract,DataFlow Solutions,28000,90,Open,Contract Review,2025-07-30,2025-05-15,sarah.jones@company.com',
+      'DEAL-2025-003,Cloud Migration Services,RetailPlus Ltd,67000,100,Closed Won,Closed Won,2025-07-12,2025-04-20,test@company.com'
+    ].join('\n');
+
+    if (format === 'csv') {
+      res.setHeader('Content-Type', 'text/csv');
+      res.setHeader('Content-Disposition', 'attachment; filename="sales-pipeline-template.csv"');
+      res.send(csvData);
+    } else {
+      res.json({
+        success: true,
+        template: csvData,
+        filename: 'sales-pipeline-template.csv'
+      });
+    }
+  } catch (error) {
+    console.error('Template download error:', error);
+    res.status(500).json({
+      success: false,
+      error: 'Failed to generate template'
+    });
+  }
+});
+
 export default router;
