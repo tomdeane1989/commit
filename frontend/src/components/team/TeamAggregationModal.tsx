@@ -79,9 +79,13 @@ const TeamAggregationModal: React.FC<TeamAggregationModalProps> = ({
       queryClient.invalidateQueries({ queryKey: ['team'] });
       setSaving(false);
     },
-    onError: (error) => {
+    onError: (error: any) => {
       console.error('Failed to save team target:', error);
+      console.error('Error response:', error.response?.data);
+      console.error('Error status:', error.response?.status);
       setSaving(false);
+      // Show user-friendly error message
+      alert(`Failed to save team target: ${error.response?.data?.error || error.message}`);
     }
   });
 
@@ -107,6 +111,11 @@ const TeamAggregationModal: React.FC<TeamAggregationModalProps> = ({
       period_end: firstTarget.period_end,
       period_type: firstTarget.period_type
     };
+
+    console.log('Creating team target with data:', targetData);
+    console.log('Manager object:', manager);
+    console.log('First target object:', firstTarget);
+    console.log('Aggregated data:', aggregatedData);
 
     saveTeamTargetMutation.mutate(targetData);
   };

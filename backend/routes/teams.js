@@ -789,9 +789,23 @@ router.post('/aggregated-target', async (req, res) => {
 
     const { manager_id, total_quota, avg_commission_rate, period_start, period_end, period_type } = req.body;
 
-    // Validate required fields
-    if (!manager_id || !total_quota || !avg_commission_rate || !period_start || !period_end || !period_type) {
-      return res.status(400).json({ error: 'Missing required fields' });
+    // Validate required fields with specific error messages
+    const missingFields = [];
+    if (!manager_id) missingFields.push('manager_id');
+    if (!total_quota) missingFields.push('total_quota');
+    if (!avg_commission_rate) missingFields.push('avg_commission_rate');
+    if (!period_start) missingFields.push('period_start');
+    if (!period_end) missingFields.push('period_end');
+    if (!period_type) missingFields.push('period_type');
+    
+    if (missingFields.length > 0) {
+      console.log('Missing required fields:', missingFields);
+      console.log('Request body received:', req.body);
+      return res.status(400).json({ 
+        error: 'Missing required fields', 
+        missing_fields: missingFields,
+        received_data: req.body
+      });
     }
 
     // Verify the manager exists and is in the same company
@@ -804,7 +818,15 @@ router.post('/aggregated-target', async (req, res) => {
     });
 
     if (!manager) {
-      return res.status(404).json({ error: 'Manager not found' });
+      console.log('Manager not found:', { 
+        manager_id, 
+        company_id: req.user.company_id,
+        requesting_user: req.user.email 
+      });
+      return res.status(400).json({ 
+        error: 'Manager not found or invalid',
+        details: `Manager ${manager_id} not found in company ${req.user.company_id}`
+      });
     }
 
     // Check if a team target already exists for this manager and period
