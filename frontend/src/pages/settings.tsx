@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import Layout from '../components/layout';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { useAuth } from '../hooks/useAuth';
 import api from '../lib/api';
 import { 
   Target, 
@@ -19,6 +20,10 @@ import {
 } from 'lucide-react';
 
 const SettingsPage = () => {
+  const { user, loading } = useAuth();
+  if (loading || !user) {
+  return null; // or optionally return a spinner/loading component
+}
   const [activeTab, setActiveTab] = useState('targets');
   const [showAddTarget, setShowAddTarget] = useState(false);
   const [editingTarget, setEditingTarget] = useState<any>(null);
@@ -37,7 +42,8 @@ const SettingsPage = () => {
     queryFn: async () => {
       const response = await api.get('/targets');
       return response.data;
-    }
+    },
+    enabled: !!user // Only run query when user is available
   });
 
   const createTargetMutation = useMutation({
