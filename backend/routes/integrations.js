@@ -40,9 +40,9 @@ router.get('/', async (req, res) => {
       ...integration,
       status: integration.is_active ? 'active' : 'inactive',
       summary: {
-        total_deals: integration.total_deals_synced,
+        total_deals: integration.total_deals_synced || 0,
         last_sync: integration.last_sync,
-        last_sync_count: integration.last_sync_deals_count,
+        last_sync_count: integration.last_sync_deals_count || 0,
         has_errors: integration.sync_errors ? Object.keys(integration.sync_errors).length > 0 : false
       }
     }));
