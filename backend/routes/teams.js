@@ -64,131 +64,142 @@ router.get('/', async (req, res) => {
     // Get aggregated data for all team members in batch queries
     const teamMemberIds = teamMembers.map(member => member.id);
     
-    // Batch query for open deals - filter by expected close date within the period
-    const openDealsData = await prisma.deals.groupBy({
-      by: ['user_id'],
-      where: {
-        user_id: { in: teamMemberIds },
-        status: 'open',
-        close_date: {
-          gte: startDate,
-          lte: endDate
+    // Initialize empty data arrays for when there are no team members
+    let openDealsData = [];
+    let closedWonDealsData = [];
+    let commitDealsData = [];
+    let bestCaseDealsData = [];
+    let targetsData = [];
+    let commissionsData = [];
+    
+    // Only run queries if there are team members
+    if (teamMemberIds.length > 0) {
+      // Batch query for open deals - filter by expected close date within the period
+      openDealsData = await prisma.deals.groupBy({
+        by: ['user_id'],
+        where: {
+          user_id: { in: teamMemberIds },
+          status: 'open',
+          close_date: {
+            gte: startDate,
+            lte: endDate
+          }
+        },
+        _sum: {
+          amount: true
+        },
+        _count: {
+          id: true
         }
-      },
-      _sum: {
-        amount: true
-      },
-      _count: {
-        id: true
-      }
-    });
+      });
 
-    // Batch query for closed won deals - include all closed_won deals for the selected period
-    const closedWonDealsData = await prisma.deals.groupBy({
-      by: ['user_id'],
-      where: {
-        user_id: { in: teamMemberIds },
-        status: 'closed_won',
-        OR: [
-          {
-            // Use actual closed_date if available
-            closed_date: {
-              gte: startDate,
-              lte: endDate
+      // Batch query for closed won deals - include all closed_won deals for the selected period
+      closedWonDealsData = await prisma.deals.groupBy({
+        by: ['user_id'],
+        where: {
+          user_id: { in: teamMemberIds },
+          status: 'closed_won',
+          OR: [
+            {
+              // Use actual closed_date if available
+              closed_date: {
+                gte: startDate,
+                lte: endDate
+              }
+            },
+            {
+              // If no closed_date, use close_date (expected close date) as fallback
+              closed_date: null,
+              close_date: {
+                gte: startDate,
+                lte: endDate
+              }
             }
+          ]
+        },
+        _sum: {
+          amount: true
+        },
+        _count: {
+          id: true
+        }
+      });
+
+      // Batch query for active targets with period information
+      // Filter targets that overlap with the selected period
+      targetsData = await prisma.targets.findMany({
+        where: {
+          user_id: { in: teamMemberIds },
+          is_active: true,
+          AND: [
+            { period_start: { lte: endDate } },
+            { period_end: { gte: startDate } }
+          ]
+        },
+        select: {
+          user_id: true,
+          quota_amount: true,
+          commission_rate: true,
+          period_type: true,
+          period_start: true,
+          period_end: true,
+          team_target: true
+        }
+      });
+
+      // Batch query for commit deals (categorized as commit by reps)
+      commitDealsData = await prisma.deals.findMany({
+        where: {
+          user_id: { in: teamMemberIds },
+          status: 'open',
+          close_date: {
+            gte: startDate,
+            lte: endDate
           },
-          {
-            // If no closed_date, use close_date (expected close date) as fallback
-            closed_date: null,
-            close_date: {
-              gte: startDate,
-              lte: endDate
+          deal_categorizations: {
+            some: {
+              category: 'commit'
             }
           }
-        ]
-      },
-      _sum: {
-        amount: true
-      },
-      _count: {
-        id: true
-      }
-    });
-
-    // Batch query for active targets with period information
-    // Filter targets that overlap with the selected period
-    const targetsData = await prisma.targets.findMany({
-      where: {
-        user_id: { in: teamMemberIds },
-        is_active: true,
-        AND: [
-          { period_start: { lte: endDate } },
-          { period_end: { gte: startDate } }
-        ]
-      },
-      select: {
-        user_id: true,
-        quota_amount: true,
-        commission_rate: true,
-        period_type: true,
-        period_start: true,
-        period_end: true,
-        team_target: true
-      }
-    });
-
-    // Batch query for commit deals (categorized as commit by reps)
-    const commitDealsData = await prisma.deals.findMany({
-      where: {
-        user_id: { in: teamMemberIds },
-        status: 'open',
-        close_date: {
-          gte: startDate,
-          lte: endDate
         },
-        deal_categorizations: {
-          some: {
-            category: 'commit'
-          }
+        select: {
+          user_id: true,
+          amount: true
         }
-      },
-      select: {
-        user_id: true,
-        amount: true
-      }
-    });
+      });
 
-    // Batch query for best case deals (categorized as best_case by reps)
-    const bestCaseDealsData = await prisma.deals.findMany({
-      where: {
-        user_id: { in: teamMemberIds },
-        status: 'open',
-        close_date: {
-          gte: startDate,
-          lte: endDate
+      // Batch query for best case deals (categorized as best_case by reps)
+      bestCaseDealsData = await prisma.deals.findMany({
+        where: {
+          user_id: { in: teamMemberIds },
+          status: 'open',
+          close_date: {
+            gte: startDate,
+            lte: endDate
+          },
+          deal_categorizations: {
+            some: {
+              category: 'best_case'
+            }
+          }
         },
-        deal_categorizations: {
-          some: {
-            category: 'best_case'
-          }
+        select: {
+          user_id: true,
+          amount: true
         }
-      },
-      select: {
-        user_id: true,
-        amount: true
-      }
-    });
+      });
 
-    // Batch query for commissions
-    const commissionsData = await prisma.commissions.groupBy({
-      by: ['user_id'],
-      where: {
-        user_id: { in: teamMemberIds }
-      },
-      _sum: {
-        commission_earned: true
-      }
-    });
+      // Batch query for commissions
+      commissionsData = await prisma.commissions.groupBy({
+        by: ['user_id'],
+        where: {
+          user_id: { in: teamMemberIds }
+        },
+        _sum: {
+          commission_earned: true
+        }
+      });
+    }
 
     // Create lookup maps for O(1) access
     const openDealsMap = new Map(openDealsData.map(d => [d.user_id, d]));
