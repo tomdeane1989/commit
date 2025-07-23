@@ -3,7 +3,7 @@
   "version": "1.0.0",
   "type": "module",
   "scripts": {
-    "start": "node server-working.js",
+    "start": "npx prisma migrate deploy && node server-working.js",
     "dev": "nodemon server-working.js",
     "migrate": "prisma migrate dev",
     "generate": "prisma generate",
