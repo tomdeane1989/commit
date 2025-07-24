@@ -220,42 +220,82 @@ app.patch('/api/deals/:dealId/categorize', authMiddleware, async (req, res) => {
     const { dealId } = req.params;
     const { deal_type, previous_category, categorization_timestamp, user_context } = req.body;
 
-    // Validate that user owns this deal
-    const deal = await prisma.deals.findFirst({
-      where: { 
-        id: dealId,
-        user_id: req.user.id 
-      }
-    });
-
-    if (!deal) {
-      return res.status(404).json({ error: 'Deal not found' });
+    // Validate that user owns this deal OR is a manager who can access team deals
+    let deal;
+    
+    if (req.user.role === 'manager') {
+      // Managers can categorize deals for their team members (same company)
+      deal = await prisma.deals.findFirst({
+        where: { 
+          id: dealId,
+          user: {
+            company_id: req.user.company_id // Must be same company
+          }
+        },
+        include: {
+          user: {
+            select: {
+              id: true,
+              first_name: true,
+              last_name: true,
+              company_id: true
+            }
+          }
+        }
+      });
+    } else {
+      // Regular users can only categorize their own deals
+      deal = await prisma.deals.findFirst({
+        where: { 
+          id: dealId,
+          user_id: req.user.id 
+        },
+        include: {
+          user: {
+            select: {
+              id: true,
+              first_name: true,
+              last_name: true,
+              company_id: true
+            }
+          }
+        }
+      });
     }
 
+    if (!deal) {
+      return res.status(404).json({ error: 'Deal not found or access denied' });
+    }
+
+    // Use the deal owner's user ID for categorizations (affects their forecasting)
+    const dealOwnerId = deal.user.id;
+    
     // If moving to pipeline, remove any existing categorization
     if (deal_type === 'pipeline') {
       await prisma.deal_categorizations.deleteMany({
         where: { 
           deal_id: dealId,
-          user_id: req.user.id 
+          user_id: dealOwnerId 
         }
       });
     } else {
-      // Remove any existing categorization for this deal by this user
+      // Remove any existing categorization for this deal by the deal owner
       await prisma.deal_categorizations.deleteMany({
         where: { 
           deal_id: dealId,
-          user_id: req.user.id 
+          user_id: dealOwnerId 
         }
       });
 
-      // Create new categorization
+      // Create new categorization for the deal owner
       await prisma.deal_categorizations.create({
         data: {
           deal_id: dealId,
-          user_id: req.user.id,
+          user_id: dealOwnerId,
           category: deal_type,
-          confidence_note: `Categorized via ${user_context?.categorization_method || 'manual'}`
+          confidence_note: `Categorized via ${user_context?.categorization_method || 'manual'}${
+            req.user.id !== dealOwnerId ? ` by manager ${req.user.first_name} ${req.user.last_name}` : ''
+          }`
         }
       });
     }

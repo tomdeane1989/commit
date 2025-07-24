@@ -377,36 +377,63 @@ async function syncGoogleSheets(integration, user) {
 
     for (const deal of deals) {
       try {
-        // Check if deal already exists by CRM ID
-        const existingDeal = await prisma.deals.findFirst({
+        // Use upsert for atomic create-or-update based on unique constraint
+        const result = await prisma.deals.upsert({
           where: {
-            crm_id: deal.crm_id,
-            company_id: user.company_id
-          }
+            unique_crm_deal_per_company: {
+              crm_id: deal.crm_id,
+              company_id: deal.company_id
+            }
+          },
+          update: {
+            ...deal,
+            updated_at: new Date()
+          },
+          create: deal
         });
 
+        // Determine if this was a create or update operation
+        const existingDeal = await prisma.deals.findFirst({
+          where: {
+            id: result.id,
+            created_at: { lt: new Date(Date.now() - 1000) } // Created more than 1 second ago
+          }
+        });
+        
         if (existingDeal) {
-          // Update existing deal
-          await prisma.deals.update({
-            where: { id: existingDeal.id },
-            data: {
-              ...deal,
-              updated_at: new Date()
-            }
-          });
           updatedCount++;
         } else {
-          // Create new deal
-          await prisma.deals.create({
-            data: deal
-          });
           createdCount++;
         }
       } catch (error) {
-        dealErrors.push({
-          deal: deal.deal_name,
-          error: error.message
-        });
+        // Handle unique constraint violations gracefully
+        if (error.code === 'P2002' && error.meta?.target?.includes('crm_id')) {
+          console.log(`Skipping duplicate deal: ${deal.deal_name} (CRM ID: ${deal.crm_id})`);
+          // Try to update instead
+          try {
+            await prisma.deals.updateMany({
+              where: {
+                crm_id: deal.crm_id,
+                company_id: deal.company_id
+              },
+              data: {
+                ...deal,
+                updated_at: new Date()
+              }
+            });
+            updatedCount++;
+          } catch (updateError) {
+            dealErrors.push({
+              deal: deal.deal_name,
+              error: `Duplicate prevention: ${updateError.message}`
+            });
+          }
+        } else {
+          dealErrors.push({
+            deal: deal.deal_name,
+            error: error.message
+          });
+        }
       }
     }
 

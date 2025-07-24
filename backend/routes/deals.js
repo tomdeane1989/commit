@@ -423,42 +423,70 @@ router.patch('/:dealId/categorize', async (req, res) => {
     const { dealId } = req.params;
     const { deal_type, previous_category, categorization_timestamp, user_context } = req.body;
 
-    // Validate that user owns this deal
-    const deal = await prisma.deals.findFirst({
-      where: { 
-        id: dealId,
-        user_id: req.user.id 
-      }
-    });
+    // Validate that user owns this deal OR is a manager who can access team deals
+    let deal;
+    
+    if (req.user.role === 'manager') {
+      // Managers can categorize deals for their team members (same company)
+      deal = await prisma.deals.findFirst({
+        where: { 
+          id: dealId,
+          user: {
+            company_id: req.user.company_id // Must be same company
+          }
+        },
+        include: {
+          user: {
+            select: { id: true, first_name: true, last_name: true, email: true }
+          }
+        }
+      });
+    } else {
+      // Regular users can only categorize their own deals
+      deal = await prisma.deals.findFirst({
+        where: { 
+          id: dealId,
+          user_id: req.user.id 
+        },
+        include: {
+          user: {
+            select: { id: true, first_name: true, last_name: true, email: true }
+          }
+        }
+      });
+    }
 
     if (!deal) {
       return res.status(404).json({ error: 'Deal not found' });
     }
 
+    // Use the deal owner's ID for categorization (could be different from req.user.id if manager is categorizing)
+    const dealOwnerId = deal.user ? deal.user.id : deal.user_id;
+    
     // If moving to pipeline, remove any existing categorization
     if (deal_type === 'pipeline') {
       await prisma.deal_categorizations.deleteMany({
         where: { 
           deal_id: dealId,
-          user_id: req.user.id 
+          user_id: dealOwnerId 
         }
       });
     } else {
-      // Remove any existing categorization for this deal by this user
+      // Remove any existing categorization for this deal by the deal owner
       await prisma.deal_categorizations.deleteMany({
         where: { 
           deal_id: dealId,
-          user_id: req.user.id 
+          user_id: dealOwnerId 
         }
       });
 
-      // Create new categorization
+      // Create new categorization (attributed to deal owner, but action logged by current user)
       await prisma.deal_categorizations.create({
         data: {
           deal_id: dealId,
-          user_id: req.user.id,
+          user_id: dealOwnerId,
           category: deal_type,
-          confidence_note: `Categorized via ${user_context?.categorization_method || 'manual'}`
+          confidence_note: `Categorized via ${user_context?.categorization_method || 'manual'}${req.user.id !== dealOwnerId ? ` by manager ${req.user.email}` : ''}`
         }
       });
     }
@@ -482,11 +510,30 @@ router.patch('/:dealId/categorize', async (req, res) => {
       }
     });
 
+    // Check if this is a manager categorizing someone else's deal
+    const isManagerAction = req.user.id !== dealOwnerId;
+    const dealOwnerInfo = deal.user ? {
+      id: deal.user.id,
+      first_name: deal.user.first_name,
+      last_name: deal.user.last_name,
+      email: deal.user.email
+    } : null;
+
     res.json({ 
       id: dealId,
       current_category: deal_type,
       previous_category,
-      message: 'Deal categorization updated successfully'
+      message: isManagerAction 
+        ? `Deal categorization updated successfully by manager for ${dealOwnerInfo?.first_name} ${dealOwnerInfo?.last_name}`
+        : 'Deal categorization updated successfully',
+      manager_action: isManagerAction,
+      deal_owner: dealOwnerInfo,
+      categorized_by: {
+        id: req.user.id,
+        first_name: req.user.first_name,
+        last_name: req.user.last_name,
+        email: req.user.email
+      }
     });
   } catch (error) {
     console.error('Update deal categorization error:', error);
