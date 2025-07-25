@@ -24,6 +24,92 @@ const app = express();
 const PORT = process.env.PORT || 3002;
 const prisma = new PrismaClient();
 
+// Helper function to calculate deal behavior analytics
+function calculateDealAnalytics(allCategorizations, closedDeals) {
+  // Group categorizations by deal
+  const dealCategorizationMap = new Map();
+  
+  allCategorizations.forEach(cat => {
+    const dealId = cat.deal.id;
+    if (!dealCategorizationMap.has(dealId)) {
+      dealCategorizationMap.set(dealId, {
+        deal: cat.deal,
+        categorizations: []
+      });
+    }
+    dealCategorizationMap.get(dealId).categorizations.push({
+      category: cat.category,
+      timestamp: cat.created_at
+    });
+  });
+
+  // Analyze commit deals
+  const commitAnalysis = analyzeCategory(dealCategorizationMap, closedDeals, 'commit');
+  
+  // Analyze best case deals  
+  const bestCaseAnalysis = analyzeCategory(dealCategorizationMap, closedDeals, 'best_case');
+  
+  // Calculate sandbagging percentage
+  const closedDealIds = new Set(closedDeals.map(deal => deal.id));
+  const sandbagged = closedDeals.filter(deal => {
+    const dealCats = dealCategorizationMap.get(deal.id);
+    if (!dealCats) return true; // No categorizations = sandbagged
+    
+    // Check if deal ever had commit or best_case categorization
+    const hasCommitOrBestCase = dealCats.categorizations.some(cat => 
+      cat.category === 'commit' || cat.category === 'best_case'
+    );
+    return !hasCommitOrBestCase;
+  });
+  
+  const sandbaggingRate = closedDeals.length > 0 ? (sandbagged.length / closedDeals.length) * 100 : 0;
+
+  return {
+    commit: commitAnalysis,
+    best_case: bestCaseAnalysis,
+    sandbagging: {
+      percentage: sandbaggingRate,
+      sandbagged_deals: sandbagged.length,
+      total_closed_deals: closedDeals.length
+    }
+  };
+}
+
+// Helper function to analyze a specific category (commit or best_case)
+function analyzeCategory(dealCategorizationMap, closedDeals, category) {
+  const closedDealIds = new Set(closedDeals.map(deal => deal.id));
+  
+  // Find all deals that were ever categorized as this category
+  const categoryDeals = [];
+  const categoryAttempts = [];
+  
+  dealCategorizationMap.forEach((dealData, dealId) => {
+    const hasCategory = dealData.categorizations.some(cat => cat.category === category);
+    if (hasCategory) {
+      categoryDeals.push(dealData.deal);
+      
+      // Count how many times this deal was moved to this category
+      const attempts = dealData.categorizations.filter(cat => cat.category === category).length;
+      categoryAttempts.push(attempts);
+    }
+  });
+  
+  // Calculate close rate for this category
+  const closedFromCategory = categoryDeals.filter(deal => closedDealIds.has(deal.id));
+  const closeRate = categoryDeals.length > 0 ? (closedFromCategory.length / categoryDeals.length) * 100 : 0;
+  
+  // Calculate average attempts
+  const avgAttempts = categoryAttempts.length > 0 ? 
+    categoryAttempts.reduce((sum, attempts) => sum + attempts, 0) / categoryAttempts.length : 0;
+  
+  return {
+    close_rate: closeRate,
+    total_deals: categoryDeals.length,
+    closed_deals: closedFromCategory.length,
+    average_attempts: avgAttempts
+  };
+}
+
 // Security middleware
 app.use(helmet());
 const allowedOrigins = [
@@ -118,22 +204,64 @@ app.use('/api/integrations', authMiddleware, integrationsRoutes);
 
 // Dashboard routes
 app.get('/api/dashboard/sales-rep', authMiddleware, async (req, res) => {
+  const { view, user_id } = req.query;
   try {
     console.log('Dashboard API: req.user.id =', req.user.id);
     console.log('Dashboard API: req.user.email =', req.user.email);
+    console.log('Dashboard API: view =', view, 'user_id =', user_id);
     
-    // Get current target
+    // Determine which user(s) to get data for
+    let targetUserIds = [req.user.id];
+    let targetUserId = req.user.id;
+    
+    if (req.user.role === 'manager' && view) {
+      if (view === 'member' && user_id) {
+        // Individual team member view
+        targetUserIds = [user_id];
+        targetUserId = user_id;
+      } else if (view === 'team') {
+        // Get all team members (excluding manager)
+        const teamMembers = await prisma.users.findMany({
+          where: {
+            company_id: req.user.company_id,
+            is_active: true,
+            role: 'sales_rep'
+          },
+          select: { id: true }
+        });
+        targetUserIds = teamMembers.map(member => member.id);
+        targetUserId = targetUserIds[0] || req.user.id; // Fallback for targets query
+      } else if (view === 'all') {
+        // Manager + all team members
+        const teamMembers = await prisma.users.findMany({
+          where: {
+            company_id: req.user.company_id,
+            is_active: true,
+            role: 'sales_rep'
+          },
+          select: { id: true }
+        });
+        targetUserIds = [req.user.id, ...teamMembers.map(member => member.id)];
+      }
+      // 'personal' view uses default (req.user.id)
+    }
+    
+    console.log('Dashboard API: targetUserIds =', targetUserIds);
+    
+    // Get current target (use first target user for single target scenarios)
     const currentTarget = await prisma.targets.findFirst({
       where: { 
-        user_id: req.user.id,
+        user_id: targetUserId,
         is_active: true 
       }
     });
     console.log('Dashboard API: currentTarget =', currentTarget);
 
-    // Get deals with categorizations
+    // Get deals with categorizations for target users
     const deals = await prisma.deals.findMany({
-      where: { user_id: req.user.id },
+      where: { 
+        user_id: { in: targetUserIds }
+      },
       include: {
         deal_categorizations: {
           orderBy: { created_at: 'desc' },
@@ -142,7 +270,7 @@ app.get('/api/dashboard/sales-rep', authMiddleware, async (req, res) => {
       },
       orderBy: { created_at: 'desc' }
     });
-    console.log('Dashboard API: Found', deals.length, 'deals');
+    console.log('Dashboard API: Found', deals.length, 'deals for users:', targetUserIds);
 
     // Categorize deals
     const categorizedDeals = {
@@ -152,7 +280,10 @@ app.get('/api/dashboard/sales-rep', authMiddleware, async (req, res) => {
       pipeline: []
     };
 
-    deals.forEach(deal => {
+    console.log('Dashboard API: Starting deal categorization loop...');
+    deals.forEach((deal, index) => {
+      console.log(`Dashboard API: Processing deal ${index + 1}/${deals.length}:`, deal.id);
+      
       const dealWithType = {
         ...deal,
         amount: Number(deal.amount)
@@ -160,8 +291,10 @@ app.get('/api/dashboard/sales-rep', authMiddleware, async (req, res) => {
 
       if (deal.status === 'closed_won') {
         categorizedDeals.closed.push(dealWithType);
+        console.log(`Dashboard API: Deal ${deal.id} -> closed`);
       } else if (deal.deal_categorizations.length > 0) {
         const category = deal.deal_categorizations[0].category;
+        console.log(`Dashboard API: Deal ${deal.id} has categorization:`, category);
         if (category === 'commit') {
           categorizedDeals.commit.push(dealWithType);
         } else if (category === 'best_case') {
@@ -171,25 +304,75 @@ app.get('/api/dashboard/sales-rep', authMiddleware, async (req, res) => {
         }
       } else {
         categorizedDeals.pipeline.push(dealWithType);
+        console.log(`Dashboard API: Deal ${deal.id} -> pipeline (no categorization)`);
       }
+    });
+    
+    console.log('Dashboard API: Deal categorization completed');
+    console.log('Dashboard API: Categorization summary:', {
+      closed: categorizedDeals.closed.length,
+      commit: categorizedDeals.commit.length,
+      best_case: categorizedDeals.best_case.length,
+      pipeline: categorizedDeals.pipeline.length
     });
 
     // Calculate amounts
+    console.log('Dashboard API: Starting calculations...');
     const closedAmount = categorizedDeals.closed.reduce((sum, deal) => sum + deal.amount, 0);
     const commitAmount = categorizedDeals.commit.reduce((sum, deal) => sum + deal.amount, 0);
     const bestCaseAmount = categorizedDeals.best_case.reduce((sum, deal) => sum + deal.amount, 0);
     const totalQuota = currentTarget ? Number(currentTarget.quota_amount) : 0;
     
+    console.log('Dashboard API: Amounts calculated:', { closedAmount, commitAmount, bestCaseAmount, totalQuota });
+    
     const quotaAttainment = totalQuota > 0 ? (closedAmount / totalQuota) * 100 : 0;
     const projectedCommission = currentTarget ? (closedAmount + commitAmount) * Number(currentTarget.commission_rate) : 0;
 
-    // Get commission earned
+    console.log('Dashboard API: Getting commission earned...');
+    // Get commission earned for target users
     const commissionEarned = await prisma.commissions.aggregate({
-      where: { user_id: req.user.id },
+      where: { 
+        user_id: { in: targetUserIds }
+      },
       _sum: { commission_earned: true }
     });
+    console.log('Dashboard API: Commission earned retrieved:', commissionEarned);
 
-    res.json({
+    // Calculate deal analytics
+    console.log('Dashboard API: Calculating deal analytics...');
+    
+    // Get all deal categorizations for target users to analyze behavior
+    const allCategorizations = await prisma.deal_categorizations.findMany({
+      where: { 
+        user_id: { in: targetUserIds }
+      },
+      include: {
+        deal: true
+      },
+      orderBy: { created_at: 'asc' }
+    });
+    
+    console.log('Dashboard API: Found', allCategorizations.length, 'categorizations');
+    
+    // Calculate analytics
+    const dealAnalytics = calculateDealAnalytics(allCategorizations, categorizedDeals.closed);
+    
+    // Get recent deal movements (last 10 categorizations)
+    const recentMovements = allCategorizations
+      .slice(-10)
+      .reverse()
+      .map(cat => ({
+        id: cat.deal.id,
+        deal_name: cat.deal.deal_name,
+        deal_amount: Number(cat.deal.amount),
+        category: cat.category,
+        timestamp: cat.created_at,
+        deal_status: cat.deal.status
+      }));
+
+    console.log('Dashboard API: Analytics calculated');
+    console.log('Dashboard API: Preparing response...');
+    const responseData = {
       user: req.user,
       current_target: currentTarget,
       metrics: {
@@ -206,8 +389,13 @@ app.get('/api/dashboard/sales-rep', authMiddleware, async (req, res) => {
         total_quota: totalQuota,
         commission_rate: currentTarget ? Number(currentTarget.commission_rate) : 0
       },
-      deals: categorizedDeals
-    });
+      deals: categorizedDeals,
+      deal_analytics: dealAnalytics,
+      recent_movements: recentMovements
+    };
+    
+    console.log('Dashboard API: Sending response successfully');
+    res.json(responseData);
   } catch (error) {
     console.error('Dashboard error:', error);
     res.status(500).json({ error: 'Internal server error' });
