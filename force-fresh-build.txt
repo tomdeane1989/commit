@@ -1,0 +1,6 @@
+Force fresh Vercel build - timestamp: 2025-07-26T10:15:00Z
+Ensure all new features deploy:
+- Dashboard team filtering
+- Target editing validation fixes
+- React Query implementation
+- Team target visual identification
