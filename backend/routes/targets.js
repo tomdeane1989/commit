@@ -557,6 +557,85 @@ router.post('/resolve-conflicts', async (req, res) => {
             success: true
           }
         });
+      } else if (action === 'concurrent') {
+        try {
+          console.log(`  - Creating concurrent target for user ${user_id} alongside existing target ${existing_target_id}`);
+          
+          // Fetch user data for pro-rating calculation
+          const targetUser = await prisma.users.findUnique({
+            where: { id: user_id }
+          });
+
+          let finalQuotaAmount = proposed_target.quota_amount;
+          let proRatedInfo = null;
+          
+          if (targetUser?.hire_date) {
+            const proRatedQuota = calculateProRatedQuota(
+              proposed_target.quota_amount,
+              targetUser.hire_date,
+              proposed_target.period_start,
+              proposed_target.period_end
+            );
+            
+            if (proRatedQuota !== proposed_target.quota_amount) {
+              finalQuotaAmount = proRatedQuota;
+              proRatedInfo = {
+                original_quota: proposed_target.quota_amount,
+                pro_rated_quota: proRatedQuota,
+                hire_date: targetUser.hire_date,
+                reason: 'Mid-year hire pro-rating applied'
+              };
+            }
+          }
+
+          // Create new target without deactivating existing one
+          const newTarget = await prisma.targets.create({
+            data: {
+              user_id: user_id,
+              company_id: req.user.company_id,
+              period_type: proposed_target.period_type,
+              period_start: new Date(proposed_target.period_start),
+              period_end: new Date(proposed_target.period_end),
+              quota_amount: finalQuotaAmount,
+              commission_rate: proposed_target.commission_rate,
+              commission_payment_schedule: proposed_target.commission_payment_schedule || 'monthly',
+              is_active: true,
+              role: proposed_target.role || null
+            }
+          });
+
+          console.log(`  - Successfully created concurrent target: ${newTarget.id}`);
+          resolvedTargets.push(newTarget);
+
+          // Log activity
+          await prisma.activity_log.create({
+            data: {
+              user_id: req.user.id,
+              company_id: req.user.company_id,
+              action: 'target_conflict_resolved',
+              entity_type: 'target',
+              entity_id: newTarget.id,
+              context: {
+                action: 'concurrent',
+                concurrent_with_target_id: existing_target_id,
+                user_name: targetUser ? `${targetUser.first_name} ${targetUser.last_name}` : 'Unknown',
+                quota_amount: newTarget.quota_amount,
+                original_quota: proposed_target.quota_amount,
+                message: 'Created concurrent target alongside existing target',
+                ...(proRatedInfo && { pro_rated: true, pro_rated_info: proRatedInfo })
+              },
+              success: true
+            }
+          });
+
+        } catch (error) {
+          console.error(`Error creating concurrent target for user ${user_id}:`, error);
+          errors.push({
+            user_id,
+            error: 'Failed to create concurrent target',
+            details: error.message
+          });
+        }
       }
     }
 

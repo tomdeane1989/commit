@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { useAuth } from '../hooks/useAuth';
 import { Eye, EyeOff, AlertTriangle, Loader2 } from 'lucide-react';
@@ -11,20 +11,60 @@ const LoginPage = () => {
   const [loading, setLoading] = useState(false);
   const { login } = useAuth();
 
+  // Load persisted error on component mount
+  useEffect(() => {
+    const persistedError = localStorage.getItem('loginError');
+    if (persistedError) {
+      setError(persistedError);
+    }
+  }, []);
+
+  // Clear error when user starts typing correct credentials
+  const handleEmailChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const newEmail = e.target.value;
+    setEmail(newEmail);
+    
+    // Clear error when user changes email
+    if (error) {
+      setError('');
+      localStorage.removeItem('loginError');
+    }
+  };
+
+  const handlePasswordChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const newPassword = e.target.value;
+    setPassword(newPassword);
+    
+    // Clear error when user changes password
+    if (error) {
+      setError('');
+      localStorage.removeItem('loginError');
+    }
+  };
+
   const handleTestLogin = () => {
     setEmail('test@company.com');
     setPassword('password123');
+    // Clear error when using test account
+    setError('');
+    localStorage.removeItem('loginError');
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError('');
+    localStorage.removeItem('loginError'); // Clear any existing error
     setLoading(true);
 
     try {
       await login(email, password);
+      // Success - clear any persisted error
+      localStorage.removeItem('loginError');
     } catch (err: any) {
-      setError(err.message || 'Login failed. Please try again.');
+      const errorMessage = err.message || 'Login failed. Please try again.';
+      setError(errorMessage);
+      // Persist error so it survives page refresh
+      localStorage.setItem('loginError', errorMessage);
     } finally {
       setLoading(false);
     }
@@ -82,7 +122,7 @@ const LoginPage = () => {
                 type="email"
                 required
                 value={email}
-                onChange={(e) => setEmail(e.target.value)}
+                onChange={handleEmailChange}
                 className="w-full px-4 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:outline-none transition"
                 style={{ '--tw-ring-color': '#82a365' } as React.CSSProperties}
               />
@@ -99,7 +139,7 @@ const LoginPage = () => {
                   type={showPassword ? 'text' : 'password'}
                   required
                   value={password}
-                  onChange={(e) => setPassword(e.target.value)}
+                  onChange={handlePasswordChange}
                   className="w-full px-4 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:outline-none transition"
                   style={{ '--tw-ring-color': '#82a365' } as React.CSSProperties}
                 />

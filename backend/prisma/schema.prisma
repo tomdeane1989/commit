@@ -125,6 +125,8 @@ model deals {
   @@index([user_id, status, close_date])  // Dashboard queries
   @@index([company_id, created_at])       // Admin analytics
   @@index([user_id, crm_type])           // CRM sync queries
+  // Unique constraint to prevent duplicate CRM imports
+  @@unique([crm_id, company_id], name: "unique_crm_deal_per_company")
 }
 
 // Separate table for deal categorizations - tracks rep decisions for AI learning

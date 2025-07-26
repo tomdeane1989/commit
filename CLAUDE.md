@@ -153,32 +153,53 @@
 - AI-powered deal probability predictions
 - Multi-tenant company management
 
-## 🏃‍♂️ **Development Servers**
+## 🏃‍♂️ **Development Environment**
 
-### **Backend**
+### **🌐 Cloud Deployment**
+- **Frontend**: Vercel (https://sales-commission-saas.vercel.app/)
+- **Backend**: Render (auto-deploy from main branch)
+- **Database**: PostgreSQL on Render
+- **Status**: ✅ Fully operational with all issues resolved
+
+### **💻 Local Development**
 ```bash
+# Backend (Port 3002)
 cd backend
-node server-working.js  # Port 3002
-```
+node server-working.js
 
-### **Frontend**
-```bash
+# Frontend (Port 3000) 
 cd frontend
-npm run dev  # Port 3000 (may auto-change if occupied)
-```
+npm run dev
 
-### **Database**
-```bash
-# Run migrations
+# Database operations
 cd backend
-npm run migrate
-
-# Generate Prisma client
-npm run generate
-
-# Populate with test data
-npm run seed
+npm run migrate     # Run migrations
+npm run generate    # Generate Prisma client  
+npm run seed        # Populate test data
 ```
+
+### **🔄 Branch-Based Development Workflow**
+```bash
+# Development workflow (use dev-tools.sh)
+./dev-tools.sh new-feature "feature-name"  # Create feature branch
+./dev-tools.sh deploy-prod                 # Deploy to production
+
+# Manual workflow
+git checkout develop                       # Switch to develop
+git pull origin develop                    # Get latest changes
+git checkout -b "feature/feature-name"     # Create feature branch
+# ... make changes ...
+git checkout develop                       # Back to develop
+git merge feature/feature-name             # Merge feature
+git checkout main                          # Switch to main
+git merge develop                          # Merge to main
+git push origin main                       # Deploy to production
+```
+
+### **🗂️ Branch Strategy**
+- **main**: Production branch (auto-deploys to Vercel/Render)
+- **develop**: Development branch for local testing
+- **feature/***: Feature branches for individual improvements
 
 ## 🧪 **Test Account**
 - **Email**: test@company.com
@@ -282,9 +303,86 @@ npm run seed
       └── globals.css              # Tailwind CSS configuration
 ```
 
-### **Environment Variables**
-- Backend: DATABASE_URL, JWT_SECRET, PORT=3002
-- Frontend: NEXT_PUBLIC_API_URL=http://localhost:3002
+### **🔧 Environment Variables**
+
+#### **Local Development (.env files)**
+```bash
+# Backend (.env)
+DATABASE_URL=file:./dev.db                    # Local SQLite
+JWT_SECRET=your-super-secure-jwt-secret-key   # Generate new for security
+PORT=3002                                     # Backend port
+NODE_ENV=development
+
+# Frontend (.env.development) 
+NEXT_PUBLIC_API_URL=http://localhost:3002     # Local backend URL
+
+# Frontend (.env.local) - Optional overrides
+NEXT_PUBLIC_API_URL=http://localhost:3002
+```
+
+#### **Production Environment Variables (Cloud)**
+```bash
+# Backend (Render) - Set in Render Dashboard
+DATABASE_URL=postgresql://user:pass@host:port/db   # Render PostgreSQL
+JWT_SECRET=production-jwt-secret                   # Different from local
+PORT=3002                                          # Auto-set by Render
+NODE_ENV=production
+
+# Frontend (Vercel) - Set in Vercel Dashboard  
+NEXT_PUBLIC_API_URL=https://your-backend.render.com  # Production backend URL
+```
+
+#### **🔑 Critical Environment Setup**
+- **JWT_SECRET**: Must be different between local/production for security
+- **DATABASE_URL**: Local uses SQLite, production uses PostgreSQL
+- **API_URL**: Frontend must point to correct backend (local vs production)
+- **Render Auto-Deploy**: Triggered by pushes to main branch
+- **Vercel Auto-Deploy**: Triggered by pushes to main branch
+
+### **🛠️ Development Tools & Automation**
+
+#### **dev-tools.sh** (Root directory)
+```bash
+# Available commands
+./dev-tools.sh new-feature "feature-name"    # Create new feature branch
+./dev-tools.sh deploy-prod                   # Deploy to production
+./dev-tools.sh status                        # Check git status
+./dev-tools.sh cleanup                       # Clean merged branches
+```
+
+#### **Key Configuration Files**
+```
+# Environment Files
+/frontend/.env.development     # Local frontend config
+/frontend/.env.local          # Local overrides (optional)
+/backend/.env                 # Local backend config
+
+# Automation
+/dev-tools.sh                 # Development workflow automation
+/frontend/package.json        # Frontend dependencies & scripts
+/backend/package.json         # Backend dependencies & scripts
+
+# Database
+/backend/prisma/schema.prisma # Database schema
+/backend/prisma/migrations/   # Database migrations
+```
+
+#### **🚀 Quick Start After Restart**
+```bash
+# 1. Start backend
+cd backend && node server-working.js
+
+# 2. Start frontend (new terminal)
+cd frontend && npm run dev
+
+# 3. Access application
+# Local: http://localhost:3000
+# Production: https://sales-commission-saas.vercel.app/
+
+# 4. Test login
+# Email: test@company.com
+# Password: password123
+```
 
 ## 🔍 **Development Notes**
 
@@ -402,7 +500,43 @@ npm run seed
 4. ✅ **Database Schema Updates** - Added role field for proper target type tracking
 5. ✅ **Advanced UI Components** - Expandable rows, chevron icons, member count badges
 
-## 🔧 **Technical Fixes Completed**
+## 🔧 **Recent Technical Improvements (2025-07-23)**
+
+### **✅ Cloud Deployment Fixes**
+- **Google Sheets Sync Timeout**: Created dual API architecture with 60-second timeout for long operations
+- **Team Aggregation 500/400 Errors**: Added database compatibility layers for production schema differences
+- **API Architecture**: Standard API (10s timeout) + Long-running API (60s timeout) for sync operations
+- **Error Handling**: Enhanced frontend/backend error messaging with specific HTTP status responses
+- **Build Issues**: Fixed Vercel compilation errors and duplicate function declarations
+
+### **✅ Development Workflow Enhancements**
+- **Branch Strategy**: Implemented main/develop/feature workflow with automation
+- **Local Environment**: Complete local development setup with proper environment variables
+- **dev-tools.sh**: Created automation script for common workflow operations
+- **Environment Separation**: Distinct configuration for local vs production environments
+
+### **✅ User Experience Improvements**
+- **Login Error Persistence**: Error messages persist across page refreshes until user action
+- **User-Friendly Error Messages**: Context-aware error messages based on HTTP status codes
+- **Error Clearing Logic**: Smart error clearing when user starts correcting input
+- **Authentication Flow**: Enhanced login flow with proper success/failure feedback
+
+### **✅ API & Database Enhancements**
+- **Backward Compatibility**: Try-catch blocks for database fields that may not exist in production
+- **Enhanced Logging**: Comprehensive debugging for production issue resolution
+- **Request Monitoring**: Better visibility into authentication and API request flows
+- **Database Query Optimization**: Efficient queries with proper error handling
+- **Dual API Architecture**: 
+  - Standard API (10s timeout): Regular operations like auth, team, deals
+  - Long-running API (60s timeout): Sync operations, Google Sheets integration
+  - Location: `/frontend/src/lib/api.ts` - `integrationsApi` module
+- **Error Status Mapping**: HTTP status codes mapped to user-friendly messages
+  - 401: "Invalid email or password"
+  - 429: "Too many login attempts"  
+  - 500+: "Server error"
+  - Network: "Check your connection"
+
+## 🔧 **Previous Technical Fixes (2025-07-21)**
 - **Conflict Resolution System**: Complete modal-based conflict detection and resolution
 - **Database Schema**: Added role field to targets table with proper migration
 - **Target Grouping**: Smart grouping algorithm for role-based vs individual targets
@@ -444,12 +578,30 @@ npm run seed
 
 ---
 
-**Last Updated**: 2025-07-21  
-**Status**: Phase 1 COMPLETE + Advanced Team Performance System + Google Sheets Integration  
-**Current Phase**: Phase 2 - Team performance analytics and CRM integrations  
-**Next Session Priority**: Salesforce/HubSpot/Pipedrive integration implementations
+**Last Updated**: 2025-07-23  
+**Status**: Phase 1 COMPLETE + Cloud Deployment + Development Workflow + Enhanced UX  
+**Current Phase**: Phase 2 - Local/Cloud development workflow with enhanced error handling  
+**Next Session Priority**: Continue feature development with new workflow
 
-## 🎯 **Key Achievements This Session**
+## 🎯 **Key Achievements Today (2025-07-23)**
+1. ✅ **Cloud Deployment Resolution** - Fixed Google Sheets sync timeout and team aggregation 500/400 errors
+2. ✅ **Development Workflow Setup** - Branch-based development (main/develop/feature) with automation tools
+3. ✅ **Local Development Environment** - Complete local setup with proper environment configuration
+4. ✅ **Enhanced Login UX** - Persistent error messages and user-friendly authentication feedback
+5. ✅ **API Timeout Architecture** - Dual API instances for standard vs long-running operations
+6. ✅ **Database Compatibility** - Backward compatibility layers for production vs development schemas
+7. ✅ **Production Issue Fixes** - Resolved all reported cloud deployment issues
+
+### **🔥 Specific Issues Resolved Today**
+- **"timeout of 10000ms exceeded" during Google Sheets sync** → Fixed with longRunningApi (60s timeout)
+- **Team aggregated-target endpoint returning 500 errors** → Fixed with database compatibility layers
+- **Team aggregated-target endpoint returning 400 errors** → Enhanced validation and error debugging
+- **Vercel build failure due to duplicate getIntegrationIcon** → Removed duplicate function declarations
+- **Frontend unable to authenticate locally** → Fixed environment variable loading and server restart
+- **Login errors disappearing on page refresh** → Implemented localStorage-based error persistence
+- **Generic "Login failed" messages** → Added specific error messages based on HTTP status codes
+
+## 🎯 **Previous Session Achievements (2025-07-21)**
 1. ✅ **Advanced Team Performance System** - Period filtering with Monthly/Quarterly/Yearly toggles
 2. ✅ **Three-Tier Progress Visualization** - Closed/Commit/Best Case stacked progress bars consistent with deals page logic  
 3. ✅ **Smart Deal Filtering** - Date-based filtering for accurate period reporting
