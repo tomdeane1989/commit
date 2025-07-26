@@ -34,11 +34,14 @@ const calculateProRatedQuota = (baseQuota, hireDate, periodStart, periodEnd) => 
 
 const targetSchema = Joi.object({
   user_id: Joi.string().optional(),
+  company_id: Joi.string().optional(),
   period_type: Joi.string().valid('monthly', 'quarterly', 'annual').required(),
   period_start: Joi.date().required(),
   period_end: Joi.date().required(),
   quota_amount: Joi.number().positive().required(),
-  commission_rate: Joi.number().min(0).max(1).required()
+  commission_rate: Joi.number().min(0).max(1).required(),
+  role: Joi.string().allow(null).optional(),
+  team_target: Joi.boolean().optional()
 });
 
 // Get all targets
@@ -341,8 +344,10 @@ router.post('/', async (req, res) => {
 router.put('/:id', async (req, res) => {
   try {
     const { id } = req.params;
+    console.log('🔍 Backend - Update target request:', { id, body: req.body });
     const { error, value } = targetSchema.validate(req.body);
     if (error) {
+      console.log('🔍 Backend - Validation error:', error.details[0].message);
       return res.status(400).json({ error: error.details[0].message });
     }
 

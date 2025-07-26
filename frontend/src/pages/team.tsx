@@ -13,7 +13,7 @@ import { QuotaWizard } from '../components/team/QuotaWizard';
 import { TargetModal } from '../components/team/TargetModal';
 import EditMemberModal from '../components/team/EditMemberModal';
 import TeamAggregationModal from '../components/team/TeamAggregationModal';
-import { Target, Users, Settings, TrendingUp, Plus, ChevronRight, ChevronDown, Edit, Trash2 } from 'lucide-react';
+import { Target, Users, Settings, TrendingUp, Plus, ChevronRight, ChevronDown, Edit, Trash2, X } from 'lucide-react';
 
 interface TeamMember {
   id: string;
@@ -113,6 +113,11 @@ const TeamPage = () => {
   // Target edit modal state
   const [editingTarget, setEditingTarget] = useState<Target | null>(null);
   const [showTargetModal, setShowTargetModal] = useState(false);
+  
+  // Debug log for inactive members toggle
+  useEffect(() => {
+    console.log('🔍 Team UI - showInactiveMembers state changed:', showInactiveMembers);
+  }, [showInactiveMembers]);
 
   // Check if user has admin/manager permissions
   const canManageTeam = user?.role === 'manager';
@@ -122,10 +127,21 @@ const TeamPage = () => {
   const { data: teamData, isLoading: teamLoading } = useQuery({
     queryKey: ['team', user?.id, periodFilter, showInactiveMembers], // User-specific cache key
     queryFn: async () => {
+      console.log('🔍 Team API - Fetching with params:', { 
+        period: periodFilter, 
+        show_inactive: showInactiveMembers.toString() 
+      });
       const response = await teamApi.getTeam({ 
         period: periodFilter,
         show_inactive: showInactiveMembers.toString()
       });
+      console.log('🔍 Team API - Response received:', response);
+      console.log('🔍 Team API - Team members count:', response.team_members?.length || 0);
+      console.log('🔍 Team API - Team members:', response.team_members?.map(m => ({
+        name: `${m.first_name} ${m.last_name}`,
+        email: m.email,
+        is_active: m.is_active
+      })));
       return response.team_members || [];
     },
     enabled: canManageTeam
@@ -255,7 +271,6 @@ const TeamPage = () => {
       queryClient.invalidateQueries({ queryKey: ['targets'] });
     }
   });
-
   // Filter team members
   const filteredMembers = (teamData || []).filter((member: TeamMember) => {
     const matchesSearch = 
@@ -695,7 +710,12 @@ const TeamPage = () => {
                                           `All ${mainTarget.role.replace('_', ' ').replace(/\b\w/g, l => l.toUpperCase())}s`
                                         )}
                                       </div>
-                                      {isRoleBased && (
+                                      {isTeamTarget && (
+                                        <span className="ml-2 inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-purple-100 text-purple-800">
+                                          Team Target
+                                        </span>
+                                      )}
+                                      {isRoleBased && !isTeamTarget && (
                                         <button
                                           onClick={() => toggleExpanded(groupKey)}
                                           className="ml-2 p-1 hover:bg-gray-200 rounded-full transition-colors"

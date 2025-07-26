@@ -222,8 +222,15 @@ export const crmApi = {
 
 // Team API
 export const teamApi = {
-  getTeam: async (params?: { period?: 'monthly' | 'quarterly' | 'yearly' }): Promise<ApiResponse<any[]>> => {
+  getTeam: async (params?: { 
+    period?: 'monthly' | 'quarterly' | 'yearly';
+    show_inactive?: string;
+  }): Promise<ApiResponse<any[]>> => {
+    console.log('🔍 TeamAPI - Making request to /team with params:', params);
+    console.log('🔍 TeamAPI - Full URL will be:', `${API_BASE_URL}/api/team`);
+    console.log('🔍 TeamAPI - Auth token being used (full):', localStorage.getItem('token'));
     const response = await api.get('/team', { params });
+    console.log('🔍 TeamAPI - Response received:', response.data);
     return response.data;
   },
 

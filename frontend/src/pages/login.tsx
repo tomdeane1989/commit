@@ -19,27 +19,13 @@ const LoginPage = () => {
     }
   }, []);
 
-  // Clear error when user starts typing correct credentials
+  // Handle input changes without clearing errors
   const handleEmailChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const newEmail = e.target.value;
-    setEmail(newEmail);
-    
-    // Clear error when user changes email
-    if (error) {
-      setError('');
-      localStorage.removeItem('loginError');
-    }
+    setEmail(e.target.value);
   };
 
   const handlePasswordChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const newPassword = e.target.value;
-    setPassword(newPassword);
-    
-    // Clear error when user changes password
-    if (error) {
-      setError('');
-      localStorage.removeItem('loginError');
-    }
+    setPassword(e.target.value);
   };
 
   const handleTestLogin = () => {

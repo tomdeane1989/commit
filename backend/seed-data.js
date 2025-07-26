@@ -78,27 +78,31 @@ async function seedDatabase() {
 
     console.log(`✓ Active Target: £${activeTarget.quota_amount.toLocaleString()} Annual 2025`);
 
-    // Clear existing data for clean seed
-    console.log('Clearing existing data...');
-    await prisma.deal_categorizations.deleteMany({
-      where: { user_id: testUser.id }
-    });
-    await prisma.commission_details.deleteMany({
-      where: { 
-        commission: {
-          user_id: testUser.id 
+    // Skip data clearing in staging/production to preserve user data
+    if (process.env.NODE_ENV === 'development') {
+      console.log('Clearing existing data...');
+      await prisma.deal_categorizations.deleteMany({
+        where: { user_id: testUser.id }
+      });
+      await prisma.commission_details.deleteMany({
+        where: { 
+          commission: {
+            user_id: testUser.id 
+          }
         }
-      }
-    });
-    await prisma.commissions.deleteMany({
-      where: { user_id: testUser.id }
-    });
-    await prisma.activity_log.deleteMany({
-      where: { user_id: testUser.id }
-    });
-    await prisma.deals.deleteMany({
-      where: { user_id: testUser.id }
-    });
+      });
+      await prisma.commissions.deleteMany({
+        where: { user_id: testUser.id }
+      });
+      await prisma.activity_log.deleteMany({
+        where: { user_id: testUser.id }
+      });
+      await prisma.deals.deleteMany({
+        where: { user_id: testUser.id }
+      });
+    } else {
+      console.log('Skipping data clearing in staging/production environment');
+    }
 
     // Create seed deals - mix of open opportunities and closed deals
     console.log('Creating seed deals...');
