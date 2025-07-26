@@ -1,6 +1,6 @@
 import express from 'express';
 import { PrismaClient } from '@prisma/client';
-import '../seed-data.js'; // or wherever your seeding logic lives
+// Removed seed-data.js import to prevent auto-execution on server start
 
 const router = express.Router();
 const prisma = new PrismaClient();
@@ -16,8 +16,7 @@ router.post('/init', async (req, res) => {
     // This assumes schema.prisma is already deployed and you’re calling db push externally
     // Replace this with direct logic if needed
 
-    console.log('Running seed...');
-    await seed();
+    console.log('Seeding disabled in staging/production - use manual seeding script if needed');
 
     res.json({ success: true, message: 'Database initialized and seeded.' });
   } catch (error) {
