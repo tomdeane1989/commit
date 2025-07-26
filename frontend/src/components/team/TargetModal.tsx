@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { X, Target, Calendar, DollarSign, Percent, User } from 'lucide-react';
 
 interface TeamMember {
@@ -16,6 +16,7 @@ interface TargetModalProps {
   onSubmit: (data: any) => void;
   teamMembers: TeamMember[];
   loading: boolean;
+  editingTarget?: any;
 }
 
 export const TargetModal: React.FC<TargetModalProps> = ({
@@ -23,7 +24,8 @@ export const TargetModal: React.FC<TargetModalProps> = ({
   onClose,
   onSubmit,
   teamMembers,
-  loading
+  loading,
+  editingTarget
 }) => {
   const [formData, setFormData] = useState({
     user_id: '',
@@ -36,6 +38,42 @@ export const TargetModal: React.FC<TargetModalProps> = ({
   });
 
   const [targetType, setTargetType] = useState<'individual' | 'role'>('individual');
+
+  // Populate form when editing
+  useEffect(() => {
+    if (editingTarget) {
+      setFormData({
+        user_id: editingTarget.user_id || '',
+        role: editingTarget.role || '',
+        period_type: editingTarget.period_type,
+        period_start: editingTarget.period_start?.split('T')[0] || '',
+        period_end: editingTarget.period_end?.split('T')[0] || '',
+        quota_amount: editingTarget.quota_amount.toString(),
+        commission_rate: (editingTarget.commission_rate * 100).toString() // Convert to percentage
+      });
+      
+      // Set target type based on existing target
+      if (editingTarget.team_target) {
+        setTargetType('role'); // Team targets are treated as role-based for UI
+      } else if (editingTarget.role) {
+        setTargetType('role');
+      } else {
+        setTargetType('individual');
+      }
+    } else {
+      // Reset form for new target
+      setFormData({
+        user_id: '',
+        role: '',
+        period_type: 'quarterly',
+        period_start: '',
+        period_end: '',
+        quota_amount: '',
+        commission_rate: '3'
+      });
+      setTargetType('individual');
+    }
+  }, [editingTarget]);
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -111,7 +149,9 @@ export const TargetModal: React.FC<TargetModalProps> = ({
       <div className="bg-white rounded-2xl max-w-md w-full max-h-[90vh] overflow-y-auto">
         {/* Header */}
         <div className="flex items-center justify-between p-6 border-b border-gray-200">
-          <h2 className="text-xl font-semibold text-gray-900">Create Sales Target</h2>
+          <h2 className="text-xl font-semibold text-gray-900">
+            {editingTarget ? 'Edit Sales Target' : 'Create Sales Target'}
+          </h2>
           <button
             onClick={handleClose}
             className="p-2 text-gray-400 hover:text-gray-600 rounded-lg hover:bg-gray-100"
@@ -137,7 +177,7 @@ export const TargetModal: React.FC<TargetModalProps> = ({
                   checked={targetType === 'individual'}
                   onChange={(e) => setTargetType(e.target.value as 'individual' | 'role')}
                   className="mr-2"
-                  disabled={loading}
+                  disabled={loading || !!editingTarget}
                 />
                 Individual Member
               </label>
@@ -149,7 +189,7 @@ export const TargetModal: React.FC<TargetModalProps> = ({
                   checked={targetType === 'role'}
                   onChange={(e) => setTargetType(e.target.value as 'individual' | 'role')}
                   className="mr-2"
-                  disabled={loading}
+                  disabled={loading || !!editingTarget}
                 />
                 Role-Based
               </label>
@@ -170,7 +210,7 @@ export const TargetModal: React.FC<TargetModalProps> = ({
                   onChange={(e) => setFormData({ ...formData, user_id: e.target.value })}
                   className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:border-transparent"
                   style={{ '--tw-ring-color': '#82a365' } as any}
-                  disabled={loading}
+                  disabled={loading || !!editingTarget}
                 >
                   <option value="">Select a team member</option>
                   {teamMembers.filter(m => m.is_active).map((member) => (
@@ -197,7 +237,7 @@ export const TargetModal: React.FC<TargetModalProps> = ({
                   onChange={(e) => setFormData({ ...formData, role: e.target.value })}
                   className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:border-transparent"
                   style={{ '--tw-ring-color': '#82a365' } as any}
-                  disabled={loading}
+                  disabled={loading || !!editingTarget}
                 >
                   <option value="">Select a role</option>
                   <option value="sales_rep">Sales Representative</option>
@@ -328,7 +368,7 @@ export const TargetModal: React.FC<TargetModalProps> = ({
               onMouseEnter={(e) => e.currentTarget.style.opacity = '0.9'}
               onMouseLeave={(e) => e.currentTarget.style.opacity = '1'}
             >
-              {loading ? 'Creating...' : 'Create Target'}
+              {loading ? (editingTarget ? 'Updating...' : 'Creating...') : (editingTarget ? 'Update Target' : 'Create Target')}
             </button>
           </div>
         </form>

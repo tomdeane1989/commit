@@ -10,9 +10,10 @@ import { TeamMemberCard } from '../components/team/TeamMemberCard';
 import { InviteModal } from '../components/team/InviteModal';
 import { InviteSuccessMessage } from '../components/team/InviteSuccessMessage';
 import { QuotaWizard } from '../components/team/QuotaWizard';
+import { TargetModal } from '../components/team/TargetModal';
 import EditMemberModal from '../components/team/EditMemberModal';
 import TeamAggregationModal from '../components/team/TeamAggregationModal';
-import { Target, Users, Settings, TrendingUp, Plus, ChevronRight, ChevronDown } from 'lucide-react';
+import { Target, Users, Settings, TrendingUp, Plus, ChevronRight, ChevronDown, Edit, Trash2 } from 'lucide-react';
 
 interface TeamMember {
   id: string;
@@ -57,6 +58,7 @@ interface Target {
   id: string;
   user_id: string;
   role: string | null;
+  team_target: boolean;
   period_type: string;
   period_start: string;
   period_end: string;
@@ -107,6 +109,10 @@ const TeamPage = () => {
   // Team aggregation modal state
   const [selectedManager, setSelectedManager] = useState<TeamMember | null>(null);
   const [showTeamAggregationModal, setShowTeamAggregationModal] = useState(false);
+  
+  // Target edit modal state
+  const [editingTarget, setEditingTarget] = useState<Target | null>(null);
+  const [showTargetModal, setShowTargetModal] = useState(false);
 
   // Check if user has admin/manager permissions
   const canManageTeam = user?.role === 'manager';
@@ -229,6 +235,24 @@ const TeamPage = () => {
     mutationFn: teamApi.deactivateTeamMember,
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['team', user?.id] });
+    }
+  });
+
+  // Update target mutation
+  const updateTargetMutation = useMutation({
+    mutationFn: ({ id, data }: { id: string; data: any }) => targetsApi.updateTarget(id, data),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['targets'] });
+      setShowTargetModal(false);
+      setEditingTarget(null);
+    }
+  });
+
+  // Delete target mutation
+  const deleteTargetMutation = useMutation({
+    mutationFn: targetsApi.deactivateTarget,
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['targets'] });
     }
   });
 
@@ -367,6 +391,36 @@ const TeamPage = () => {
   // Handle toggle active status
   const handleToggleActive = (id: string, active: boolean) => {
     updateMemberMutation.mutate({ id, data: { is_active: active } });
+  };
+
+  // Handle target edit
+  const handleTargetEdit = (target: Target) => {
+    console.log('Target edit requested for:', target.id);
+    setEditingTarget(target);
+    setShowTargetModal(true);
+  };
+
+  // Handle saving target edits
+  const handleSaveTargetEdit = (targetData: any) => {
+    if (editingTarget) {
+      updateTargetMutation.mutate({
+        id: editingTarget.id,
+        data: {
+          quota_amount: targetData.quota_amount,
+          commission_rate: targetData.commission_rate,
+          period_type: targetData.period_type,
+          period_start: targetData.period_start,
+          period_end: targetData.period_end,
+        }
+      });
+    }
+  };
+
+  // Handle target delete
+  const handleTargetDelete = (targetId: string) => {
+    if (confirm('Are you sure you want to deactivate this target?')) {
+      deleteTargetMutation.mutate(targetId);
+    }
   };
 
   // Redirect if user doesn't have permission
@@ -597,6 +651,9 @@ const TeamPage = () => {
                         <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                           Status
                         </th>
+                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                          Actions
+                        </th>
                       </tr>
                     </thead>
                     <tbody className="bg-white divide-y divide-gray-200">
@@ -607,15 +664,21 @@ const TeamPage = () => {
                           `individual-${mainTarget.id}`;
                         const isExpanded = expandedTargets.has(groupKey);
                         const isRoleBased = !!mainTarget.role;
+                        const isTeamTarget = !!mainTarget.team_target;
                         
                         return (
                           <React.Fragment key={groupKey}>
                             {/* Main target row */}
-                            <tr className="hover:bg-gray-50">
+                            <tr className={`hover:bg-gray-50 ${isTeamTarget ? 'bg-purple-50' : ''}`}>
                               <td className="px-6 py-4 whitespace-nowrap">
                                 <div className="flex items-center">
-                                  <div className="flex-shrink-0 w-8 h-8 bg-gray-100 rounded-full flex items-center justify-center mr-3">
-                                    {!isRoleBased ? (
+                                  <div className={`flex-shrink-0 w-8 h-8 rounded-full flex items-center justify-center mr-3 ${
+                                    isTeamTarget ? 'bg-purple-100' : 
+                                    isRoleBased ? 'bg-blue-100' : 'bg-gray-100'
+                                  }`}>
+                                    {isTeamTarget ? (
+                                      <Users className="w-4 h-4 text-purple-600" />
+                                    ) : !isRoleBased ? (
                                       <Users className="w-4 h-4 text-gray-600" />
                                     ) : (
                                       <Target className="w-4 h-4 text-blue-600" />
@@ -624,7 +687,9 @@ const TeamPage = () => {
                                   <div className="flex-1">
                                     <div className="flex items-center">
                                       <div className="text-sm font-medium text-gray-900">
-                                        {!isRoleBased ? (
+                                        {isTeamTarget ? (
+                                          'Team Aggregated Target'
+                                        ) : !isRoleBased ? (
                                           mainTarget.user ? `${mainTarget.user.first_name} ${mainTarget.user.last_name}` : 'N/A'
                                         ) : (
                                           `All ${mainTarget.role.replace('_', ' ').replace(/\b\w/g, l => l.toUpperCase())}s`
@@ -644,7 +709,11 @@ const TeamPage = () => {
                                       )}
                                     </div>
                                     <div className="text-sm text-gray-500">
-                                      {!isRoleBased ? (
+                                      {isTeamTarget ? (
+                                        <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-purple-100 text-purple-800">
+                                          Team Target
+                                        </span>
+                                      ) : !isRoleBased ? (
                                         <>
                                           <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800 mr-2">
                                             Individual
@@ -696,6 +765,24 @@ const TeamPage = () => {
                                   {mainTarget.is_active ? 'Active' : 'Inactive'}
                                 </span>
                               </td>
+                              <td className="px-6 py-4 whitespace-nowrap">
+                                <div className="flex items-center space-x-2">
+                                  <button
+                                    onClick={() => handleTargetEdit(mainTarget)}
+                                    className="p-2 text-gray-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors"
+                                    title="Edit target"
+                                  >
+                                    <Edit className="w-4 h-4" />
+                                  </button>
+                                  <button
+                                    onClick={() => handleTargetDelete(mainTarget.id)}
+                                    className="p-2 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors"
+                                    title="Delete target"
+                                  >
+                                    <Trash2 className="w-4 h-4" />
+                                  </button>
+                                </div>
+                              </td>
                             </tr>
                             
                             {/* Expanded rows for role-based targets */}
@@ -744,6 +831,24 @@ const TeamPage = () => {
                                   }`}>
                                     {target.is_active ? 'Active' : 'Inactive'}
                                   </span>
+                                </td>
+                                <td className="px-6 py-4 whitespace-nowrap">
+                                  <div className="flex items-center space-x-2">
+                                    <button
+                                      onClick={() => handleTargetEdit(target)}
+                                      className="p-2 text-gray-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors"
+                                      title="Edit target"
+                                    >
+                                      <Edit className="w-4 h-4" />
+                                    </button>
+                                    <button
+                                      onClick={() => handleTargetDelete(target.id)}
+                                      className="p-2 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors"
+                                      title="Delete target"
+                                    >
+                                      <Trash2 className="w-4 h-4" />
+                                    </button>
+                                  </div>
                                 </td>
                               </tr>
                             ))}
@@ -809,6 +914,18 @@ const TeamPage = () => {
           setShowTeamAggregationModal(false);
           setSelectedManager(null);
         }}
+      />
+
+      <TargetModal
+        isOpen={showTargetModal}
+        onClose={() => {
+          setShowTargetModal(false);
+          setEditingTarget(null);
+        }}
+        onSubmit={handleSaveTargetEdit}
+        teamMembers={teamData || []}
+        loading={updateTargetMutation.isPending}
+        editingTarget={editingTarget}
       />
     </Layout>
   );
