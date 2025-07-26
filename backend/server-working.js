@@ -115,7 +115,8 @@ app.use(helmet());
 const allowedOrigins = [
   'http://localhost:3000',
   'http://localhost:3001',
-  'https://commit-snowy.vercel.app' // ← your live frontend
+  'https://commit-snowy.vercel.app', // ← your live frontend
+  'https://commit-git-staging-dashboard-enha-505531-toms-projects-5fc7012e.vercel.app' // ← staging frontend
 ];
 
 app.use(cors({
