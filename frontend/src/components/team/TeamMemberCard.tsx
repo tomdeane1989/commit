@@ -19,11 +19,12 @@ interface TeamMember {
   } | null;
   reports_count: number;
   performance: {
-    open_deals_amount: number; // Pipeline deals (for reference)
+    // Legacy fields for backward compatibility
+    open_deals_amount: number;
     closed_won_amount: number;
     commit_amount: number;
     best_case_amount: number;
-    quota_progress_amount: number; // closed + commit + best case
+    quota_progress_amount: number;
     current_quota: number;
     total_commissions: number;
     open_deals_count: number;
@@ -37,6 +38,30 @@ interface TeamMember {
       period_end: string;
     } | null;
     is_team_target: boolean;
+    
+    // New conditional metrics for dual/single progress meters
+    personal_metrics?: {
+      closedAmount: number;
+      commitAmount: number;
+      bestCaseAmount: number;
+      pipelineAmount: number;
+      quotaAmount: number;
+      commissionRate: number;
+      quotaProgress: number;
+    } | null;
+    team_metrics?: {
+      closedAmount: number;
+      commitAmount: number;
+      bestCaseAmount: number;
+      pipelineAmount: number;
+      quotaAmount: number;
+      commissionRate: number;
+      quotaProgress: number;
+      teamMemberCount: number;
+    } | null;
+    has_personal_quota: boolean;
+    has_team_quota: boolean;
+    display_mode: 'dual' | 'team_only' | 'personal_only' | 'none';
   };
 }
 
@@ -56,6 +81,126 @@ export const TeamMemberCard: React.FC<TeamMemberCardProps> = ({
   onViewTeamTargets
 }) => {
   const [showActions, setShowActions] = useState(false);
+
+  // Progress Meter Component
+  const ProgressMeter = ({ 
+    metrics, 
+    title, 
+    subtitle, 
+    color = 'bg-gray-100',
+    isTeam = false 
+  }: {
+    metrics: any;
+    title: string;
+    subtitle?: string;
+    color?: string;
+    isTeam?: boolean;
+  }) => {
+    const closedContribution = metrics.quotaAmount > 0
+      ? (metrics.closedAmount / metrics.quotaAmount) * 100
+      : 0;
+      
+    const commitContribution = metrics.quotaAmount > 0
+      ? (metrics.commitAmount / metrics.quotaAmount) * 100
+      : 0;
+      
+    const bestCaseContribution = metrics.quotaAmount > 0
+      ? (metrics.bestCaseAmount / metrics.quotaAmount) * 100
+      : 0;
+
+    const totalProgress = closedContribution + commitContribution + bestCaseContribution;
+
+    return (
+      <div className="space-y-2">
+        <div className="flex justify-between items-center">
+          <div className="flex items-center">
+            <p className="text-xs text-gray-500">{title}</p>
+            {subtitle && (
+              <span className="ml-2 inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-800">
+                {subtitle}
+              </span>
+            )}
+            {isTeam && metrics.teamMemberCount && (
+              <span className="ml-2 text-xs text-gray-400">
+                ({metrics.teamMemberCount} members)
+              </span>
+            )}
+          </div>
+          <p className="text-xs text-gray-600">{totalProgress.toFixed(1)}%</p>
+        </div>
+        
+        {/* Three-tier Stacked Progress Bar */}
+        <div className="w-full bg-gray-200 rounded-full h-2 mb-1 relative overflow-hidden">
+          {/* Best Case (bottom layer - full width) */}
+          <div
+            className="absolute inset-0 bg-yellow-300 rounded-full transition-all duration-300"
+            style={{ width: `${Math.min(totalProgress, 100)}%` }}
+          />
+          {/* Commit (middle layer) */}
+          <div
+            className="absolute inset-0 bg-blue-400 rounded-full transition-all duration-300"
+            style={{ width: `${Math.min(closedContribution + commitContribution, 100)}%` }}
+          />
+          {/* Closed Won (top layer) */}
+          <div
+            className={`absolute inset-0 rounded-full transition-all duration-300 ${
+              closedContribution >= 100
+                ? 'bg-green-600'
+                : closedContribution >= 75
+                ? 'bg-green-500'
+                : 'bg-green-400'
+            }`}
+            style={{ width: `${Math.min(closedContribution, 100)}%` }}
+          />
+        </div>
+        
+        {/* Progress Breakdown */}
+        <div className="grid grid-cols-2 gap-x-4 gap-y-1 text-xs text-gray-600">
+          <div className="flex items-center">
+            <div className="w-2 h-2 bg-green-400 rounded-full mr-1"></div>
+            <span>Closed: {new Intl.NumberFormat('en-GB', {
+              style: 'currency',
+              currency: 'GBP',
+              notation: 'compact'
+            }).format(metrics.closedAmount)}</span>
+          </div>
+          <div className="flex items-center">
+            <div className="w-2 h-2 bg-blue-400 rounded-full mr-1"></div>
+            <span>Commit: {new Intl.NumberFormat('en-GB', {
+              style: 'currency',
+              currency: 'GBP',
+              notation: 'compact'
+            }).format(metrics.commitAmount)}</span>
+          </div>
+          <div className="flex items-center">
+            <div className="w-2 h-2 bg-yellow-300 rounded-full mr-1"></div>
+            <span>Best Case: {new Intl.NumberFormat('en-GB', {
+              style: 'currency',
+              currency: 'GBP',
+              notation: 'compact'
+            }).format(metrics.bestCaseAmount)}</span>
+          </div>
+          <div className="flex items-center">
+            <div className="w-2 h-2 bg-gray-400 rounded-full mr-1"></div>
+            <span>Pipeline: {new Intl.NumberFormat('en-GB', {
+              style: 'currency',
+              currency: 'GBP',
+              notation: 'compact'
+            }).format(metrics.pipelineAmount)}</span>
+          </div>
+        </div>
+        
+        {/* Quota Info */}
+        <div className="text-xs text-gray-500">
+          Quota: {new Intl.NumberFormat('en-GB', {
+            style: 'currency',
+            currency: 'GBP',
+            notation: 'compact'
+          }).format(metrics.quotaAmount)}
+        </div>
+      </div>
+    );
+  };
 
   // Format period display
   const formatPeriod = (targetPeriod: { period_type: string; period_start: string; period_end: string } | null) => {
@@ -243,94 +388,64 @@ export const TeamMemberCard: React.FC<TeamMemberCardProps> = ({
           </div>
         </div>
 
-        {/* Quota Progress */}
-        {member.performance.current_quota > 0 && (
+        {/* Conditional Progress Meters */}
+        {member.performance.display_mode === 'dual' && member.performance.personal_metrics && member.performance.team_metrics && (
+          <div className="space-y-4">
+            {/* Personal Progress Meter */}
+            <ProgressMeter
+              metrics={member.performance.personal_metrics}
+              title="Personal Quota Progress"
+              subtitle="Individual"
+            />
+            
+            {/* Divider */}
+            <div className="border-t border-gray-200"></div>
+            
+            {/* Team Progress Meter */}
+            <ProgressMeter
+              metrics={member.performance.team_metrics}
+              title="Team Quota Progress"
+              subtitle="Aggregated"
+              isTeam={true}
+            />
+          </div>
+        )}
+        
+        {member.performance.display_mode === 'personal_only' && member.performance.personal_metrics && (
+          <ProgressMeter
+            metrics={member.performance.personal_metrics}
+            title="Quota Progress"
+          />
+        )}
+        
+        {member.performance.display_mode === 'team_only' && member.performance.team_metrics && (
+          <ProgressMeter
+            metrics={member.performance.team_metrics}
+            title="Team Quota Progress"
+            subtitle="Team Target"
+            isTeam={true}
+          />
+        )}
+        
+        {/* Legacy fallback for backward compatibility */}
+        {member.performance.display_mode === 'none' && member.performance.current_quota > 0 && (
           <div>
             <div className="flex justify-between items-center mb-1">
-              <div className="flex items-center">
-                <p className="text-xs text-gray-500">
-                  {member.performance.is_team_target ? 'Team Quota Progress' : 'Quota Progress'}
-                </p>
-                {member.performance.is_team_target && (
-                  <span className="ml-2 inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-800">
-                    Team Target
-                  </span>
-                )}
-              </div>
-              <p className="text-xs text-gray-600">{totalQuotaProgress.toFixed(1)}%</p>
+              <p className="text-xs text-gray-500">Quota Progress</p>
+              <p className="text-xs text-gray-600">{member.performance.quota_attainment.toFixed(1)}%</p>
             </div>
-            
-            {/* Three-tier Stacked Progress Bar */}
-            <div className="w-full bg-gray-200 rounded-full h-2 mb-1 relative overflow-hidden">
-              {/* Best Case (bottom layer - full width) */}
+            <div className="w-full bg-gray-200 rounded-full h-2">
               <div
-                className="absolute inset-0 bg-yellow-300 rounded-full transition-all duration-300"
-                style={{ width: `${Math.min(closedContribution + commitContribution + bestCaseContribution, 100)}%` }}
-              />
-              {/* Commit (middle layer) */}
-              <div
-                className="absolute inset-0 bg-blue-400 rounded-full transition-all duration-300"
-                style={{ width: `${Math.min(closedContribution + commitContribution, 100)}%` }}
-              />
-              {/* Closed Won (top layer) */}
-              <div
-                className={`absolute inset-0 rounded-full transition-all duration-300 ${
-                  closedContribution >= 100
-                    ? 'bg-green-600'
-                    : closedContribution >= 75
-                    ? 'bg-green-500'
-                    : 'bg-green-400'
-                }`}
-                style={{ width: `${Math.min(closedContribution, 100)}%` }}
+                className="bg-green-400 h-2 rounded-full transition-all duration-300"
+                style={{ width: `${Math.min(member.performance.quota_attainment, 100)}%` }}
               />
             </div>
-            
-            {/* Progress Breakdown */}
-            <div className="grid grid-cols-2 gap-x-4 gap-y-1 text-xs text-gray-600 mt-1">
-              <div className="flex items-center">
-                <div className="w-2 h-2 bg-green-400 rounded-full mr-1"></div>
-                <span>Closed: {new Intl.NumberFormat('en-GB', {
-                  style: 'currency',
-                  currency: 'GBP',
-                  notation: 'compact'
-                }).format(member.performance.closed_won_amount)}</span>
-              </div>
-              <div className="flex items-center">
-                <div className="w-2 h-2 bg-blue-400 rounded-full mr-1"></div>
-                <span>Commit: {new Intl.NumberFormat('en-GB', {
-                  style: 'currency',
-                  currency: 'GBP',
-                  notation: 'compact'
-                }).format(member.performance.commit_amount)}</span>
-              </div>
-              <div className="flex items-center">
-                <div className="w-2 h-2 bg-yellow-300 rounded-full mr-1"></div>
-                <span>Best Case: {new Intl.NumberFormat('en-GB', {
-                  style: 'currency',
-                  currency: 'GBP',
-                  notation: 'compact'
-                }).format(member.performance.best_case_amount)}</span>
-              </div>
-              <div className="flex items-center">
-                <div className="w-2 h-2 bg-gray-400 rounded-full mr-1"></div>
-                <span>Pipeline: {new Intl.NumberFormat('en-GB', {
-                  style: 'currency',
-                  currency: 'GBP',
-                  notation: 'compact'
-                }).format(member.performance.open_deals_amount)}</span>
-              </div>
-            </div>
-            
-            {/* Quota Period Info */}
-            <div className="text-xs text-gray-500 mt-2">
-              {member.performance.is_team_target ? 'Team Quota: ' : 'Quota: '}{new Intl.NumberFormat('en-GB', {
+            <div className="text-xs text-gray-500 mt-1">
+              Quota: {new Intl.NumberFormat('en-GB', {
                 style: 'currency',
                 currency: 'GBP',
                 notation: 'compact'
-              }).format(member.performance.current_quota)} ({formatPeriod(member.performance.target_period)})
-              {member.performance.is_team_target && (
-                <span className="ml-1 text-blue-600 font-medium">• Aggregated</span>
-              )}
+              }).format(member.performance.current_quota)}
             </div>
           </div>
         )}

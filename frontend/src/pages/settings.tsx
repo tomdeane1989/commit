@@ -14,6 +14,7 @@ import {
   Trash2,
   Settings as SettingsIcon,
   User,
+  Users,
   Bell,
   Shield,
   Palette,
@@ -44,7 +45,9 @@ const SettingsPage = () => {
     period_start: '',
     period_end: '',
     quota_amount: '',
-    commission_rate: ''
+    commission_rate: '',
+    role: '',
+    team_target: false
   });
 
   const { data: targetsData, isLoading: targetsLoading } = useQuery({
@@ -101,7 +104,9 @@ const SettingsPage = () => {
         period_start: '',
         period_end: '',
         quota_amount: '',
-        commission_rate: ''
+        commission_rate: '',
+        role: '',
+        team_target: false
       });
     }
   });
@@ -202,7 +207,9 @@ const SettingsPage = () => {
       period_start: target.period_start?.split('T')[0] || '',
       period_end: target.period_end?.split('T')[0] || '',
       quota_amount: target.quota_amount.toString(),
-      commission_rate: target.commission_rate.toString()
+      commission_rate: target.commission_rate.toString(),
+      role: target.role || '',
+      team_target: target.team_target || false
     });
     setShowAddTarget(true);
   };
@@ -215,7 +222,9 @@ const SettingsPage = () => {
       period_start: '',
       period_end: '',
       quota_amount: '',
-      commission_rate: ''
+      commission_rate: '',
+      role: '',
+      team_target: false
     });
   };
 
@@ -248,16 +257,56 @@ const SettingsPage = () => {
   const TargetCard = ({ target }: { target: any }) => {
     const progress = target.current_achievement ? (target.current_achievement / target.quota_amount) * 100 : 0;
     
+    // Determine target type for display
+    const getTargetType = () => {
+      if (target.team_target) return 'Team Aggregated';
+      if (target.role) return `Role-based (${target.role.replace('_', ' ')})`;
+      return 'Individual';
+    };
+    
+    const getTargetDescription = () => {
+      const dateRange = `${new Date(target.period_start).toLocaleDateString()} - ${new Date(target.period_end).toLocaleDateString()}`;
+      
+      if (target.team_target) {
+        return `Combined quota for entire team • ${dateRange}`;
+      }
+      if (target.role) {
+        return `Applies to all users with ${target.role.replace('_', ' ')} role • ${dateRange}`;
+      }
+      return dateRange;
+    };
+
+    const getTargetIcon = () => {
+      if (target.team_target) return 'bg-purple-100 text-purple-600';
+      if (target.role) return 'bg-blue-100 text-blue-600';
+      return 'bg-green-100 text-green-600';
+    };
+    
     return (
-      <div className="bg-white rounded-2xl border border-gray-200 p-6 shadow-sm hover:shadow-md transition-shadow">
+      <div className={`bg-white rounded-2xl border border-gray-200 p-6 shadow-sm hover:shadow-md transition-shadow ${
+        target.team_target ? 'ring-2 ring-purple-200 border-purple-300' : ''
+      }`}>
         <div className="flex items-start justify-between mb-4">
-          <div>
-            <h3 className="text-lg font-semibold text-gray-900 capitalize">
-              {target.period_type} Target
-            </h3>
+          <div className="flex-1">
+            <div className="flex items-center space-x-3 mb-2">
+              <h3 className="text-lg font-semibold text-gray-900 capitalize">
+                {target.period_type} Target
+              </h3>
+              <span className={`px-3 py-1 rounded-full text-xs font-medium ${getTargetIcon()}`}>
+                {getTargetType()}
+              </span>
+            </div>
             <p className="text-sm text-gray-600">
-              {new Date(target.period_start).toLocaleDateString()} - {new Date(target.period_end).toLocaleDateString()}
+              {getTargetDescription()}
             </p>
+            {target.team_target && (
+              <div className="mt-2 flex items-center space-x-1">
+                <Users className="w-4 h-4 text-purple-500" />
+                <span className="text-xs text-purple-600 font-medium">
+                  Aggregated from individual team member quotas
+                </span>
+              </div>
+            )}
           </div>
           <div className="flex items-center space-x-2">
             <button

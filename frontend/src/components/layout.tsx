@@ -12,7 +12,6 @@ import {
   ChevronRight,
   Bell,
   Search,
-  Plus,
   Filter,
   MoreHorizontal,
   Menu,
@@ -58,7 +57,7 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
   }, [router.pathname]);
 
   const navigation = [
-    { name: 'Deals', href: '/deals', icon: BarChart3 },
+    { name: 'Forecasting', href: '/deals', icon: BarChart3 },
     { name: 'Commissions', href: '/commissions', icon: PoundSterling },
     { name: 'Team', href: '/team', icon: Users, adminOnly: true },
     { name: 'Dashboard', href: '/dashboard', icon: Home },
@@ -232,11 +231,6 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
                 />
               </div>
               
-              {/* New Deal button - responsive */}
-              <button className="inline-flex items-center px-3 lg:px-4 py-2 text-white text-sm font-medium rounded-xl transition-all duration-300 shadow-lg hover:opacity-90" style={{ background: 'linear-gradient(to right, #82a365, #6b8950)', boxShadow: '0 10px 15px -3px rgba(56, 64, 49, 0.25)' }}>
-                <Plus className="w-4 h-4 lg:mr-2" />
-                <span className="hidden lg:inline">New Deal</span>
-              </button>
             </div>
             <div className="flex items-center space-x-2 lg:space-x-4">
               {/* Filter button - hidden on mobile */}

@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import { useQuery } from '@tanstack/react-query';
 import Layout from '../components/layout';
 import ProtectedRoute from '../components/ProtectedRoute';
 import { useAuth } from '../hooks/useAuth';
@@ -17,7 +18,8 @@ import {
   CheckCircle,
   AlertTriangle,
   Star,
-  TrendingDown
+  TrendingDown,
+  User
 } from 'lucide-react';
 
 const MonthDisplay = () => {
@@ -38,43 +40,57 @@ const MonthDisplay = () => {
   );
 };
 
+interface TeamMember {
+  id: string;
+  first_name: string;
+  last_name: string;
+  email: string;
+  role: string;
+}
+
 const DashboardPage = () => {
   const { user } = useAuth();
-  const [dashboardData, setDashboardData] = useState<any>(null);
-  const [isLoading, setIsLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+  const [managerView, setManagerView] = useState<'personal' | 'team' | 'member' | 'all'>('personal');
+  const [selectedMemberId, setSelectedMemberId] = useState<string>('');
+  const isManager = user?.role === 'manager';
 
-  useEffect(() => {
-    const fetchDashboardData = async () => {
-      try {
-        console.log('Dashboard: User exists?', !!user);
-        
-        // Use the API client which includes Authorization header
-        const { dashboardApi } = await import('../lib/api');
-        const data = await dashboardApi.getDashboardData();
-        
-        console.log('Dashboard: Data received', data);
-        console.log('Dashboard: Metrics:', data.metrics);
-        console.log('Dashboard: Quota Progress:', data.quota_progress);
-        console.log('Dashboard: Deals:', data.deals);
-        setDashboardData(data);
-      } catch (err: any) {
-        console.error('Dashboard: Error caught', err);
-        setError(err.message);
-      } finally {
-        setIsLoading(false);
+  // Fetch dashboard data with team filtering
+  const { data: dashboardData, isLoading, error } = useQuery({
+    queryKey: ['dashboard', user?.id, managerView, selectedMemberId],
+    queryFn: async () => {
+      const apiModule = await import('../lib/api');
+      const api = apiModule.default;
+      const params = new URLSearchParams();
+      
+      if (isManager && managerView) {
+        params.append('view', managerView);
+        if (managerView === 'member' && selectedMemberId) {
+          params.append('user_id', selectedMemberId);
+        }
       }
-    };
+      
+      const queryString = params.toString();
+      const endpoint = queryString ? `/dashboard/sales-rep?${queryString}` : '/dashboard/sales-rep';
+      
+      const response = await api.get(endpoint);
+      return response.data;
+    },
+    enabled: !!user
+  });
 
-    console.log('Dashboard: useEffect triggered, user:', user, 'loading:', isLoading);
-    
-    if (user) {
-      fetchDashboardData();
-    } else if (!user && !isLoading) {
-      // If no user and not loading, stop loading state
-      setIsLoading(false);
-    }
-  }, [user]);
+  // Fetch team members for dropdown
+  const { data: teamMembersResponse } = useQuery({
+    queryKey: ['dashboard-team-members', user?.id],
+    queryFn: async () => {
+      const apiModule = await import('../lib/api');
+      const teamApi = apiModule.teamApi;
+      const response = await teamApi.getTeam();
+      return response;
+    },
+    enabled: isManager
+  });
+
+  const teamMembers: TeamMember[] = teamMembersResponse?.team_members || [];
 
   if (isLoading) {
     return (
@@ -97,7 +113,7 @@ const DashboardPage = () => {
             <div className="bg-red-50 border border-red-200 rounded-2xl p-8">
               <AlertTriangle className="w-12 h-12 text-red-500 mx-auto mb-4" />
               <p className="text-red-800 font-semibold text-lg">Failed to load dashboard data</p>
-              <p className="text-red-600 mt-2">{error}</p>
+              <p className="text-red-600 mt-2">{error?.message || 'Unknown error'}</p>
             </div>
           </div>
         </div>
@@ -105,7 +121,7 @@ const DashboardPage = () => {
     );
   }
 
-  const { metrics, quota_progress, deals } = dashboardData || {};
+  const { metrics, quota_progress, deals, deal_analytics, recent_movements } = dashboardData || {};
 
   return (
     <ProtectedRoute>
@@ -137,6 +153,74 @@ const DashboardPage = () => {
             </div>
           </div>
         </div>
+
+        {/* Team Filtering Controls */}
+        {isManager && (
+          <div className="bg-white/70 backdrop-blur-sm rounded-3xl p-6 shadow-xl border border-gray-200/50">
+            <div className="flex items-center justify-between">
+              <div className="flex bg-gray-100 rounded-lg p-1">
+                <button 
+                  onClick={() => { setManagerView('personal'); setSelectedMemberId(''); }}
+                  className={`px-4 py-2 rounded-md text-sm font-medium transition-colors ${
+                    managerView === 'personal' ? 'bg-white text-blue-600 shadow-sm' : 'text-gray-600 hover:text-gray-900'
+                  }`}
+                >
+                  <User className="w-4 h-4 inline mr-2" />
+                  Personal
+                </button>
+                <button 
+                  onClick={() => { setManagerView('team'); setSelectedMemberId(''); }}
+                  className={`px-4 py-2 rounded-md text-sm font-medium transition-colors ${
+                    managerView === 'team' ? 'bg-white text-blue-600 shadow-sm' : 'text-gray-600 hover:text-gray-900'
+                  }`}
+                >
+                  <Users className="w-4 h-4 inline mr-2" />
+                  Team
+                </button>
+                <button 
+                  onClick={() => setManagerView('all')}
+                  className={`px-4 py-2 rounded-md text-sm font-medium transition-colors ${
+                    managerView === 'all' ? 'bg-white text-blue-600 shadow-sm' : 'text-gray-600 hover:text-gray-900'
+                  }`}
+                >
+                  <Users className="w-4 h-4 inline mr-2" />
+                  All
+                </button>
+              </div>
+              
+              {/* Team Member Selection */}
+              <div className="flex items-center space-x-4">
+                <select
+                  value={selectedMemberId}
+                  onChange={(e) => {
+                    const value = e.target.value;
+                    setSelectedMemberId(value);
+                    if (value) {
+                      setManagerView('member');
+                    }
+                  }}
+                  className="border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 min-w-48"
+                >
+                  <option value="">Select team member...</option>
+                  {teamMembers.map(member => (
+                    <option key={member.id} value={member.id}>
+                      {member.first_name} {member.last_name}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            </div>
+            
+            {/* View Context Display */}
+            <div className="mt-3 text-sm text-gray-600">
+              {managerView === 'personal' && 'Showing your personal dashboard data'}
+              {managerView === 'team' && `Showing aggregated data for all ${teamMembers.length} direct reports`}
+              {managerView === 'member' && selectedMemberId && 
+                `Showing dashboard data for ${teamMembers.find(m => m.id === selectedMemberId)?.first_name} ${teamMembers.find(m => m.id === selectedMemberId)?.last_name}`}
+              {managerView === 'all' && `Showing combined data (you + ${teamMembers.length} team members)`}
+            </div>
+          </div>
+        )}
 
         {/* Key Metrics */}
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
@@ -426,6 +510,143 @@ const DashboardPage = () => {
             </div>
           </div>
         </div>
+
+        {/* Deal Intelligence Metrics */}
+        {deal_analytics && (
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+            {/* Commit Analytics */}
+            <div className="bg-white/70 backdrop-blur-sm rounded-3xl p-6 shadow-xl border border-gray-200/50">
+              <div className="flex items-center justify-between mb-4">
+                <div className="flex items-center">
+                  <div className="p-3 bg-orange-500/20 rounded-2xl mr-3">
+                    <Star className="w-6 h-6 text-orange-600" />
+                  </div>
+                  <h3 className="text-lg font-bold text-gray-900">Commit Analytics</h3>
+                </div>
+              </div>
+              
+              <div className="space-y-4">
+                <div className="flex justify-between items-center">
+                  <span className="text-sm font-medium text-gray-600">Close Rate</span>
+                  <span className="text-2xl font-bold text-orange-600">
+                    {deal_analytics.commit?.close_rate?.toFixed(1) || 0}%
+                  </span>
+                </div>
+                <div className="flex justify-between items-center">
+                  <span className="text-sm font-medium text-gray-600">Avg Attempts</span>
+                  <span className="text-lg font-semibold text-gray-800">
+                    {deal_analytics.commit?.average_attempts?.toFixed(1) || 0}
+                  </span>
+                </div>
+                <div className="text-xs text-gray-500">
+                  {deal_analytics.commit?.closed_deals || 0}/{deal_analytics.commit?.total_deals || 0} deals closed
+                </div>
+              </div>
+            </div>
+
+            {/* Best Case Analytics */}
+            <div className="bg-white/70 backdrop-blur-sm rounded-3xl p-6 shadow-xl border border-gray-200/50">
+              <div className="flex items-center justify-between mb-4">
+                <div className="flex items-center">
+                  <div className="p-3 bg-purple-500/20 rounded-2xl mr-3">
+                    <Zap className="w-6 h-6 text-purple-600" />
+                  </div>
+                  <h3 className="text-lg font-bold text-gray-900">Best Case Analytics</h3>
+                </div>
+              </div>
+              
+              <div className="space-y-4">
+                <div className="flex justify-between items-center">
+                  <span className="text-sm font-medium text-gray-600">Close Rate</span>
+                  <span className="text-2xl font-bold text-purple-600">
+                    {deal_analytics.best_case?.close_rate?.toFixed(1) || 0}%
+                  </span>
+                </div>
+                <div className="flex justify-between items-center">
+                  <span className="text-sm font-medium text-gray-600">Avg Attempts</span>
+                  <span className="text-lg font-semibold text-gray-800">
+                    {deal_analytics.best_case?.average_attempts?.toFixed(1) || 0}
+                  </span>
+                </div>
+                <div className="text-xs text-gray-500">
+                  {deal_analytics.best_case?.closed_deals || 0}/{deal_analytics.best_case?.total_deals || 0} deals closed
+                </div>
+              </div>
+            </div>
+
+            {/* Sandbagging Analytics */}
+            <div className="bg-white/70 backdrop-blur-sm rounded-3xl p-6 shadow-xl border border-gray-200/50">
+              <div className="flex items-center justify-between mb-4">
+                <div className="flex items-center">
+                  <div className="p-3 bg-red-500/20 rounded-2xl mr-3">
+                    <AlertTriangle className="w-6 h-6 text-red-600" />
+                  </div>
+                  <h3 className="text-lg font-bold text-gray-900">Sandbagging</h3>
+                </div>
+              </div>
+              
+              <div className="space-y-4">
+                <div className="flex justify-between items-center">
+                  <span className="text-sm font-medium text-gray-600">Sandbagged</span>
+                  <span className="text-2xl font-bold text-red-600">
+                    {deal_analytics.sandbagging?.percentage?.toFixed(1) || 0}%
+                  </span>
+                </div>
+                <div className="text-xs text-gray-500">
+                  {deal_analytics.sandbagging?.sandbagged_deals || 0} deals closed without forecast
+                </div>
+                <div className="text-xs text-gray-400">
+                  Out of {deal_analytics.sandbagging?.total_closed_deals || 0} total closed deals
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Recent Deal Activity */}
+        {recent_movements && recent_movements.length > 0 && (
+          <div className="bg-white/70 backdrop-blur-sm rounded-3xl p-8 shadow-xl border border-gray-200/50">
+            <div className="flex items-center justify-between mb-6">
+              <h3 className="text-xl font-bold text-gray-900">Recent Deal Activity</h3>
+              <div className="flex items-center space-x-2">
+                <Activity className="w-5 h-5 text-gray-600" />
+                <span className="text-sm font-medium text-gray-600">Last 10 movements</span>
+              </div>
+            </div>
+            
+            <div className="space-y-3">
+              {recent_movements.map((movement, index) => (
+                <div key={movement.id} className="flex items-center justify-between p-4 bg-gradient-to-r from-gray-50 to-white rounded-2xl border border-gray-100">
+                  <div className="flex items-center space-x-4">
+                    <div className={`p-2 rounded-xl ${
+                      movement.category === 'commit' ? 'bg-orange-100 text-orange-600' :
+                      movement.category === 'best_case' ? 'bg-purple-100 text-purple-600' :
+                      'bg-blue-100 text-blue-600'
+                    }`}>
+                      {movement.category === 'commit' && <Star className="w-4 h-4" />}
+                      {movement.category === 'best_case' && <Zap className="w-4 h-4" />}
+                      {movement.category === 'pipeline' && <Clock className="w-4 h-4" />}
+                    </div>
+                    <div>
+                      <p className="font-semibold text-gray-900">{movement.deal_name}</p>
+                      <p className="text-sm text-gray-600">
+                        Moved to <span className="font-medium capitalize">{movement.category.replace('_', ' ')}</span>
+                      </p>
+                    </div>
+                  </div>
+                  <div className="text-right">
+                    <p className="font-bold text-gray-900">
+                      £{movement.deal_amount?.toLocaleString()}
+                    </p>
+                    <p className="text-xs text-gray-500">
+                      {new Date(movement.timestamp).toLocaleDateString('en-GB')}
+                    </p>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
 
         {/* Welcome Message */}
         <div className="relative overflow-hidden rounded-3xl p-8 text-white shadow-2xl" style={{ background: 'linear-gradient(to right, #82a365, #6b8950, #5a6450)' }}>

@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import Layout from '../../components/layout';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useAuth } from '../../hooks/useAuth';
@@ -17,7 +17,6 @@ import {
   Target,
   Clock,
   Package,
-  Plus,
   Timer,
   Award,
   ArrowRight,
@@ -25,7 +24,8 @@ import {
   Percent,
   Users,
   User,
-  ChevronDown
+  ChevronDown,
+  Info
 } from 'lucide-react';
 
 const DealsPage = () => {
@@ -45,6 +45,18 @@ const DealsPage = () => {
   const [managerView, setManagerView] = useState<'personal' | 'team' | 'member' | 'all'>('team');
   const [selectedMemberId, setSelectedMemberId] = useState<string>('');
   const [showMemberDropdown, setShowMemberDropdown] = useState(false);
+  const dropdownRef = useRef<HTMLDivElement>(null);
+  
+  // Manager deal categorization confirmation state
+  const [showConfirmationDialog, setShowConfirmationDialog] = useState(false);
+  const [pendingCategorization, setPendingCategorization] = useState<{
+    deal: Deal;
+    category: string;
+    previousCategory: string;
+  } | null>(null);
+  
+  // Tooltip state for bucket information
+  const [activeTooltip, setActiveTooltip] = useState<string | null>(null);
   
   const queryClient = useQueryClient();
   const isManager = user?.role === 'manager';
@@ -186,8 +198,11 @@ const DealsPage = () => {
   // Close dropdown when clicking outside
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
-      if (showMemberDropdown) {
+      if (showMemberDropdown && dropdownRef.current && !dropdownRef.current.contains(event.target as Node)) {
+        console.log('🔍 Clicking outside dropdown - closing');
         setShowMemberDropdown(false);
+      } else if (showMemberDropdown) {
+        console.log('🔍 Clicking inside dropdown - keeping open');
       }
     };
 
@@ -217,8 +232,10 @@ const DealsPage = () => {
       
       // Add manager view parameters
       if (isManager && managerView) {
+        console.log('🔍 API Call - Adding view parameter:', managerView);
         params.append('view', managerView);
         if (managerView === 'member' && selectedMemberId) {
+          console.log('🔍 API Call - Adding user_id parameter:', selectedMemberId);
           params.append('user_id', selectedMemberId);
         }
       }
@@ -231,17 +248,45 @@ const DealsPage = () => {
       const limit = managerView === 'team' ? 500 : 100;
       params.append('limit', limit.toString());
       
-      const response = await api.get(`/deals?${params}`);
+      const url = `/deals?${params}`;
+      console.log('🔍 API Call - Full URL:', url);
+      const response = await api.get(url);
+      console.log('🔍 API Response received:', response.data);
       return response.data;
     }
   });
 
-  // Get current user's quota from settings
+  // Get quota targets based on manager view
   const { data: targetsData } = useQuery({
-    queryKey: ['targets', user?.id],
+    queryKey: ['targets', user?.id, managerView, selectedMemberId],
     queryFn: async () => {
-      // Pass user_id to ensure we only get the current user's targets
-      const response = await api.get(`/targets?user_id=${user?.id}`);
+      let endpoint = `/targets`;
+      const params = new URLSearchParams();
+      
+      if (isManager && managerView) {
+        if (managerView === 'personal') {
+          // Personal view: only manager's own targets
+          params.append('user_id', user?.id || ''); 
+        } else if (managerView === 'member' && selectedMemberId) {
+          // Individual member view: only selected member's targets
+          params.append('user_id', selectedMemberId);
+        } else if (managerView === 'team') {
+          // Team view: all team member targets (excluding manager)
+          // Don't specify user_id, backend will return all targets for manager role
+          // We'll filter out manager's targets on frontend
+        } else if (managerView === 'all') {
+          // All view: manager + team targets combined
+          // Don't specify user_id, backend will return all targets for manager role
+        }
+      } else {
+        // Non-manager: only their own targets
+        params.append('user_id', user?.id || '');
+      }
+      
+      const queryString = params.toString();
+      const url = queryString ? `${endpoint}?${queryString}` : endpoint;
+      
+      const response = await api.get(url);
       return response.data;
     },
     enabled: !!user?.id
@@ -249,28 +294,78 @@ const DealsPage = () => {
 
   const updateDealCategoryMutation = useMutation({
     mutationFn: async ({ dealId, category, previousCategory }: { dealId: string, category: string, previousCategory: string }) => {
-      const response = await api.patch(`/deals/${dealId}/categorize`, { 
+      console.log('🔍 Frontend - Making PATCH request to:', `/deals/${dealId}/categorize`);
+      console.log('🔍 Frontend - Full API base URL:', api.defaults.baseURL);
+      console.log('🔍 Frontend - Request payload:', { 
         deal_type: category,
-        previous_category: previousCategory,
-        categorization_timestamp: new Date().toISOString(),
-        user_context: {
-          confidence_level: 'high',
-          categorization_method: 'drag_drop',
-          session_id: sessionStorage.getItem('session_id') || 'unknown'
-        }
+        previous_category: previousCategory 
       });
-      return response.data;
+      
+      try {
+        const response = await api.patch(`/deals/${dealId}/categorize`, { 
+          deal_type: category,
+          previous_category: previousCategory,
+          categorization_timestamp: new Date().toISOString(),
+          user_context: {
+            confidence_level: 'high',
+            categorization_method: 'drag_drop',
+            session_id: sessionStorage.getItem('session_id') || 'unknown'
+          }
+        });
+        console.log('🔍 Frontend - Response received:', response.data);
+        return response.data;
+      } catch (error: any) {
+        console.error('🔍 Frontend - API Error:', error.response?.status, error.response?.data, error.message);
+        throw error;
+      }
     },
     onSuccess: (data, variables) => {
       queryClient.invalidateQueries({ queryKey: ['deals', user?.id] });
       queryClient.invalidateQueries({ queryKey: ['dashboard', user?.id] });
+      // Invalidate team queries to update quota progress on team page
+      queryClient.invalidateQueries({ queryKey: ['team'] }); // Invalidate all team queries regardless of filters
+      queryClient.invalidateQueries({ queryKey: ['targets'] }); // Invalidate all targets queries
       logCategorizationChange(variables.dealId, variables.previousCategory, variables.category);
+      
+      // Show feedback for manager actions
+      if (data.manager_action && data.deal_owner) {
+        console.log(`✅ Manager Action: Deal categorized for ${data.deal_owner.first_name} ${data.deal_owner.last_name} - ${data.message}`);
+        // TODO: In future, trigger notification to deal owner here
+      }
     }
   });
 
   const deals = dealsData?.deals || [];
   const targets = targetsData?.targets || [];
-  const currentTarget = targets.find((t: any) => t.is_active) || null;
+  
+  // Calculate quota target based on manager view
+  let quotaAmount = 0;
+  if (isManager && managerView) {
+    if (managerView === 'personal') {
+      // Personal view: only manager's quota
+      const managerTarget = targets.find((t: any) => t.is_active && t.user_id === user?.id);
+      quotaAmount = Number(managerTarget?.quota_amount) || 0;
+    } else if (managerView === 'member' && selectedMemberId) {
+      // Individual member view: selected member's quota  
+      const memberTarget = targets.find((t: any) => t.is_active && t.user_id === selectedMemberId);
+      quotaAmount = Number(memberTarget?.quota_amount) || 0;
+    } else if (managerView === 'team') {
+      // Team view: sum of all team members' quotas (excluding manager)
+      const teamTargets = targets.filter((t: any) => t.is_active && t.user_id !== user?.id);
+      quotaAmount = teamTargets.reduce((sum: number, target: any) => sum + Number(target.quota_amount), 0);
+    } else if (managerView === 'all') {
+      // All view: manager + team quotas combined
+      const allActiveTargets = targets.filter((t: any) => t.is_active);
+      quotaAmount = allActiveTargets.reduce((sum: number, target: any) => sum + Number(target.quota_amount), 0);
+    }
+  } else {
+    // Non-manager: their own quota
+    const currentTarget = targets.find((t: any) => t.is_active && t.user_id === user?.id);
+    quotaAmount = Number(currentTarget?.quota_amount) || 0;
+  }
+  
+  // Fallback to default if no quota found
+  const annualQuotaTarget = quotaAmount || 240000;
 
   // ML Training Data Logging
   const logCategorizationChange = async (dealId: string, fromCategory: string, toCategory: string) => {
@@ -337,7 +432,6 @@ const DealsPage = () => {
     deals.filter((d: Deal) => d.deal_type === 'best_case').reduce((sum: number, deal: Deal) => sum + Number(deal.amount), 0) :
     dealsByCategory.best_case.reduce((sum: number, deal: Deal) => sum + Number(deal.amount), 0);
     
-  const annualQuotaTarget = Number(currentTarget?.quota_amount) || 240000; // Default annual quota
   const quotaTarget = calculateQuotaForPeriod(annualQuotaTarget, quotaPeriod);
   
   const totalCategorized = closedAmount + commitAmount + bestCaseAmount;
@@ -374,27 +468,51 @@ const DealsPage = () => {
     
     if (draggedDeal && draggedDeal.deal_type !== category) {
       const previousCategory = draggedDeal.deal_type;
-      const dealAmount = Number(draggedDeal.amount);
-      const commissionChange = calculateCommission(dealAmount);
       
-      updateDealCategoryMutation.mutate({ 
-        dealId: draggedDeal.id, 
-        category,
-        previousCategory 
-      });
-
-      // Show success feedback
-      const categoryLabel = category === 'commit' ? 'Commit' : 
-                           category === 'best_case' ? 'Best Case' : 'Pipeline';
+      // Check if this is a manager categorizing someone else's deal
+      const isDealOwner = draggedDeal.user_id === user?.id;
+      const isManagerAction = isManager && !isDealOwner;
       
-      // You could add a toast notification here
-      console.log(`Moved to ${categoryLabel} - forecasting £${commissionChange.toLocaleString()} more commission`);
+      if (isManagerAction) {
+        // Show confirmation dialog for manager actions
+        setPendingCategorization({
+          deal: draggedDeal,
+          category,
+          previousCategory
+        });
+        setShowConfirmationDialog(true);
+      } else {
+        // Direct categorization for own deals
+        updateDealCategoryMutation.mutate({ 
+          dealId: draggedDeal.id, 
+          category,
+          previousCategory 
+        });
+      }
     }
     setDraggedDeal(null);
   };
 
   const handleDragEnd = () => {
     setDraggedDeal(null);
+  };
+
+  // Handle confirmation dialog actions
+  const handleConfirmCategorization = () => {
+    if (pendingCategorization) {
+      updateDealCategoryMutation.mutate({ 
+        dealId: pendingCategorization.deal.id, 
+        category: pendingCategorization.category,
+        previousCategory: pendingCategorization.previousCategory 
+      });
+    }
+    setShowConfirmationDialog(false);
+    setPendingCategorization(null);
+  };
+
+  const handleCancelCategorization = () => {
+    setShowConfirmationDialog(false);
+    setPendingCategorization(null);
   };
 
   const DealCard = ({ deal }: { deal: Deal }) => {
@@ -534,7 +652,7 @@ const DealsPage = () => {
     );
   };
 
-  const DealsSection = ({ title, icon: Icon, deals, bgColor, borderColor, iconColor, textColor, category, badge, description }: any) => {
+  const DealsSection = ({ title, icon: Icon, deals, bgColor, borderColor, iconColor, textColor, category, badge, description, tooltipContent }: any) => {
     const totalValue = deals.reduce((sum: number, deal: Deal) => sum + Number(deal.amount), 0);
     const totalCommission = calculateCommission(totalValue);
     
@@ -555,6 +673,25 @@ const DealsPage = () => {
                   <h3 className={`text-lg font-bold ${textColor}`}>
                     {title}
                   </h3>
+                  {tooltipContent && (
+                    <div className="relative group">
+                      <Info 
+                        className="w-4 h-4 text-gray-400 hover:text-gray-600 cursor-help transition-colors"
+                        onMouseEnter={() => setActiveTooltip(category)}
+                        onMouseLeave={() => setActiveTooltip(null)}
+                      />
+                      {activeTooltip === category && (
+                        <div className="absolute top-full left-1/2 transform -translate-x-1/2 mt-2 px-3 py-2 bg-gray-900 text-white text-xs rounded-lg shadow-lg whitespace-nowrap z-[9999]">
+                          <div className="space-y-1">
+                            {tooltipContent.map((line: string, index: number) => (
+                              <div key={index}>{line}</div>
+                            ))}
+                          </div>
+                          <div className="absolute bottom-full left-1/2 transform -translate-x-1/2 w-2 h-2 bg-gray-900 rotate-45"></div>
+                        </div>
+                      )}
+                    </div>
+                  )}
                   {badge && (
                     <span className={`px-2 py-1 text-xs font-semibold rounded-full ${badge.class}`}>
                       {badge.text}
@@ -1049,28 +1186,13 @@ const DealsPage = () => {
         <div className="flex items-center justify-between">
           <div>
             <h1 className="text-4xl font-bold bg-gradient-to-r from-gray-900 to-gray-700 bg-clip-text text-transparent">
-              Commission Forecasting
+              Forecasting
             </h1>
             <p className="mt-2 text-lg text-gray-600">
               Drag deals into confidence buckets to see your projected earnings and track quota attainment
             </p>
           </div>
           <div className="flex items-center space-x-3">
-            {/* Quota Period Selector */}
-            <div className="flex items-center space-x-2">
-              <label className="text-sm font-medium text-gray-700">View:</label>
-              <select
-                value={quotaPeriod}
-                onChange={(e) => setQuotaPeriod(e.target.value as 'weekly' | 'monthly' | 'quarterly' | 'annual')}
-                className="px-3 py-2 bg-white border border-gray-300 rounded-lg text-sm font-medium text-gray-700 hover:bg-gray-50 transition-colors shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-              >
-                <option value="weekly">Weekly</option>
-                <option value="monthly">Monthly</option>
-                <option value="quarterly">Quarterly</option>
-                <option value="annual">Annual</option>
-              </select>
-            </div>
-            
             <button
               onClick={() => refetch()}
               disabled={isLoading}
@@ -1082,17 +1204,38 @@ const DealsPage = () => {
           </div>
         </div>
 
-        {/* Manager View Filtering Controls */}
-        {isManager && (
-          <div className="bg-white rounded-xl border border-gray-200 p-4 shadow-sm">
-            <div className="flex items-center justify-between">
-              <div className="flex items-center space-x-4">
-                <span className="text-sm font-medium text-gray-700">View:</span>
+        {/* Filtering Controls */}
+        <div className="bg-white rounded-xl border border-gray-200 p-4 shadow-sm">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center space-x-4">
+              {/* Period Selector (for all users) */}
+              <div className="flex items-center space-x-2">
+                <label className="text-sm font-medium text-gray-700">Period:</label>
+                <select
+                  value={quotaPeriod}
+                  onChange={(e) => setQuotaPeriod(e.target.value as 'weekly' | 'monthly' | 'quarterly' | 'annual')}
+                  className="px-3 py-2 bg-white border border-gray-300 rounded-lg text-sm font-medium text-gray-700 hover:bg-gray-50 transition-colors shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                >
+                  <option value="weekly">Weekly</option>
+                  <option value="monthly">Monthly</option>
+                  <option value="quarterly">Quarterly</option>
+                  <option value="annual">Annual</option>
+                </select>
+              </div>
+
+              {/* Team View Selector (managers only) */}
+              {isManager && (
+                <>
+                  <div className="h-6 w-px bg-gray-300"></div>
+                  <span className="text-sm font-medium text-gray-700">Team View:</span>
                 
                 {/* View Toggle Buttons */}
                 <div className="flex bg-gray-100 rounded-lg p-1">
                   <button
-                    onClick={() => setManagerView('personal')}
+                    onClick={() => {
+                      setManagerView('personal');
+                      setSelectedMemberId(''); // Clear selected member when switching views
+                    }}
                     className={`px-4 py-2 rounded-md text-sm font-medium transition-colors ${
                       managerView === 'personal'
                         ? 'bg-white text-blue-600 shadow-sm'
@@ -1103,7 +1246,10 @@ const DealsPage = () => {
                     Personal
                   </button>
                   <button
-                    onClick={() => setManagerView('team')}
+                    onClick={() => {
+                      setManagerView('team');
+                      setSelectedMemberId(''); // Clear selected member when switching views
+                    }}
                     className={`px-4 py-2 rounded-md text-sm font-medium transition-colors ${
                       managerView === 'team'
                         ? 'bg-white text-blue-600 shadow-sm'
@@ -1125,7 +1271,10 @@ const DealsPage = () => {
                     Individual
                   </button>
                   <button
-                    onClick={() => setManagerView('all')}
+                    onClick={() => {
+                      setManagerView('all');
+                      setSelectedMemberId(''); // Clear selected member when switching views
+                    }}
                     className={`px-4 py-2 rounded-md text-sm font-medium transition-colors ${
                       managerView === 'all'
                         ? 'bg-white text-blue-600 shadow-sm'
@@ -1138,8 +1287,9 @@ const DealsPage = () => {
                 </div>
 
                 {/* Team Member Dropdown (shown when Individual is selected) */}
+                {console.log('🔍 Dropdown render check - managerView:', managerView, 'should show dropdown:', managerView === 'member')}
                 {managerView === 'member' && (
-                  <div className="relative">
+                  <div className="relative" ref={dropdownRef}>
                     <button
                       onClick={() => setShowMemberDropdown(!showMemberDropdown)}
                       className="flex items-center px-4 py-2 bg-white border border-gray-300 rounded-lg text-sm font-medium text-gray-700 hover:bg-gray-50 transition-colors shadow-sm min-w-48"
@@ -1153,16 +1303,22 @@ const DealsPage = () => {
                       <ChevronDown className="w-4 h-4 ml-2" />
                     </button>
                     
+                    {console.log('🔍 Dropdown items render check - showMemberDropdown:', showMemberDropdown, 'has team members:', !!teamMembersData?.team_members)}
                     {showMemberDropdown && teamMembersData?.team_members && (
-                      <div className="absolute top-full left-0 mt-1 w-64 bg-white border border-gray-200 rounded-lg shadow-lg z-10">
+                      <div className="absolute top-full left-0 mt-1 w-64 bg-white border border-gray-200 rounded-lg shadow-lg z-[9999]">
                         {teamMembersData.team_members.map((member: any) => (
                           <button
                             key={member.id}
                             onClick={() => {
+                              console.log('🔍 Team member selected:', member.first_name, member.last_name, 'ID:', member.id);
                               setSelectedMemberId(member.id);
+                              setManagerView('member'); // Automatically set view to member when selecting a team member
                               setShowMemberDropdown(false);
+                              console.log('🔍 States updated - selectedMemberId:', member.id, 'managerView: member');
                             }}
-                            className="w-full px-4 py-3 text-left text-sm text-gray-700 hover:bg-gray-50 border-b border-gray-100 last:border-b-0 flex items-center"
+                            className="w-full px-4 py-3 text-left text-sm text-gray-700 hover:bg-red-100 border-b border-gray-100 last:border-b-0 flex items-center cursor-pointer"
+                            onMouseEnter={() => console.log('🔍 Mouse entered:', member.first_name)}
+                            onMouseLeave={() => console.log('🔍 Mouse left:', member.first_name)}
                           >
                             <User className="w-4 h-4 mr-3 text-gray-400" />
                             <div>
@@ -1175,24 +1331,30 @@ const DealsPage = () => {
                     )}
                   </div>
                 )}
-              </div>
+                </>
+              )}
+            </div>
 
-              {/* View Context Indicator */}
-              <div className="flex items-center space-x-2">
-                {dealsData?.view_context && (
-                  <span className="text-sm text-gray-500">
-                    {dealsData.view_context.current_view === 'team' && 'Showing team deals'}
-                    {dealsData.view_context.current_view === 'personal' && 'Showing your deals'}
-                    {dealsData.view_context.current_view === 'member' && selectedMemberId && 
-                      `Showing ${teamMembersData?.team_members?.find((m: any) => m.id === selectedMemberId)?.first_name}'s deals`
-                    }
-                    {dealsData.view_context.current_view === 'all' && 'Showing all deals (you + team)'}
-                  </span>
-                )}
-              </div>
+            {/* View Context Indicator */}
+            <div className="flex items-center space-x-2">
+              {isManager && dealsData?.view_context && (
+                <span className="text-sm text-gray-500">
+                  {dealsData.view_context.current_view === 'team' && 'Showing team deals'}
+                  {dealsData.view_context.current_view === 'personal' && 'Showing your deals'}
+                  {dealsData.view_context.current_view === 'member' && selectedMemberId && 
+                    `Showing ${teamMembersData?.team_members?.find((m: any) => m.id === selectedMemberId)?.first_name}'s deals`
+                  }
+                  {dealsData.view_context.current_view === 'all' && 'Showing all deals (you + team)'}
+                </span>
+              )}
+              {!isManager && (
+                <span className="text-sm text-gray-500">
+                  Showing {quotaPeriod} view
+                </span>
+              )}
             </div>
           </div>
-        )}
+        </div>
 
         {/* Summary Bar */}
         <div className="bg-gradient-to-r from-green-700 to-green-600 rounded-2xl p-4 md:p-6 text-white shadow-xl" style={{ background: 'linear-gradient(to right, #82a365, #6b8950)' }}>
@@ -1255,70 +1417,6 @@ const DealsPage = () => {
           </div>
         </div>
 
-        {/* Team Summary (for team/all views) */}
-        {isManager && dealsData?.team_summary && (managerView === 'team' || managerView === 'all') && (
-          <div className="bg-white rounded-xl border border-gray-200 shadow-sm">
-            <div className="px-6 py-4 border-b border-gray-200">
-              <h3 className="text-lg font-semibold text-gray-900 flex items-center">
-                <Users className="w-5 h-5 mr-2 text-blue-600" />
-                Team Performance Breakdown
-              </h3>
-              <p className="text-sm text-gray-600 mt-1">
-                Individual performance of team members in current view
-              </p>
-            </div>
-            <div className="p-6">
-              <div className="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-4">
-                {dealsData.team_summary.map((memberStats: any) => (
-                  <div key={memberStats.user_id} className="bg-gray-50 rounded-lg p-4 border border-gray-100">
-                    <div className="flex items-center mb-3">
-                      <div className="w-8 h-8 bg-blue-100 rounded-full flex items-center justify-center">
-                        <User className="w-4 h-4 text-blue-600" />
-                      </div>
-                      <div className="ml-3">
-                        <div className="font-medium text-gray-900">{memberStats.name}</div>
-                        <div className="text-xs text-gray-500">{memberStats.email}</div>
-                      </div>
-                    </div>
-                    
-                    <div className="space-y-2">
-                      <div className="flex justify-between text-sm">
-                        <span className="text-gray-600">Total Deals:</span>
-                        <span className="font-medium">{memberStats.deal_count}</span>
-                      </div>
-                      <div className="flex justify-between text-sm">
-                        <span className="text-gray-600">Total Value:</span>
-                        <span className="font-medium text-green-600">£{memberStats.total_amount.toLocaleString()}</span>
-                      </div>
-                      
-                      {/* Category breakdown */}
-                      <div className="mt-3 pt-2 border-t border-gray-200">
-                        <div className="grid grid-cols-2 gap-2 text-xs">
-                          <div className="flex justify-between">
-                            <span className="text-gray-500">Commit:</span>
-                            <span className="text-blue-600 font-medium">{memberStats.categories.commit}</span>
-                          </div>
-                          <div className="flex justify-between">
-                            <span className="text-gray-500">Best Case:</span>
-                            <span className="text-orange-600 font-medium">{memberStats.categories.best_case}</span>
-                          </div>
-                          <div className="flex justify-between">
-                            <span className="text-gray-500">Closed:</span>
-                            <span className="text-green-600 font-medium">{memberStats.categories.closed_won}</span>
-                          </div>
-                          <div className="flex justify-between">
-                            <span className="text-gray-500">Pipeline:</span>
-                            <span className="text-gray-600 font-medium">{memberStats.categories.uncategorized}</span>
-                          </div>
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </div>
-          </div>
-        )}
 
         {/* Filters */}
         <div className="bg-white rounded-xl border border-gray-200 shadow-sm p-4">
@@ -1383,6 +1481,10 @@ const DealsPage = () => {
                 textColor="text-gray-700"
                 category="pipeline"
                 description="CRM synced opportunities"
+                tooltipContent={[
+                  "CRM-synced opportunities",
+                  "Starting point for all deals"
+                ]}
               />
             </div>
 
@@ -1398,6 +1500,10 @@ const DealsPage = () => {
                 textColor="text-amber-800"
                 category="commit"
                 description="High confidence deals"
+                tooltipContent={[
+                  "High confidence deals",
+                  "Drag likely closes here"
+                ]}
               />
             </div>
 
@@ -1413,6 +1519,10 @@ const DealsPage = () => {
                 textColor="text-purple-800"
                 category="best_case"
                 description="Potential upside opportunities"
+                tooltipContent={[
+                  "Potential upside opportunities",
+                  "Optimistic forecast scenarios"
+                ]}
               />
             </div>
 
@@ -1423,49 +1533,141 @@ const DealsPage = () => {
           </div>
         )}
 
-        {/* Enhanced Instructions */}
-        <div className="bg-gradient-to-r from-blue-50 to-indigo-50 rounded-xl border border-blue-200 p-6">
-          <h3 className="text-lg font-bold text-blue-900 mb-4 flex items-center">
-            <TrendingUp className="w-5 h-5 mr-2" />
-            Commission Forecasting Guide
-          </h3>
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 text-sm text-blue-800">
-            <div className="space-y-2">
-              <p className="font-semibold">📊 Pipeline</p>
-              <p>CRM-synced opportunities</p>
-              <p>Starting point for all deals</p>
+        {/* Team Performance Breakdown (for team/all views) */}
+        {isManager && dealsData?.team_summary && (managerView === 'team' || managerView === 'all') && (
+          <div className="bg-white rounded-xl border border-gray-200 shadow-sm">
+            <div className="px-6 py-4 border-b border-gray-200">
+              <h3 className="text-lg font-semibold text-gray-900 flex items-center">
+                <Users className="w-5 h-5 mr-2 text-blue-600" />
+                Team Performance Breakdown
+              </h3>
+              <p className="text-sm text-gray-600 mt-1">
+                Individual performance of team members in current view
+              </p>
             </div>
-            <div className="space-y-2">
-              <p className="font-semibold">⭐ Commit</p>
-              <p>High confidence deals</p>
-              <p>Drag likely closes here</p>
-            </div>
-            <div className="space-y-2">
-              <p className="font-semibold">🚀 Best Case</p>
-              <p>Potential upside opportunities</p>
-              <p>Optimistic forecast scenarios</p>
+            <div className="p-6">
+              <div className="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-4">
+                {dealsData.team_summary.map((memberStats: any) => (
+                  <div key={memberStats.user_id} className="bg-gray-50 rounded-lg p-4 border border-gray-100">
+                    <div className="flex items-center mb-3">
+                      <div className="w-8 h-8 bg-blue-100 rounded-full flex items-center justify-center">
+                        <User className="w-4 h-4 text-blue-600" />
+                      </div>
+                      <div className="ml-3">
+                        <div className="font-medium text-gray-900">{memberStats.name}</div>
+                        <div className="text-xs text-gray-500">{memberStats.email}</div>
+                      </div>
+                    </div>
+                    
+                    <div className="space-y-2">
+                      <div className="flex justify-between text-sm">
+                        <span className="text-gray-600">Total Deals:</span>
+                        <span className="font-medium">{memberStats.deal_count}</span>
+                      </div>
+                      <div className="flex justify-between text-sm">
+                        <span className="text-gray-600">Total Value:</span>
+                        <span className="font-medium text-green-600">£{memberStats.total_amount.toLocaleString()}</span>
+                      </div>
+                      
+                      {/* Category breakdown */}
+                      <div className="mt-3 pt-2 border-t border-gray-200">
+                        <div className="grid grid-cols-2 gap-2 text-xs">
+                          <div className="flex justify-between">
+                            <span className="text-gray-500">Commit:</span>
+                            <span className="text-blue-600 font-medium">{memberStats.categories.commit}</span>
+                          </div>
+                          <div className="flex justify-between">
+                            <span className="text-gray-500">Best Case:</span>
+                            <span className="text-orange-600 font-medium">{memberStats.categories.best_case}</span>
+                          </div>
+                          <div className="flex justify-between">
+                            <span className="text-gray-500">Closed:</span>
+                            <span className="text-green-600 font-medium">{memberStats.categories.closed_won}</span>
+                          </div>
+                          <div className="flex justify-between">
+                            <span className="text-gray-500">Pipeline:</span>
+                            <span className="text-gray-600 font-medium">{memberStats.categories.uncategorized}</span>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
             </div>
           </div>
-          <div className="mt-4 p-3 bg-white rounded-lg border border-blue-200">
-            <p className="text-sm text-gray-700">
-              <strong>Pro Tip:</strong> Only categorized deals count toward your commission forecast. 
-              Drag deals to update your projected earnings in real-time.
-            </p>
+        )}
+
+
+      </div>
+
+      {/* Manager Deal Categorization Confirmation Dialog */}
+      {showConfirmationDialog && pendingCategorization && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+          <div className="bg-white rounded-xl p-6 max-w-md w-full mx-4 shadow-2xl">
+            <div className="flex items-center mb-4">
+              <div className="w-10 h-10 bg-blue-100 rounded-full flex items-center justify-center mr-3">
+                <User className="w-5 h-5 text-blue-600" />
+              </div>
+              <h3 className="text-lg font-semibold text-gray-900">
+                Categorize Team Member's Deal
+              </h3>
+            </div>
+            
+            <div className="mb-6">
+              <p className="text-gray-700 mb-3">
+                You're about to categorize a deal that belongs to{' '}
+                <span className="font-semibold text-blue-600">
+                  {pendingCategorization.deal.user?.first_name} {pendingCategorization.deal.user?.last_name}
+                </span>
+              </p>
+              
+              <div className="bg-gray-50 rounded-lg p-4 mb-4">
+                <h4 className="font-medium text-gray-900 mb-2">Deal Details:</h4>
+                <p className="text-sm text-gray-700">
+                  <strong>{pendingCategorization.deal.deal_name}</strong> - {pendingCategorization.deal.account_name}
+                </p>
+                <p className="text-sm text-gray-600">
+                  £{Number(pendingCategorization.deal.amount).toLocaleString()}
+                </p>
+              </div>
+              
+              <div className="bg-blue-50 rounded-lg p-4">
+                <p className="text-sm text-blue-800">
+                  <strong>Action:</strong> Moving from{' '}
+                  <span className="capitalize font-medium">
+                    {pendingCategorization.previousCategory.replace('_', ' ')}
+                  </span>{' '}
+                  to{' '}
+                  <span className="capitalize font-medium">
+                    {pendingCategorization.category.replace('_', ' ')}
+                  </span>
+                </p>
+              </div>
+              
+              <p className="text-sm text-gray-600 mt-3">
+                This action will be logged for future notification features.
+              </p>
+            </div>
+            
+            <div className="flex space-x-3">
+              <button
+                onClick={handleCancelCategorization}
+                className="flex-1 px-4 py-2 text-gray-700 bg-gray-100 hover:bg-gray-200 rounded-lg transition-colors"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleConfirmCategorization}
+                className="flex-1 px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition-colors"
+                disabled={updateDealCategoryMutation.isPending}
+              >
+                {updateDealCategoryMutation.isPending ? 'Updating...' : 'Confirm & Categorize'}
+              </button>
+            </div>
           </div>
         </div>
-
-        {/* Floating Action Button */}
-        <button
-          onClick={() => setShowAddDeal(true)}
-          className="fixed bottom-6 right-6 w-14 h-14 bg-gradient-to-r from-blue-600 to-indigo-600 text-white rounded-full shadow-lg hover:shadow-xl hover:scale-110 transition-all duration-300 flex items-center justify-center z-50 group"
-          title="Add Deal"
-        >
-          <Plus className="w-6 h-6" />
-          <div className="absolute bottom-full right-0 mb-2 px-3 py-2 bg-gray-900 text-white text-sm rounded-lg opacity-0 group-hover:opacity-100 transition-opacity duration-200 pointer-events-none whitespace-nowrap">
-            Add Deal
-          </div>
-        </button>
-      </div>
+      )}
     </Layout>
   );
 };

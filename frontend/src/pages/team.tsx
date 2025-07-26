@@ -12,7 +12,7 @@ import { InviteSuccessMessage } from '../components/team/InviteSuccessMessage';
 import { QuotaWizard } from '../components/team/QuotaWizard';
 import EditMemberModal from '../components/team/EditMemberModal';
 import TeamAggregationModal from '../components/team/TeamAggregationModal';
-import { Target, Users, Settings, TrendingUp, Plus, ChevronRight, ChevronDown } from 'lucide-react';
+import { Target, Users, Settings, TrendingUp, Plus, ChevronRight, ChevronDown, Edit, Trash2, X } from 'lucide-react';
 
 interface TeamMember {
   id: string;
@@ -57,6 +57,7 @@ interface Target {
   id: string;
   user_id: string;
   role: string | null;
+  team_target: boolean;
   period_type: string;
   period_start: string;
   period_end: string;
@@ -100,6 +101,15 @@ const TeamPage = () => {
   // Team member filters
   const [showInactiveMembers, setShowInactiveMembers] = useState(false);
   
+  // Target editing state
+  const [editingTarget, setEditingTarget] = useState<Target | null>(null);
+  const [targetEditModal, setTargetEditModal] = useState(false);
+  
+  // Debug log for inactive members toggle
+  useEffect(() => {
+    console.log('🔍 Team UI - showInactiveMembers state changed:', showInactiveMembers);
+  }, [showInactiveMembers]);
+  
   // Edit member modal state
   const [editingMember, setEditingMember] = useState<TeamMember | null>(null);
   const [showEditModal, setShowEditModal] = useState(false);
@@ -116,10 +126,21 @@ const TeamPage = () => {
   const { data: teamData, isLoading: teamLoading } = useQuery({
     queryKey: ['team', user?.id, periodFilter, showInactiveMembers], // User-specific cache key
     queryFn: async () => {
+      console.log('🔍 Team API - Fetching with params:', { 
+        period: periodFilter, 
+        show_inactive: showInactiveMembers.toString() 
+      });
       const response = await teamApi.getTeam({ 
         period: periodFilter,
         show_inactive: showInactiveMembers.toString()
       });
+      console.log('🔍 Team API - Response received:', response);
+      console.log('🔍 Team API - Team members count:', response.team_members?.length || 0);
+      console.log('🔍 Team API - Team members:', response.team_members?.map(m => ({
+        name: `${m.first_name} ${m.last_name}`,
+        email: m.email,
+        is_active: m.is_active
+      })));
       return response.team_members || [];
     },
     enabled: canManageTeam
@@ -231,6 +252,36 @@ const TeamPage = () => {
       queryClient.invalidateQueries({ queryKey: ['team', user?.id] });
     }
   });
+
+  // Update target mutation
+  const updateTargetMutation = useMutation({
+    mutationFn: ({ id, target }: { id: string; target: any }) => targetsApi.updateTarget(id, target),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['targets'] });
+      setTargetEditModal(false);
+      setEditingTarget(null);
+    }
+  });
+
+  // Deactivate target mutation
+  const deactivateTargetMutation = useMutation({
+    mutationFn: targetsApi.deactivateTarget,
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['targets'] });
+    }
+  });
+
+  // Handler functions for target actions
+  const handleEditTarget = (target: Target) => {
+    setEditingTarget(target);
+    setTargetEditModal(true);
+  };
+
+  const handleDeactivateTarget = (targetId: string) => {
+    if (confirm('Are you sure you want to deactivate this target?')) {
+      deactivateTargetMutation.mutate(targetId);
+    }
+  };
 
   // Filter team members
   const filteredMembers = (teamData || []).filter((member: TeamMember) => {
@@ -597,6 +648,9 @@ const TeamPage = () => {
                         <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                           Status
                         </th>
+                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                          Actions
+                        </th>
                       </tr>
                     </thead>
                     <tbody className="bg-white divide-y divide-gray-200">
@@ -607,15 +661,21 @@ const TeamPage = () => {
                           `individual-${mainTarget.id}`;
                         const isExpanded = expandedTargets.has(groupKey);
                         const isRoleBased = !!mainTarget.role;
+                        const isTeamTarget = !!mainTarget.team_target;
                         
                         return (
                           <React.Fragment key={groupKey}>
                             {/* Main target row */}
-                            <tr className="hover:bg-gray-50">
+                            <tr className={`hover:bg-gray-50 ${isTeamTarget ? 'bg-purple-50' : ''}`}>
                               <td className="px-6 py-4 whitespace-nowrap">
                                 <div className="flex items-center">
-                                  <div className="flex-shrink-0 w-8 h-8 bg-gray-100 rounded-full flex items-center justify-center mr-3">
-                                    {!isRoleBased ? (
+                                  <div className={`flex-shrink-0 w-8 h-8 rounded-full flex items-center justify-center mr-3 ${
+                                    isTeamTarget ? 'bg-purple-100' : 
+                                    isRoleBased ? 'bg-blue-100' : 'bg-gray-100'
+                                  }`}>
+                                    {isTeamTarget ? (
+                                      <Users className="w-4 h-4 text-purple-600" />
+                                    ) : !isRoleBased ? (
                                       <Users className="w-4 h-4 text-gray-600" />
                                     ) : (
                                       <Target className="w-4 h-4 text-blue-600" />
@@ -624,13 +684,20 @@ const TeamPage = () => {
                                   <div className="flex-1">
                                     <div className="flex items-center">
                                       <div className="text-sm font-medium text-gray-900">
-                                        {!isRoleBased ? (
+                                        {isTeamTarget ? (
+                                          'Team Aggregated Target'
+                                        ) : !isRoleBased ? (
                                           mainTarget.user ? `${mainTarget.user.first_name} ${mainTarget.user.last_name}` : 'N/A'
                                         ) : (
                                           `All ${mainTarget.role.replace('_', ' ').replace(/\b\w/g, l => l.toUpperCase())}s`
                                         )}
                                       </div>
-                                      {isRoleBased && (
+                                      {isTeamTarget && (
+                                        <span className="ml-2 inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-purple-100 text-purple-800">
+                                          Team Target
+                                        </span>
+                                      )}
+                                      {isRoleBased && !isTeamTarget && (
                                         <button
                                           onClick={() => toggleExpanded(groupKey)}
                                           className="ml-2 p-1 hover:bg-gray-200 rounded-full transition-colors"
@@ -696,6 +763,24 @@ const TeamPage = () => {
                                   {mainTarget.is_active ? 'Active' : 'Inactive'}
                                 </span>
                               </td>
+                              <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
+                                <button
+                                  onClick={() => handleEditTarget(mainTarget)}
+                                  className="text-indigo-600 hover:text-indigo-900 transition-colors mr-3"
+                                  title="Edit target"
+                                >
+                                  Edit
+                                </button>
+                                {mainTarget.is_active && (
+                                  <button
+                                    onClick={() => handleDeactivateTarget(mainTarget.id)}
+                                    className="text-red-600 hover:text-red-900 transition-colors"
+                                    title="Deactivate target"
+                                  >
+                                    Deactivate
+                                  </button>
+                                )}
+                              </td>
                             </tr>
                             
                             {/* Expanded rows for role-based targets */}
@@ -744,6 +829,24 @@ const TeamPage = () => {
                                   }`}>
                                     {target.is_active ? 'Active' : 'Inactive'}
                                   </span>
+                                </td>
+                                <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
+                                  <button
+                                    onClick={() => handleEditTarget(target)}
+                                    className="text-indigo-600 hover:text-indigo-900 transition-colors mr-3"
+                                    title="Edit target"
+                                  >
+                                    Edit
+                                  </button>
+                                  {target.is_active && (
+                                    <button
+                                      onClick={() => handleDeactivateTarget(target.id)}
+                                      className="text-red-600 hover:text-red-900 transition-colors"
+                                      title="Deactivate target"
+                                    >
+                                      Deactivate
+                                    </button>
+                                  )}
                                 </td>
                               </tr>
                             ))}
@@ -810,6 +913,155 @@ const TeamPage = () => {
           setSelectedManager(null);
         }}
       />
+
+      {/* Target Edit Modal */}
+      {targetEditModal && editingTarget && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+          <div className="bg-white rounded-xl p-6 max-w-md w-full mx-4 shadow-2xl">
+            <div className="flex items-center justify-between mb-6">
+              <h3 className="text-lg font-semibold text-gray-900">Edit Target</h3>
+              <button
+                onClick={() => {
+                  setTargetEditModal(false);
+                  setEditingTarget(null);
+                }}
+                className="text-gray-400 hover:text-gray-600"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+            
+            <form
+              onSubmit={(e) => {
+                e.preventDefault();
+                const formData = new FormData(e.currentTarget);
+                const targetData = {
+                  user_id: editingTarget.user_id,
+                  company_id: user?.company_id,
+                  quota_amount: parseFloat(formData.get('quota_amount') as string),
+                  commission_rate: parseFloat(formData.get('commission_rate') as string) / 100,
+                  period_start: formData.get('period_start'),
+                  period_end: formData.get('period_end'),
+                  period_type: formData.get('period_type'),
+                  role: editingTarget.role || null,
+                  team_target: editingTarget.team_target || false
+                };
+                console.log('🔍 Target update data:', targetData);
+                updateTargetMutation.mutate({ id: editingTarget.id, target: targetData });
+              }}
+              className="space-y-4"
+            >
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Quota Amount (£)
+                </label>
+                <input
+                  type="number"
+                  name="quota_amount"
+                  defaultValue={editingTarget.quota_amount}
+                  required
+                  min="0"
+                  step="0.01"
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
+                />
+              </div>
+              
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Commission Rate (%)
+                </label>
+                <input
+                  type="number"
+                  name="commission_rate"
+                  defaultValue={(editingTarget.commission_rate * 100).toFixed(2)}
+                  required
+                  min="0.1"
+                  max="100"
+                  step="0.1"
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
+                />
+              </div>
+              
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Period Type
+                </label>
+                <select
+                  name="period_type"
+                  defaultValue={editingTarget.period_type}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
+                >
+                  <option value="monthly">Monthly</option>
+                  <option value="quarterly">Quarterly</option>
+                  <option value="annual">Annual</option>
+                </select>
+              </div>
+              
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    Period Start
+                  </label>
+                  <input
+                    type="date"
+                    name="period_start"
+                    defaultValue={editingTarget.period_start.split('T')[0]}
+                    required
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
+                  />
+                </div>
+                
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    Period End
+                  </label>
+                  <input
+                    type="date"
+                    name="period_end"
+                    defaultValue={editingTarget.period_end.split('T')[0]}
+                    required
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
+                  />
+                </div>
+              </div>
+
+              {editingTarget.team_target && (
+                <div className="bg-purple-50 border border-purple-200 rounded-lg p-4">
+                  <div className="flex items-center">
+                    <Users className="w-5 h-5 text-purple-600 mr-2" />
+                    <span className="text-sm font-medium text-purple-800">
+                      Team Aggregated Target
+                    </span>
+                  </div>
+                  <p className="text-xs text-purple-600 mt-1">
+                    This target represents combined quotas for the entire team
+                  </p>
+                </div>
+              )}
+              
+              <div className="flex space-x-3 pt-4">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setTargetEditModal(false);
+                    setEditingTarget(null);
+                  }}
+                  className="flex-1 px-4 py-2 text-gray-700 bg-gray-100 hover:bg-gray-200 rounded-lg transition-colors"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={updateTargetMutation.isPending}
+                  className="flex-1 px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg transition-colors disabled:opacity-50"
+                >
+                  {updateTargetMutation.isPending ? 'Saving...' : 'Save Changes'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
     </Layout>
   );
 };
