@@ -117,7 +117,8 @@ const allowedOrigins = [
   'http://localhost:3001',
   'https://commit-snowy.vercel.app', // ← your live frontend
   'https://sales-commission-staging.vercel.app', // ← staging frontend (clean URL)
-  'https://commit-git-staging-dashboard-enha-505531-toms-projects-5fc7012e.vercel.app' // ← staging frontend (auto-generated)
+  'https://commit-git-staging-dashboard-enha-505531-toms-projects-5fc7012e.vercel.app', // ← staging frontend (auto-generated)
+  'https://sales-commission-staging-git-stag-77113c-toms-projects-5fc7012e.vercel.app' // ← actual staging preview URL
 ];
 
 app.use(cors({
