@@ -65,6 +65,44 @@ app.post('/debug/auth', express.json(), (req, res) => {
   });
 });
 
+// Simple login test (mimics the real login endpoint)
+app.post('/api/auth/login', express.json(), async (req, res) => {
+  try {
+    console.log('Debug login attempt:', req.body);
+    const { email, password } = req.body;
+    
+    if (email === 'test@company.com' && password === 'password123') {
+      // Return a test token for frontend testing
+      res.json({
+        success: true,
+        message: 'Debug login successful',
+        token: 'debug-token-for-staging-test',
+        user: {
+          id: 'debug-user-id',
+          email: 'test@company.com',
+          first_name: 'Debug',
+          last_name: 'User',
+          role: 'admin',
+          is_admin: true,
+          company_id: 'debug-company-id',
+          company_name: 'Debug Company'
+        }
+      });
+    } else {
+      res.status(401).json({
+        success: false,
+        error: 'Invalid credentials'
+      });
+    }
+  } catch (error) {
+    console.error('Debug login error:', error);
+    res.status(500).json({
+      success: false,
+      error: 'Debug login failed'
+    });
+  }
+});
+
 // Start server with error handling
 const server = app.listen(PORT, '0.0.0.0', () => {
   console.log(`🚀 Staging debug server running on 0.0.0.0:${PORT}`);
