@@ -1,6 +1,6 @@
 {
   "name": "frontend",
-  "version": "0.2.0-staging-with-team-filtering",
+  "version": "0.2.1-seasonal-target-fixes",
   "private": true,
   "scripts": {
     "dev": "next dev",

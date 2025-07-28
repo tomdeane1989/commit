@@ -126,8 +126,8 @@ router.get('/', async (req, res) => {
       });
 
       // Batch query for active targets with period information
-      // Filter targets that overlap with the selected period
-      targetsData = await prisma.targets.findMany({
+      // Prioritize current quarter child targets over parent targets
+      const allTargetsData = await prisma.targets.findMany({
         where: {
           user_id: { in: teamMemberIds },
           is_active: true,
@@ -144,7 +144,35 @@ router.get('/', async (req, res) => {
           period_start: true,
           period_end: true,
           team_target: true,
-          role: true
+          role: true,
+          parent_target_id: true
+        }
+      });
+      
+      // Create a map to hold the best target for each user (prefer child targets)
+      const userTargetMap = new Map();
+      
+      // First pass: collect all targets by user
+      allTargetsData.forEach(target => {
+        if (!userTargetMap.has(target.user_id)) {
+          userTargetMap.set(target.user_id, []);
+        }
+        userTargetMap.get(target.user_id).push(target);
+      });
+      
+      // Second pass: select the best target for each user (prioritize child targets)
+      targetsData = [];
+      userTargetMap.forEach((targets, userId) => {
+        // Prefer child targets (quarterly) over parent targets (annual)
+        const childTargets = targets.filter(t => t.parent_target_id !== null);
+        const parentTargets = targets.filter(t => t.parent_target_id === null);
+        
+        // Use child target if available, otherwise use parent target
+        const selectedTarget = childTargets.length > 0 ? childTargets[0] : (parentTargets.length > 0 ? parentTargets[0] : null);
+        
+        if (selectedTarget) {
+          console.log(`🎯 Target selection for user ${userId}: Using ${selectedTarget.parent_target_id ? 'CHILD' : 'PARENT'} target of £${selectedTarget.quota_amount} (${selectedTarget.period_type})`);
+          targetsData.push(selectedTarget);
         }
       });
 
@@ -373,7 +401,7 @@ router.get('/', async (req, res) => {
         console.log(`No commission calculation for ${member.email}: target=${!!target}, closedWonAmount=${closedWonAmount}`);
       }
       
-      // Calculate pro-rated quota for the selected period
+      // Calculate quota for the selected period
       let currentQuota = 0;
       let displayPeriod = null;
       
@@ -387,22 +415,29 @@ router.get('/', async (req, res) => {
         const overlapEnd = new Date(Math.min(targetEnd.getTime(), endDate.getTime()));
         
         if (overlapStart <= overlapEnd) {
-          // Calculate pro-rated quota based on period type (simple division)
-          let proRatio = 1; // Default to full quota
-          
-          // Calculate pro-rated quota based on period filter
-          if (target.period_type === 'annual' && period === 'quarterly') {
-            proRatio = 1 / 4; // Annual target, quarterly view
-          } else if (target.period_type === 'annual' && period === 'monthly') {
-            proRatio = 1 / 12; // Annual target, monthly view
-          } else if (target.period_type === 'quarterly' && period === 'monthly') {
-            proRatio = 1 / 3; // Quarterly target, monthly view
+          // If we have a child target (quarterly), use its full amount for quarterly view
+          if (target.parent_target_id !== null && target.period_type === 'quarterly' && period === 'quarterly') {
+            // This is a quarterly child target - use full amount
+            currentQuota = originalQuota;
+            console.log(`💰 Using CHILD target full amount: £${currentQuota} for ${member.email}`);
           } else {
-            // Same period type or viewing a larger period than target - show full amount
-            proRatio = 1;
+            // Calculate pro-rated quota based on period type (fallback for parent targets)
+            let proRatio = 1; // Default to full quota
+            
+            // Calculate pro-rated quota based on period filter
+            if (target.period_type === 'annual' && period === 'quarterly') {
+              proRatio = 1 / 4; // Annual target, quarterly view
+            } else if (target.period_type === 'annual' && period === 'monthly') {
+              proRatio = 1 / 12; // Annual target, monthly view
+            } else if (target.period_type === 'quarterly' && period === 'monthly') {
+              proRatio = 1 / 3; // Quarterly target, monthly view
+            } else {
+              // Same period type or viewing a larger period than target - show full amount
+              proRatio = 1;
+            }
+            
+            currentQuota = originalQuota * proRatio;
           }
-          
-          currentQuota = originalQuota * proRatio;
           
           // Set display period based on the filter
           displayPeriod = {
@@ -703,11 +738,14 @@ router.get('/manager/:managerId/aggregation', async (req, res) => {
 
     const directReportIds = directReports.map(report => report.id);
 
-    // Get active targets for all direct reports
-    const targets = await prisma.targets.findMany({
+    // Get active targets for all direct reports that overlap with current date
+    const now = new Date();
+    const allTargets = await prisma.targets.findMany({
       where: {
         user_id: { in: directReportIds },
-        is_active: true
+        is_active: true,
+        period_start: { lte: now },
+        period_end: { gte: now }
       },
       include: {
         user: {
@@ -719,6 +757,34 @@ router.get('/manager/:managerId/aggregation', async (req, res) => {
         }
       },
       orderBy: { period_start: 'desc' }
+    });
+
+    // Group targets by user and prioritize child targets (quarterly) over parent targets (annual)  
+    const userTargetMap = new Map();
+    allTargets.forEach(target => {
+      const userId = target.user_id;
+      if (!userTargetMap.has(userId)) {
+        userTargetMap.set(userId, { childTargets: [], parentTargets: [] });
+      }
+      if (target.parent_target_id !== null) {
+        userTargetMap.get(userId).childTargets.push(target);
+      } else {
+        userTargetMap.get(userId).parentTargets.push(target);
+      }
+    });
+
+    // Select the best target for each user (prefer child targets for current period)
+    const targets = [];
+    userTargetMap.forEach((targetGroups, userId) => {
+      // Prefer child targets (quarterly) over parent targets (annual)
+      const selectedTarget = targetGroups.childTargets.length > 0 
+        ? targetGroups.childTargets[0] 
+        : (targetGroups.parentTargets.length > 0 ? targetGroups.parentTargets[0] : null);
+      
+      if (selectedTarget) {
+        console.log(`🎯 Team aggregation: User ${selectedTarget.user.email} - Using ${selectedTarget.parent_target_id ? 'CHILD' : 'PARENT'} target of £${selectedTarget.quota_amount} (${selectedTarget.period_type})`);
+        targets.push(selectedTarget);
+      }
     });
 
     // Calculate performance data for each team member

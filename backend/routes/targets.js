@@ -32,6 +32,224 @@ const calculateProRatedQuota = (baseQuota, hireDate, periodStart, periodEnd) => 
   return Math.round(proRatedQuota);
 };
 
+// Helper function to distribute quota based on distribution method
+const distributeQuota = (totalQuota, distributionMethod, periodStart, periodEnd, customBreakdown = null, seasonalData = null) => {
+  const start = new Date(periodStart);
+  const end = new Date(periodEnd);
+  
+  switch (distributionMethod) {
+    case 'even':
+      return distributeEvenQuota(totalQuota, start, end);
+    
+    case 'seasonal':
+      return distributeSeasonalQuota(totalQuota, start, end, seasonalData);
+    
+    case 'custom':
+      return distributeCustomQuota(totalQuota, start, end, customBreakdown);
+    
+    case 'one-time':
+      return distributeOneTimeQuota(totalQuota, start, end);
+    
+    default:
+      return distributeEvenQuota(totalQuota, start, end);
+  }
+};
+
+// Even distribution (existing logic)
+const distributeEvenQuota = (totalQuota, startDate, endDate) => {
+  const months = getMonthsInPeriod(startDate, endDate);
+  const monthlyQuota = Math.round(totalQuota / months.length);
+  
+  return months.map((month, index) => ({
+    period_start: month.start,
+    period_end: month.end,
+    quota_amount: index === months.length - 1 
+      ? totalQuota - (monthlyQuota * (months.length - 1)) // Adjust last month for rounding
+      : monthlyQuota,
+    period_type: 'monthly'
+  }));
+};
+
+// Seasonal distribution with flexible granularity and allocation methods
+const distributeSeasonalQuota = (totalQuota, startDate, endDate, seasonalData = null) => {
+  if (!seasonalData) {
+    // Fallback to even distribution if no seasonal data provided
+    return distributeEvenQuota(totalQuota, startDate, endDate);
+  }
+
+  const { 
+    seasonal_granularity = 'quarterly',
+    seasonal_allocation_method = 'percentage',
+    seasonal_allocations = {}
+  } = seasonalData;
+
+  if (seasonal_granularity === 'quarterly') {
+    return distributeSeasonalQuarterly(totalQuota, startDate, endDate, seasonal_allocation_method, seasonal_allocations);
+  } else {
+    return distributeSeasonalMonthly(totalQuota, startDate, endDate, seasonal_allocation_method, seasonal_allocations);
+  }
+};
+
+// Quarterly seasonal distribution
+const distributeSeasonalQuarterly = (totalQuota, startDate, endDate, allocationMethod, allocations) => {
+  const quarters = getQuartersInPeriod(startDate, endDate);
+  
+  return quarters.map(quarter => {
+    let quotaAmount;
+    
+    if (allocationMethod === 'percentage') {
+      const percentage = allocations[quarter.name] || 25; // Default 25% per quarter
+      quotaAmount = Math.round(totalQuota * (percentage / 100));
+    } else {
+      quotaAmount = allocations[quarter.name] || Math.round(totalQuota / 4); // Default even split
+    }
+    
+    return {
+      period_start: quarter.start,
+      period_end: quarter.end,
+      quota_amount: quotaAmount,
+      period_type: 'quarterly'
+    };
+  });
+};
+
+// Monthly seasonal distribution
+const distributeSeasonalMonthly = (totalQuota, startDate, endDate, allocationMethod, allocations) => {
+  const months = getMonthsInPeriod(startDate, endDate);
+  const monthNames = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+  
+  return months.map((month, index) => {
+    const monthStart = new Date(month.start);
+    const monthKey = monthNames[monthStart.getMonth()];
+    
+    let quotaAmount;
+    
+    if (allocationMethod === 'percentage') {
+      const percentage = allocations[monthKey] || (100 / 12); // Default ~8.33% per month
+      quotaAmount = Math.round(totalQuota * (percentage / 100));
+    } else {
+      quotaAmount = allocations[monthKey] || Math.round(totalQuota / 12); // Default even split
+    }
+    
+    return {
+      period_start: month.start,
+      period_end: month.end,
+      quota_amount: quotaAmount,
+      period_type: 'monthly'
+    };
+  });
+};
+
+// Custom breakdown with specific amounts for each period
+const distributeCustomQuota = (totalQuota, startDate, endDate, customBreakdown) => {
+  if (!customBreakdown || !Array.isArray(customBreakdown)) {
+    // Fallback to even distribution if no custom breakdown provided
+    return distributeEvenQuota(totalQuota, startDate, endDate);
+  }
+  
+  // Validate that custom breakdown adds up to total quota
+  const customTotal = customBreakdown.reduce((sum, period) => sum + period.quota_amount, 0);
+  if (Math.abs(customTotal - totalQuota) > 1) { // Allow for small rounding differences
+    throw new Error(`Custom breakdown total (${customTotal}) doesn't match annual quota (${totalQuota})`);
+  }
+  
+  return customBreakdown.map(period => ({
+    period_start: period.period_start,
+    period_end: period.period_end,
+    quota_amount: period.quota_amount,
+    period_type: period.period_type || 'monthly'
+  }));
+};
+
+// One-time target for a specific period
+const distributeOneTimeQuota = (totalQuota, startDate, endDate) => {
+  return [{
+    period_start: startDate,
+    period_end: endDate,
+    quota_amount: totalQuota,
+    period_type: 'custom'
+  }];
+};
+
+// Helper function to get months in a period
+const getMonthsInPeriod = (startDate, endDate) => {
+  const months = [];
+  const current = new Date(startDate.getFullYear(), startDate.getMonth(), 1);
+  const end = new Date(endDate.getFullYear(), endDate.getMonth(), 1);
+  
+  while (current <= end) {
+    const monthStart = new Date(current);
+    const monthEnd = new Date(current.getFullYear(), current.getMonth() + 1, 0);
+    
+    // Adjust first and last months to actual period boundaries
+    if (monthStart < startDate) monthStart.setTime(startDate.getTime());
+    if (monthEnd > endDate) monthEnd.setTime(endDate.getTime());
+    
+    months.push({
+      start: monthStart.toISOString().split('T')[0],
+      end: monthEnd.toISOString().split('T')[0]
+    });
+    
+    current.setMonth(current.getMonth() + 1);
+  }
+  
+  return months;
+};
+
+// Helper function to get quarters in a period - ROBUST VERSION
+const getQuartersInPeriod = (startDate, endDate) => {
+  const quarters = [];
+  const start = new Date(startDate);
+  const end = new Date(endDate);
+  
+  console.log(`🔍 getQuartersInPeriod called with: ${start.toISOString().split('T')[0]} to ${end.toISOString().split('T')[0]}`);
+  
+  // Define precise quarter boundaries using specific dates
+  const year = start.getFullYear();
+  const quarterDefinitions = [
+    { name: 'Q1', startDate: `${year}-01-01`, endDate: `${year}-03-31` },
+    { name: 'Q2', startDate: `${year}-04-01`, endDate: `${year}-06-30` },
+    { name: 'Q3', startDate: `${year}-07-01`, endDate: `${year}-09-30` },
+    { name: 'Q4', startDate: `${year}-10-01`, endDate: `${year}-12-31` }
+  ];
+  
+  // Add next year's quarters if the period spans multiple years
+  if (end.getFullYear() > year) {
+    const nextYear = year + 1;
+    quarterDefinitions.push(
+      { name: `Q1 ${nextYear}`, startDate: `${nextYear}-01-01`, endDate: `${nextYear}-03-31` },
+      { name: `Q2 ${nextYear}`, startDate: `${nextYear}-04-01`, endDate: `${nextYear}-06-30` },
+      { name: `Q3 ${nextYear}`, startDate: `${nextYear}-07-01`, endDate: `${nextYear}-09-30` },
+      { name: `Q4 ${nextYear}`, startDate: `${nextYear}-10-01`, endDate: `${nextYear}-12-31` }
+    );
+  }
+  
+  for (const quarter of quarterDefinitions) {
+    const quarterStart = new Date(quarter.startDate);
+    const quarterEnd = new Date(quarter.endDate);
+    
+    console.log(`  Checking ${quarter.name}: ${quarter.startDate} to ${quarter.endDate}`);
+    
+    // Check if this quarter overlaps with our target period
+    if (quarterStart <= end && quarterEnd >= start) {
+      // Calculate the actual intersection
+      const actualStart = quarterStart < start ? start : quarterStart;
+      const actualEnd = quarterEnd > end ? end : quarterEnd;
+      
+      console.log(`    ✅ Adding ${quarter.name}: ${actualStart.toISOString().split('T')[0]} to ${actualEnd.toISOString().split('T')[0]}`);
+      
+      quarters.push({
+        name: quarter.name,
+        start: actualStart.toISOString().split('T')[0],
+        end: actualEnd.toISOString().split('T')[0]
+      });
+    }
+  }
+  
+  console.log(`🎯 Final quarters: ${quarters.map(q => `${q.name}(${q.start} to ${q.end})`).join(', ')}`);
+  return quarters;
+};
+
 const targetSchema = Joi.object({
   user_id: Joi.string().optional(),
   company_id: Joi.string().optional(),
@@ -47,27 +265,132 @@ const targetSchema = Joi.object({
 // Get all targets
 router.get('/', async (req, res) => {
   try {
-    const { user_id, active_only = 'false' } = req.query;
+    const { user_id, active_only = 'false', view = 'management' } = req.query;
     
     if (!req.user) {
       return res.status(401).json({ error: 'Authentication required' });
     }
     
-    const where = {
-      // Admin/Manager can see all targets in their company if no user_id specified
-      ...(user_id ? { user_id } : (req.user.role === 'admin' || req.user.role === 'manager') ? { 
-        user: { company_id: req.user.company_id } 
-      } : { user_id: req.user.id }),
-      ...(active_only === 'true' && { is_active: true })
-    };
-
     // Check permissions
     if (user_id && user_id !== req.user.id && !canManageTeam(req.user)) {
       return res.status(403).json({ error: 'Access denied' });
     }
 
-    const targets = await prisma.targets.findMany({
-      where,
+    let targets;
+
+    if (view === 'current_period') {
+      // For forecasting/deals - return current period targets (prioritize child targets)
+      const now = new Date();
+      const allTargetsWhere = {
+        // Admin/Manager can see all targets in their company if no user_id specified
+        ...(user_id ? { user_id } : (req.user.role === 'admin' || req.user.role === 'manager') ? { 
+          user: { company_id: req.user.company_id } 
+        } : { user_id: req.user.id }),
+        ...(active_only === 'true' && { is_active: true }),
+        // Get targets that are currently active (overlap with current date)
+        period_start: { lte: now },
+        period_end: { gte: now }
+      };
+
+      const allTargets = await prisma.targets.findMany({
+        where: allTargetsWhere,
+        include: {
+          user: {
+            select: {
+              id: true,
+              first_name: true,
+              last_name: true,
+              email: true
+            }
+          }
+        },
+        orderBy: { created_at: 'desc' }
+      });
+
+      // Group targets by user and prioritize child targets (quarterly) over parent targets (annual)  
+      const userTargetMap = new Map();
+      allTargets.forEach(target => {
+        const userId = target.user_id;
+        if (!userTargetMap.has(userId)) {
+          userTargetMap.set(userId, { childTargets: [], parentTargets: [] });
+        }
+        if (target.parent_target_id !== null) {
+          userTargetMap.get(userId).childTargets.push(target);
+        } else {
+          userTargetMap.get(userId).parentTargets.push(target);
+        }
+      });
+
+      // Select the best target for each user (prefer child targets for current period)
+      targets = [];
+      userTargetMap.forEach((targetGroups, userId) => {
+        // Prefer child targets (quarterly) over parent targets (annual)
+        const selectedTarget = targetGroups.childTargets.length > 0 
+          ? targetGroups.childTargets[0] 
+          : (targetGroups.parentTargets.length > 0 ? targetGroups.parentTargets[0] : null);
+        
+        if (selectedTarget) {
+          console.log(`🎯 Targets endpoint (current_period): User ${selectedTarget.user.email} - Using ${selectedTarget.parent_target_id ? 'CHILD' : 'PARENT'} target of £${selectedTarget.quota_amount} (${selectedTarget.period_type})`);
+          targets.push(selectedTarget);
+        }
+      });
+
+    } else {
+      // For management tab - return parent targets (so they can be expanded to see children)
+      const where = {
+        // Admin/Manager can see all targets in their company if no user_id specified
+        ...(user_id ? { user_id } : (req.user.role === 'admin' || req.user.role === 'manager') ? { 
+          user: { company_id: req.user.company_id } 
+        } : { user_id: req.user.id }),
+        ...(active_only === 'true' && { is_active: true }),
+        // Only show parent targets (not child targets) in management view
+        parent_target_id: null
+      };
+
+      targets = await prisma.targets.findMany({
+        where,
+        include: {
+          user: {
+            select: {
+              id: true,
+              first_name: true,
+              last_name: true,
+              email: true
+            }
+          }
+        },
+        orderBy: { created_at: 'desc' }
+      });
+
+      console.log(`🎯 Targets endpoint (management): Found ${targets.length} parent targets for user ${req.user.email}`);
+    }
+
+    console.log(`GET targets: Found ${targets.length} targets for user ${req.user.email}`);
+
+    res.json({
+      targets,
+      success: true
+    });
+  } catch (error) {
+    console.error('Get targets error:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// Get child targets for a parent target
+router.get('/:id/children', async (req, res) => {
+  try {
+    const { id } = req.params;
+    
+    if (!req.user) {
+      return res.status(401).json({ error: 'Authentication required' });
+    }
+
+    const childTargets = await prisma.targets.findMany({
+      where: {
+        parent_target_id: id,
+        is_active: true
+      },
       include: {
         user: {
           select: {
@@ -78,17 +401,15 @@ router.get('/', async (req, res) => {
           }
         }
       },
-      orderBy: { created_at: 'desc' }
+      orderBy: { period_start: 'asc' }
     });
 
-    console.log(`GET targets: Found ${targets.length} targets for user ${req.user.email}`);
-
     res.json({
-      targets,
+      children: childTargets,
       success: true
     });
   } catch (error) {
-    console.error('Get targets error:', error);
+    console.error('Get child targets error:', error);
     res.status(500).json({ error: 'Internal server error' });
   }
 });
@@ -105,14 +426,41 @@ router.post('/', async (req, res) => {
       return res.status(403).json({ error: 'Only managers can create targets' });
     }
 
-    const { target_type, user_id, role, period_type, period_start, period_end, quota_amount, commission_rate, commission_payment_schedule, distribution_method, wizard_data } = req.body;
+    const { 
+      target_type, 
+      user_id, 
+      role, 
+      period_type, 
+      period_start, 
+      period_end, 
+      quota_amount, 
+      commission_rate, 
+      commission_payment_schedule, 
+      distribution_method = 'even',
+      seasonal_granularity,
+      seasonal_allocation_method,
+      seasonal_allocations,
+      custom_breakdown,
+      wizard_data 
+    } = req.body;
 
     console.log('Create target request data:', JSON.stringify(req.body, null, 2));
     console.log('User making request:', req.user.email, req.user.role, req.user.is_admin ? '(ADMIN)' : '');
+    console.log('🔍 Distribution data extracted:', {
+      distribution_method,
+      seasonal_granularity,
+      seasonal_allocation_method,
+      seasonal_allocations
+    });
 
     // Validate required fields
     if (!target_type || !period_type || !period_start || !period_end || !quota_amount || !commission_rate) {
       return res.status(400).json({ error: 'Missing required fields' });
+    }
+
+    // Validate distribution method specific requirements
+    if (distribution_method === 'custom' && !custom_breakdown) {
+      return res.status(400).json({ error: 'Custom breakdown required for custom distribution method' });
     }
 
     if (target_type === 'individual' && !user_id) {
@@ -243,64 +591,161 @@ router.post('/', async (req, res) => {
         console.log(`No overlapping targets found for ${targetUser.email} - keeping existing targets active`);
       }
 
-      // Calculate pro-rated quota if user was hired mid-period
-      let finalQuotaAmount = quota_amount;
-      let proRatedInfo = null;
+      // Get distribution breakdown for this user's quota
+      let quotaDistribution;
       
-      if (targetUser.hire_date) {
-        const proRatedQuota = calculateProRatedQuota(
+      // Prepare seasonal data object if seasonal distribution is selected
+      const seasonalData = distribution_method === 'seasonal' ? {
+        seasonal_granularity,
+        seasonal_allocation_method,
+        seasonal_allocations
+      } : null;
+      
+      try {
+
+        quotaDistribution = distributeQuota(
           quota_amount, 
-          targetUser.hire_date, 
+          distribution_method, 
           period_start, 
-          period_end
+          period_end, 
+          custom_breakdown,
+          seasonalData
         );
-        
-        if (proRatedQuota !== quota_amount) {
-          finalQuotaAmount = proRatedQuota;
-          proRatedInfo = {
-            original_quota: quota_amount,
-            pro_rated_quota: proRatedQuota,
-            hire_date: targetUser.hire_date,
-            reason: 'Mid-year hire pro-rating applied'
-          };
-        }
+      } catch (error) {
+        console.error(`Error distributing quota for user ${targetUser.email}:`, error);
+        skippedUsers.push({
+          user_id: targetUser.id,
+          name: `${targetUser.first_name} ${targetUser.last_name}`,
+          email: targetUser.email,
+          role: targetUser.role,
+          error: error.message
+        });
+        continue;
       }
 
-      // Create new target
-      const target = await prisma.targets.create({
+      // Create parent annual target first
+      const parentTarget = await prisma.targets.create({
         data: {
           user_id: targetUser.id,
           company_id: req.user.company_id,
-          period_type,
+          period_type: period_type,
           period_start: new Date(period_start),
           period_end: new Date(period_end),
-          quota_amount: finalQuotaAmount,
+          quota_amount: quota_amount,
           commission_rate,
           commission_payment_schedule: commission_payment_schedule || 'monthly',
           is_active: true,
-          role: target_type === 'role' ? role : null
+          role: target_type === 'role' ? role : null,
+          // Add distribution metadata
+          distribution_method: distribution_method,
+          distribution_config: distribution_method !== 'even' ? {
+            ...(seasonalData && { seasonal: seasonalData }),
+            ...(custom_breakdown && { custom: custom_breakdown }),
+            original_quota: quota_amount,
+            created_via_wizard: true
+          } : null
         }
       });
 
-      createdTargets.push(target);
+      createdTargets.push(parentTarget);
 
-      // Log activity
+      // Create child targets for each period in the distribution (if not even distribution)
+      if (distribution_method !== 'even' && quotaDistribution.length > 1) {
+        for (const quotaPeriod of quotaDistribution) {
+        // Calculate pro-rated quota if user was hired mid-period
+        let finalQuotaAmount = quotaPeriod.quota_amount;
+        let proRatedInfo = null;
+        
+        if (targetUser.hire_date) {
+          const proRatedQuota = calculateProRatedQuota(
+            quotaPeriod.quota_amount, 
+            targetUser.hire_date, 
+            quotaPeriod.period_start, 
+            quotaPeriod.period_end
+          );
+          
+          if (proRatedQuota !== quotaPeriod.quota_amount) {
+            finalQuotaAmount = proRatedQuota;
+            proRatedInfo = {
+              original_quota: quotaPeriod.quota_amount,
+              pro_rated_quota: proRatedQuota,
+              hire_date: targetUser.hire_date,
+              reason: 'Mid-year hire pro-rating applied'
+            };
+          }
+        }
+
+          // Create child target for this period
+          const childTarget = await prisma.targets.create({
+            data: {
+              user_id: targetUser.id,
+              company_id: req.user.company_id,
+              period_type: quotaPeriod.period_type,
+              period_start: new Date(quotaPeriod.period_start),
+              period_end: new Date(quotaPeriod.period_end),
+              quota_amount: finalQuotaAmount,
+              commission_rate,
+              commission_payment_schedule: commission_payment_schedule || 'monthly',
+              is_active: true,
+              role: target_type === 'role' ? role : null,
+              parent_target_id: parentTarget.id, // Link to parent target
+              // Child targets inherit distribution method but are marked as child
+              distribution_method: 'child',
+              distribution_config: {
+                parent_id: parentTarget.id,
+                period_name: quotaPeriod.period_type === 'quarterly' ? 
+                  `Q${Math.ceil((new Date(quotaPeriod.period_start).getMonth() + 1) / 3)}` : 
+                  new Date(quotaPeriod.period_start).toLocaleDateString('en-GB', { month: 'short' }),
+                original_parent_quota: quota_amount,
+                ...(proRatedInfo && { pro_rated_info: proRatedInfo })
+              }
+            }
+          });
+
+          // Log activity for child target
+          await prisma.activity_log.create({
+            data: {
+              user_id: req.user.id,
+              company_id: req.user.company_id,
+              action: 'child_target_created',
+              entity_type: 'target',
+              entity_id: childTarget.id,
+            context: { 
+              target_type,
+              target_user: `${targetUser.first_name} ${targetUser.last_name}`,
+              quota_amount: childTarget.quota_amount,
+              original_quota: quotaPeriod.quota_amount,
+              period_start: childTarget.period_start,
+              period_end: childTarget.period_end,
+              parent_target_id: parentTarget.id,
+              distribution_method,
+              period_type: quotaPeriod.period_type,
+              ...(proRatedInfo && { pro_rated: true, pro_rated_info: proRatedInfo }),
+              ...(wizard_data && { created_via_wizard: true })
+            },
+            success: true
+          }
+          });
+        }
+      }
+
+      // Log activity for parent target
       await prisma.activity_log.create({
         data: {
           user_id: req.user.id,
           company_id: req.user.company_id,
           action: 'target_created',
           entity_type: 'target',
-          entity_id: target.id,
+          entity_id: parentTarget.id,
           context: { 
             target_type,
             target_user: `${targetUser.first_name} ${targetUser.last_name}`,
-            quota_amount: target.quota_amount,
-            original_quota: quota_amount,
-            period_start: target.period_start,
-            period_end: target.period_end,
-            ...(proRatedInfo && { pro_rated: true, pro_rated_info: proRatedInfo }),
-            ...(distribution_method && { distribution_method }),
+            quota_amount: parentTarget.quota_amount,
+            period_start: parentTarget.period_start,
+            period_end: parentTarget.period_end,
+            distribution_method,
+            period_type: parentTarget.period_type,
+            child_targets_created: distribution_method !== 'even' ? quotaDistribution.length : 0,
             ...(wizard_data && { created_via_wizard: true })
           },
           success: true
@@ -405,10 +850,36 @@ router.patch('/:id/deactivate', async (req, res) => {
       return res.status(403).json({ error: 'Access denied' });
     }
 
+    // Check if this is part of a batch of targets created together (same role, period, quota)
+    const relatedTargets = await prisma.targets.findMany({
+      where: {
+        role: existingTarget.role,
+        period_start: existingTarget.period_start,
+        period_end: existingTarget.period_end,
+        quota_amount: existingTarget.quota_amount,
+        commission_rate: existingTarget.commission_rate,
+        is_active: true,
+        NOT: { id } // Exclude the current target
+      }
+    });
+
+    // Deactivate the main target
     const target = await prisma.targets.update({
       where: { id },
       data: { is_active: false }
     });
+
+    // If there are related targets from the same role-based creation, deactivate them too
+    let batchDeactivated = 0;
+    if (existingTarget.role && relatedTargets.length > 0) {
+      const batchUpdate = await prisma.targets.updateMany({
+        where: {
+          id: { in: relatedTargets.map(t => t.id) }
+        },
+        data: { is_active: false }
+      });
+      batchDeactivated = batchUpdate.count;
+    }
 
     // Log activity
     await prisma.activity_log.create({
@@ -418,12 +889,21 @@ router.patch('/:id/deactivate', async (req, res) => {
         action: 'target_deactivated',
         entity_type: 'target',
         entity_id: target.id,
-        context: {},
+        context: { 
+          batch_deactivated: batchDeactivated,
+          ...(batchDeactivated > 0 && { message: `Deactivated ${batchDeactivated + 1} related targets` })
+        },
         success: true
       }
     });
 
-    res.json(target);
+    res.json({
+      ...target,
+      batch_info: batchDeactivated > 0 ? {
+        total_deactivated: batchDeactivated + 1,
+        message: `Deactivated ${batchDeactivated + 1} related role-based targets`
+      } : null
+    });
   } catch (error) {
     console.error('Deactivate target error:', error);
     res.status(500).json({ error: 'Internal server error' });
@@ -510,7 +990,10 @@ router.post('/resolve-conflicts', async (req, res) => {
               commission_rate: proposed_target.commission_rate,
               commission_payment_schedule: proposed_target.commission_payment_schedule || 'monthly',
               is_active: true,
-              role: proposed_target.role || null
+              role: proposed_target.role || null,
+              // Add distribution metadata for conflict resolution
+              distribution_method: proposed_target.distribution_method || 'even',
+              distribution_config: proposed_target.distribution_config || null
             }
           });
 
@@ -605,7 +1088,10 @@ router.post('/resolve-conflicts', async (req, res) => {
               commission_rate: proposed_target.commission_rate,
               commission_payment_schedule: proposed_target.commission_payment_schedule || 'monthly',
               is_active: true,
-              role: proposed_target.role || null
+              role: proposed_target.role || null,
+              // Add distribution metadata for concurrent targets
+              distribution_method: proposed_target.distribution_method || 'even',
+              distribution_config: proposed_target.distribution_config || null
             }
           });
 

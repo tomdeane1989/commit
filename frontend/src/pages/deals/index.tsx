@@ -283,6 +283,9 @@ const DealsPage = () => {
         params.append('user_id', user?.id || '');
       }
       
+      // Add view parameter to get current period targets for forecasting
+      params.append('view', 'current_period');
+      
       const queryString = params.toString();
       const url = queryString ? `${endpoint}?${queryString}` : endpoint;
       
@@ -364,8 +367,9 @@ const DealsPage = () => {
     quotaAmount = Number(currentTarget?.quota_amount) || 0;
   }
   
-  // Fallback to default if no quota found
-  const annualQuotaTarget = quotaAmount || 240000;
+  // Fallback to default if no quota found  
+  // Note: quotaAmount now comes from current period targets (quarterly), not annual
+  const currentPeriodQuotaTarget = quotaAmount || 60000; // Default quarterly fallback
 
   // ML Training Data Logging
   const logCategorizationChange = async (dealId: string, fromCategory: string, toCategory: string) => {
@@ -432,7 +436,11 @@ const DealsPage = () => {
     deals.filter((d: Deal) => d.deal_type === 'best_case').reduce((sum: number, deal: Deal) => sum + Number(deal.amount), 0) :
     dealsByCategory.best_case.reduce((sum: number, deal: Deal) => sum + Number(deal.amount), 0);
     
-  const quotaTarget = calculateQuotaForPeriod(annualQuotaTarget, quotaPeriod);
+  // Since the backend now returns current period targets, use them directly for quarterly view
+  // Only use calculation for other periods (weekly, monthly, annual)
+  const quotaTarget = quotaPeriod === 'quarterly' 
+    ? currentPeriodQuotaTarget 
+    : calculateQuotaForPeriod(currentPeriodQuotaTarget * 4, quotaPeriod); // Multiply by 4 to get estimated annual for other periods
   
   const totalCategorized = closedAmount + commitAmount + bestCaseAmount;
   const closedProgress = (closedAmount / quotaTarget) * 100;
