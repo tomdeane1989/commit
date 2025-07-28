@@ -129,27 +129,60 @@ router.get('/', async (req, res) => {
 
       // Batch query for active targets with period information
       // Prioritize current quarter child targets over parent targets
-      const allTargetsData = await prisma.targets.findMany({
-        where: {
-          user_id: { in: teamMemberIds },
-          is_active: true,
-          AND: [
-            { period_start: { lte: endDate } },
-            { period_end: { gte: startDate } }
-          ]
-        },
-        select: {
-          user_id: true,
-          quota_amount: true,
-          commission_rate: true,
-          period_type: true,
-          period_start: true,
-          period_end: true,
-          team_target: true,
-          role: true,
-          parent_target_id: true
-        }
-      });
+      let allTargetsData;
+      try {
+        // Try with new schema fields first
+        allTargetsData = await prisma.targets.findMany({
+          where: {
+            user_id: { in: teamMemberIds },
+            is_active: true,
+            AND: [
+              { period_start: { lte: endDate } },
+              { period_end: { gte: startDate } }
+            ]
+          },
+          select: {
+            user_id: true,
+            quota_amount: true,
+            commission_rate: true,
+            period_type: true,
+            period_start: true,
+            period_end: true,
+            team_target: true,
+            role: true,
+            parent_target_id: true
+          }
+        });
+      } catch (error) {
+        console.log('New schema fields not available, falling back to basic target query');
+        // Fallback to basic query without new schema fields
+        allTargetsData = await prisma.targets.findMany({
+          where: {
+            user_id: { in: teamMemberIds },
+            is_active: true,
+            AND: [
+              { period_start: { lte: endDate } },
+              { period_end: { gte: startDate } }
+            ]
+          },
+          select: {
+            user_id: true,
+            quota_amount: true,
+            commission_rate: true,
+            period_type: true,
+            period_start: true,
+            period_end: true,
+            role: true
+          }
+        });
+        
+        // Add default values for missing fields
+        allTargetsData = allTargetsData.map(target => ({
+          ...target,
+          team_target: false, // Default to personal target
+          parent_target_id: null // Default to parent target
+        }));
+      }
       
       // Create a map to hold the best target for each user (prefer child targets)
       const userTargetMap = new Map();

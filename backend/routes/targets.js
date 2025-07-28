@@ -314,7 +314,9 @@ router.get('/', async (req, res) => {
         if (!userTargetMap.has(userId)) {
           userTargetMap.set(userId, { childTargets: [], parentTargets: [] });
         }
-        if (target.parent_target_id !== null) {
+        // Handle missing parent_target_id field gracefully
+        const parentTargetId = target.parent_target_id !== undefined ? target.parent_target_id : null;
+        if (parentTargetId !== null) {
           userTargetMap.get(userId).childTargets.push(target);
         } else {
           userTargetMap.get(userId).parentTargets.push(target);
@@ -330,7 +332,8 @@ router.get('/', async (req, res) => {
           : (targetGroups.parentTargets.length > 0 ? targetGroups.parentTargets[0] : null);
         
         if (selectedTarget) {
-          console.log(`🎯 Targets endpoint (current_period): User ${selectedTarget.user.email} - Using ${selectedTarget.parent_target_id ? 'CHILD' : 'PARENT'} target of £${selectedTarget.quota_amount} (${selectedTarget.period_type})`);
+          const parentTargetId = selectedTarget.parent_target_id !== undefined ? selectedTarget.parent_target_id : null;
+          console.log(`🎯 Targets endpoint (current_period): User ${selectedTarget.user.email} - Using ${parentTargetId ? 'CHILD' : 'PARENT'} target of £${selectedTarget.quota_amount} (${selectedTarget.period_type})`);
           targets.push(selectedTarget);
         }
       });
@@ -342,9 +345,8 @@ router.get('/', async (req, res) => {
         ...(user_id ? { user_id } : (req.user.role === 'admin' || req.user.role === 'manager') ? { 
           user: { company_id: req.user.company_id } 
         } : { user_id: req.user.id }),
-        ...(active_only === 'true' && { is_active: true }),
-        // Only show parent targets (not child targets) in management view
-        parent_target_id: null
+        ...(active_only === 'true' && { is_active: true })
+        // Skip parent_target_id filter for backward compatibility with older schemas
       };
 
       targets = await prisma.targets.findMany({
