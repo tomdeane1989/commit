@@ -1,0 +1,91 @@
+# Sales Commission SaaS - Docker Compose (Development)
+# Full-stack development environment with hot reloading
+
+version: '3.8'
+
+services:
+  # PostgreSQL Database
+  database:
+    image: postgres:16-alpine
+    container_name: sales-commission-db
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: sales_commission_db
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: development_password
+      POSTGRES_HOST_AUTH_METHOD: trust
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./backend/prisma/migrations:/docker-entrypoint-initdb.d/migrations
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d sales_commission_db"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - sales-commission-network
+
+  # Backend API
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: sales-commission-backend
+    restart: unless-stopped
+    depends_on:
+      database:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: postgresql://postgres:development_password@database:5432/sales_commission_db
+      JWT_SECRET: development-jwt-secret-key-123
+      PORT: 3002
+      NODE_ENV: development
+      FRONTEND_URL: http://localhost:3000
+    ports:
+      - "3002:3002"
+    volumes:
+      # Development: Mount source code for hot reloading
+      - ./backend:/app
+      - /app/node_modules
+      - backend_logs:/app/logs
+    networks:
+      - sales-commission-network
+    healthcheck:
+      test: ["CMD", "node", "-e", "require('http').get('http://localhost:3002/health', (res) => { process.exit(res.statusCode === 200 ? 0 : 1) })"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # Frontend Application
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: sales-commission-frontend
+    restart: unless-stopped
+    depends_on:
+      - backend
+    environment:
+      NEXT_PUBLIC_API_URL: http://localhost:3002
+      NODE_ENV: development
+    ports:
+      - "3000:3000"
+    volumes:
+      # Development: Mount source code for hot reloading
+      - ./frontend:/app
+      - /app/.next
+      - /app/node_modules
+    networks:
+      - sales-commission-network
+
+volumes:
+  postgres_data:
+    driver: local
+  backend_logs:
+    driver: local
+
+networks:
+  sales-commission-network:
+    driver: bridge

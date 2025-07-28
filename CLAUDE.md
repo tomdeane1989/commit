@@ -153,13 +153,217 @@
 - AI-powered deal probability predictions
 - Multi-tenant company management
 
+## 🗄️ **Database Configuration**
+
+### **📊 Database Overview**
+- **Database Engine**: PostgreSQL for both local and production environments
+- **ORM**: Prisma Client with comprehensive schema migrations
+- **Data Persistence**: All environments use persistent PostgreSQL databases
+- **Seed Data**: Non-destructive seeding preserves manually created data
+
+### **🏠 Local Development Database**
+- **Location**: Local PostgreSQL server via Homebrew
+- **Database Name**: `sales_commission_db`
+- **Connection**: `postgresql://username@localhost:5432/sales_commission_db`
+- **Service Management**: `brew services start postgresql@14`
+- **Data Persistence**: ✅ Survives computer restarts and application restarts
+- **Seed Behavior**: Only seeds when database is completely empty
+
+#### **Local Database Setup Commands**
+```bash
+# 1. Start PostgreSQL service (if not running)
+brew services start postgresql@14
+
+# 2. Create database (one-time setup)
+createdb sales_commission_db
+
+# 3. Run migrations to create schema
+cd backend && npx prisma migrate deploy
+
+# 4. Seed data (only if database is empty)
+cd backend && node seed-data.js
+
+# 5. Verify database connection
+psql -d sales_commission_db -c "SELECT COUNT(*) FROM users;"
+```
+
+### **🌐 Production Database**
+- **Platform**: Render PostgreSQL
+- **Database Name**: `sales_commission_saas_db` (production)
+- **Connection**: Managed via Render dashboard environment variables
+- **Backups**: Automatic daily backups via Render
+- **Data Persistence**: ✅ Fully persistent cloud database
+- **Access**: Read-only access via Render dashboard
+
+#### **Production Database Access**
+```bash
+# Access via Render dashboard -> Database -> Connect
+# Connection string provided in Render environment
+```
+
+### **🔄 Database Data Management**
+
+#### **Seed Data Behavior (IMPORTANT)**
+The seed script (`seed-data.js`) has been updated to preserve manual data:
+
+- ✅ **Non-Destructive**: Only runs when database is completely empty
+- ✅ **Data Preservation**: Preserves all manually created users, deals, and targets
+- ✅ **Safe Re-runs**: Can run multiple times without data loss
+- ❌ **Old Behavior**: Previously cleared data in development mode (FIXED)
+
+#### **Standard Test Data**
+When database is empty, creates:
+- **Test Company**: "Test Company" with domain "testcompany.com"
+- **Test User**: test@company.com / password123 (admin role)
+- **Test Deals**: 17 realistic B2B deals with proper categorization
+- **Test Target**: £250,000 annual quota for 2025
+
+#### **Manual Data Examples**
+Your manually created data persists:
+- **Custom Users**: tom@test.com and team members
+- **Custom Companies**: Additional organizations
+- **Custom Deals**: User-created opportunities
+- **Custom Targets**: Manually configured quotas
+
+## 🐳 **Containerization & Docker**
+
+### **📦 Docker Architecture**
+The application is fully containerized with multi-stage builds for optimal production deployment:
+
+- **Frontend Container**: Next.js with standalone output (Alpine Linux)
+- **Backend Container**: Node.js/Express with Prisma (Alpine Linux)  
+- **Database Container**: PostgreSQL 16 with persistent volumes
+- **Nginx Proxy**: Production reverse proxy with rate limiting (optional)
+
+### **🚀 Quick Docker Setup**
+```bash
+# 1. Clone and setup
+git clone <repo> && cd sales-commission-saas
+
+# 2. Run automated setup
+./docker-setup.sh
+
+# 3. Access application
+# Frontend: http://localhost:3000
+# Backend: http://localhost:3002
+# Database: localhost:5432
+```
+
+### **🛠️ Docker Commands**
+```bash
+# Development environment
+docker-compose up -d                    # Start all services
+docker-compose down                     # Stop all services
+docker-compose logs -f                  # View logs
+docker-compose build --no-cache         # Rebuild images
+
+# Production environment  
+docker-compose -f docker-compose.prod.yml up -d    # Production deploy
+docker-compose -f docker-compose.prod.yml down     # Stop production
+
+# Individual services
+docker-compose up -d database           # Start only database
+docker-compose exec backend npm run migrate        # Run migrations
+docker-compose exec backend node seed-data.js      # Seed database
+```
+
+### **📁 Docker Files Structure**
+```
+/
+├── docker-compose.yml              # Development environment
+├── docker-compose.prod.yml         # Production environment
+├── docker-setup.sh                 # Automated setup script
+├── nginx.conf                      # Nginx reverse proxy config
+├── .env.docker                     # Environment template
+├── backend/
+│   ├── Dockerfile                  # Multi-stage Node.js build
+│   └── .dockerignore              # Optimize build context
+└── frontend/
+    ├── Dockerfile                  # Multi-stage Next.js build  
+    └── .dockerignore              # Optimize build context
+```
+
+### **🔧 Docker Benefits**
+
+#### **Development Advantages**
+- **Instant Setup**: New team members up and running in minutes
+- **Environment Consistency**: Eliminates "works on my machine" issues
+- **Isolated Services**: Database, backend, frontend run independently
+- **Hot Reloading**: Development containers support live code changes
+
+#### **Production Advantages**  
+- **Cloud Platform Flexibility**: Deploy to any Docker-compatible platform
+- **Scalability**: Easy horizontal scaling with container orchestration
+- **Security**: Multi-stage builds minimize attack surface
+- **Resource Efficiency**: Optimized Alpine Linux base images
+
+#### **Deployment Platforms**
+- ✅ **Render**: Direct Docker deploy from repository
+- ✅ **Railway**: Container-based deployment  
+- ✅ **DigitalOcean App Platform**: Docker container support
+- ✅ **AWS ECS/Fargate**: Container orchestration
+- ✅ **Google Cloud Run**: Serverless containers
+- ✅ **Azure Container Instances**: Managed containers
+
+### **🔒 Production Security**
+- **Non-root users**: All containers run as unprivileged users
+- **Multi-stage builds**: Only production dependencies in final images
+- **Health checks**: Built-in container health monitoring
+- **Rate limiting**: Nginx proxy with API rate limits
+- **Security headers**: CORS, CSP, and security headers configured
+
+### **📊 Container Monitoring**
+```bash
+# Container health status
+docker-compose ps
+
+# Resource usage
+docker stats
+
+# Container logs
+docker-compose logs backend -f
+docker-compose logs frontend -f
+docker-compose logs database -f
+```
+
 ## 🏃‍♂️ **Development Environment**
 
-### **🌐 Cloud Deployment**
+### **🌐 Current Cloud Deployment**
 - **Frontend**: Vercel (https://sales-commission-saas.vercel.app/)
 - **Backend**: Render (auto-deploy from main branch)
 - **Database**: PostgreSQL on Render
 - **Status**: ✅ Fully operational with all issues resolved
+
+### **🚢 Docker vs Current Deployment**
+
+#### **Current Setup (Vercel + Render)**
+- ✅ **Working**: Production deployment is stable
+- ✅ **Automatic**: Git-based deployment from main branch
+- ❌ **Platform Lock-in**: Tied to specific cloud providers
+- ❌ **Environment Differences**: Local vs production setup varies
+- ❌ **Onboarding Complexity**: New developers need manual setup
+
+#### **Docker Benefits**
+- ✅ **Platform Independence**: Deploy anywhere that supports containers
+- ✅ **Environment Parity**: Identical local and production environments
+- ✅ **Team Onboarding**: Single `./docker-setup.sh` command
+- ✅ **Cost Flexibility**: Compare pricing across platforms easily
+- ✅ **Migration Ready**: Move between cloud providers without re-architecture
+
+#### **Migration Strategy** 
+```bash
+# Phase 1: Docker for local development (ready now)
+./docker-setup.sh
+
+# Phase 2: Optional production migration
+# - Deploy to Render using Docker
+# - Keep Vercel + Render as backup
+# - Migrate DNS when confident
+
+# Phase 3: Platform optimization
+# - Compare costs: Render vs Railway vs DigitalOcean
+# - Implement container scaling if needed
+```
 
 ### **💻 Local Development**
 ```bash
@@ -307,14 +511,15 @@ git push origin main                       # Deploy to production
 
 #### **Local Development (.env files)**
 ```bash
-# Backend (.env)
-DATABASE_URL=file:./dev.db                    # Local SQLite
-JWT_SECRET=your-super-secure-jwt-secret-key   # Generate new for security
-PORT=3002                                     # Backend port
-NODE_ENV=development
+# Backend (.env) - CURRENT CONFIGURATION
+DATABASE_URL="postgresql://thomasdeane@localhost:5432/sales_commission_db"  # Local PostgreSQL
+JWT_SECRET=development-jwt-secret-key-123      # Development JWT secret
+PORT=3002                                      # Backend port
+NODE_ENV=development                           # Environment mode
+FRONTEND_URL=http://localhost:3001             # Frontend URL for CORS
 
 # Frontend (.env.development) 
-NEXT_PUBLIC_API_URL=http://localhost:3002     # Local backend URL
+NEXT_PUBLIC_API_URL=http://localhost:3002      # Local backend URL
 
 # Frontend (.env.local) - Optional overrides
 NEXT_PUBLIC_API_URL=http://localhost:3002
@@ -334,10 +539,41 @@ NEXT_PUBLIC_API_URL=https://your-backend.render.com  # Production backend URL
 
 #### **🔑 Critical Environment Setup**
 - **JWT_SECRET**: Must be different between local/production for security
-- **DATABASE_URL**: Local uses SQLite, production uses PostgreSQL
+- **DATABASE_URL**: Both local and production use PostgreSQL (different servers)  
 - **API_URL**: Frontend must point to correct backend (local vs production)
 - **Render Auto-Deploy**: Triggered by pushes to main branch
 - **Vercel Auto-Deploy**: Triggered by pushes to main branch
+
+#### **🚨 Database Troubleshooting**
+
+**Problem**: "Database `sales_commission_db` does not exist"
+```bash
+# Solution: Create the database
+createdb sales_commission_db
+cd backend && npx prisma migrate deploy
+```
+
+**Problem**: "Connection refused" or "Server not found"
+```bash
+# Solution: Start PostgreSQL service
+brew services start postgresql@14
+brew services list | grep postgresql  # Verify it's running
+```
+
+**Problem**: "Lost my manual data after running seed"
+```bash
+# This is now FIXED - seed script preserves existing data
+# Your data persists across restarts and seed runs
+psql -d sales_commission_db -c "SELECT email FROM users;"  # Check your data
+```
+
+**Problem**: Need to reset database completely
+```bash
+# WARNING: This deletes ALL data
+dropdb sales_commission_db
+createdb sales_commission_db
+cd backend && npx prisma migrate deploy && node seed-data.js
+```
 
 ### **🛠️ Development Tools & Automation**
 
@@ -369,19 +605,25 @@ NEXT_PUBLIC_API_URL=https://your-backend.render.com  # Production backend URL
 
 #### **🚀 Quick Start After Restart**
 ```bash
-# 1. Start backend
+# 1. Ensure PostgreSQL is running
+brew services list | grep postgresql  # Should show "started"
+
+# 2. Verify database exists and has data
+psql -d sales_commission_db -c "SELECT COUNT(*) FROM users;"
+
+# 3. Start backend
 cd backend && node server-working.js
 
-# 2. Start frontend (new terminal)
+# 4. Start frontend (new terminal)
 cd frontend && npm run dev
 
-# 3. Access application
+# 5. Access application
 # Local: http://localhost:3000
 # Production: https://sales-commission-saas.vercel.app/
 
-# 4. Test login
-# Email: test@company.com
-# Password: password123
+# 6. Test login with either account
+# Standard: test@company.com / password123
+# Custom: tom@test.com / [your password]
 ```
 
 ## 🔍 **Development Notes**

@@ -7,6 +7,21 @@ async function seedDatabase() {
   console.log('🌱 Starting database seeding...');
 
   try {
+    // Check if database already has data - if so, skip seeding
+    const existingUserCount = await prisma.users.count();
+    const existingCompanyCount = await prisma.companies.count();
+    
+    if (existingUserCount > 0 || existingCompanyCount > 0) {
+      console.log('📊 Database already contains data:');
+      console.log(`   - ${existingUserCount} users`);
+      console.log(`   - ${existingCompanyCount} companies`);
+      console.log('🔄 Skipping seed data to preserve existing data');
+      console.log('💡 To force re-seeding, manually clear the database first');
+      return;
+    }
+
+    console.log('📭 Database is empty - proceeding with seed data...');
+
     // First, ensure we have the test company and user
     let testCompany = await prisma.companies.findFirst({
       where: { name: 'Test Company' }
@@ -77,32 +92,6 @@ async function seedDatabase() {
     }
 
     console.log(`✓ Active Target: £${activeTarget.quota_amount.toLocaleString()} Annual 2025`);
-
-    // Skip data clearing in staging/production to preserve user data
-    if (process.env.NODE_ENV === 'development') {
-      console.log('Clearing existing data...');
-      await prisma.deal_categorizations.deleteMany({
-        where: { user_id: testUser.id }
-      });
-      await prisma.commission_details.deleteMany({
-        where: { 
-          commission: {
-            user_id: testUser.id 
-          }
-        }
-      });
-      await prisma.commissions.deleteMany({
-        where: { user_id: testUser.id }
-      });
-      await prisma.activity_log.deleteMany({
-        where: { user_id: testUser.id }
-      });
-      await prisma.deals.deleteMany({
-        where: { user_id: testUser.id }
-      });
-    } else {
-      console.log('Skipping data clearing in staging/production environment');
-    }
 
     // Create seed deals - mix of open opportunities and closed deals
     console.log('Creating seed deals...');

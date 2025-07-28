@@ -1,0 +1,58 @@
+# Backend .dockerignore
+# Optimize Docker build performance and security
+
+# Node.js
+node_modules
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Development files
+.env.local
+.env.development
+.env.staging.backup
+*.log
+logs/
+dev.db*
+
+# Git
+.git
+.gitignore
+
+# Development tools
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Documentation
+README*.md
+docs/
+
+# Test files
+test/
+tests/
+*.test.js
+*.spec.js
+coverage/
+
+# Build artifacts
+dist/
+build/
+
+# Temporary files
+tmp/
+temp/
+
+# Docker
+Dockerfile*
+.dockerignore
+docker-compose*.yml
+
+# Prisma development
+prisma/dev.db*
+prisma/*.db-journal
