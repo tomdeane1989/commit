@@ -251,13 +251,40 @@ app.get('/api/dashboard/sales-rep', authMiddleware, async (req, res) => {
     
     console.log('Dashboard API: targetUserIds =', targetUserIds);
     
-    // Get current target (use first target user for single target scenarios)
-    const currentTarget = await prisma.targets.findFirst({
+    // Get current target (prioritize current quarter's child target)
+    const now = new Date();
+    let currentTarget = await prisma.targets.findFirst({
       where: { 
         user_id: targetUserId,
-        is_active: true 
+        is_active: true,
+        period_start: { lte: now },
+        period_end: { gte: now },
+        parent_target_id: { not: null } // Prefer child targets (quarterly)
       }
     });
+    
+    // If no current quarter child target found, fall back to parent target
+    if (!currentTarget) {
+      currentTarget = await prisma.targets.findFirst({
+        where: { 
+          user_id: targetUserId,
+          is_active: true,
+          period_start: { lte: now },
+          period_end: { gte: now },
+          parent_target_id: null // Parent target
+        }
+      });
+    }
+    
+    // If still no target found, get any active target
+    if (!currentTarget) {
+      currentTarget = await prisma.targets.findFirst({
+        where: { 
+          user_id: targetUserId,
+          is_active: true 
+        }
+      });
+    }
     console.log('Dashboard API: currentTarget =', currentTarget);
 
     // Get deals with categorizations for target users

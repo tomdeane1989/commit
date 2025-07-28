@@ -10,6 +10,7 @@ const prisma = new PrismaClient();
 // Get team members
 router.get('/', async (req, res) => {
   try {
+    console.log(`🏢 TEAM ENDPOINT called by ${req.user.email}`);
     // Only managers (including admins) can view team
     if (!canManageTeam(req.user)) {
       return res.status(403).json({ error: 'Insufficient permissions' });
@@ -62,7 +63,8 @@ router.get('/', async (req, res) => {
     });
 
     // Get aggregated data for all team members in batch queries
-    const teamMemberIds = teamMembers.map(member => member.id);
+    // Include the requesting user (manager) to get their team targets
+    const teamMemberIds = [...teamMembers.map(member => member.id), req.user.id];
     
     // Initialize empty data arrays for when there are no team members
     let openDealsData = [];
@@ -161,18 +163,27 @@ router.get('/', async (req, res) => {
       });
       
       // Second pass: select the best target for each user (prioritize child targets)
+      // For managers, include both personal and team targets
       targetsData = [];
       userTargetMap.forEach((targets, userId) => {
-        // Prefer child targets (quarterly) over parent targets (annual)
-        const childTargets = targets.filter(t => t.parent_target_id !== null);
-        const parentTargets = targets.filter(t => t.parent_target_id === null);
+        // Separate targets by type
+        const childTargets = targets.filter(t => t.parent_target_id !== null && !t.team_target);
+        const parentTargets = targets.filter(t => t.parent_target_id === null && !t.team_target);
+        const teamTargets = targets.filter(t => t.team_target === true);
         
-        // Use child target if available, otherwise use parent target
-        const selectedTarget = childTargets.length > 0 ? childTargets[0] : (parentTargets.length > 0 ? parentTargets[0] : null);
+        // For personal targets: prefer child targets over parent targets
+        const selectedPersonalTarget = childTargets.length > 0 ? childTargets[0] : (parentTargets.length > 0 ? parentTargets[0] : null);
         
-        if (selectedTarget) {
-          console.log(`🎯 Target selection for user ${userId}: Using ${selectedTarget.parent_target_id ? 'CHILD' : 'PARENT'} target of £${selectedTarget.quota_amount} (${selectedTarget.period_type})`);
-          targetsData.push(selectedTarget);
+        if (selectedPersonalTarget) {
+          console.log(`🎯 Target selection for user ${userId}: Using ${selectedPersonalTarget.parent_target_id ? 'CHILD' : 'PARENT'} target of £${selectedPersonalTarget.quota_amount} (${selectedPersonalTarget.period_type})`);
+          targetsData.push(selectedPersonalTarget);
+        }
+        
+        // For managers: also include team targets
+        if (teamTargets.length > 0) {
+          const teamTarget = teamTargets[0]; // Take the first team target
+          console.log(`🎯 Target selection for user ${userId}: Adding TEAM target of £${teamTarget.quota_amount} (${teamTarget.period_type})`);
+          targetsData.push(teamTarget);
         }
       });
 
@@ -489,8 +500,13 @@ router.get('/', async (req, res) => {
       };
     });
 
+    // Manager is now processed in the main team members loop with both personal and team targets
+    console.log(`🎯 Manager processed in main loop - avoiding duplicate tile`);
+    
+    let finalTeamMembers = teamWithMetrics;
+
     res.json({
-      team_members: teamWithMetrics,
+      team_members: finalTeamMembers,
       success: true
     });
   } catch (error) {
@@ -544,7 +560,7 @@ router.post('/invite', async (req, res) => {
     // Create user
     const newUser = await prisma.users.create({
       data: {
-        email,
+        email: email.toLowerCase(), // Normalize email to lowercase
         password: hashedPassword,
         first_name,
         last_name,
@@ -1008,7 +1024,26 @@ router.post('/aggregated-target', async (req, res) => {
     }
 
     if (existingTarget) {
-      return res.status(400).json({ error: 'Team target already exists for this period' });
+      console.log('Existing team target found, updating instead of creating new one:', existingTarget.id);
+      
+      // Update the existing team target
+      const updatedTarget = await prisma.targets.update({
+        where: { id: existingTarget.id },
+        data: {
+          quota_amount: Number(total_quota),
+          commission_rate: Number(avg_commission_rate),
+          updated_at: new Date()
+        }
+      });
+
+      console.log('Team target updated successfully:', updatedTarget.id);
+      
+      return res.json({
+        success: true,
+        message: 'Team target updated successfully',
+        target: updatedTarget,
+        action: 'updated'
+      });
     }
 
     // Create the team target
@@ -1085,8 +1120,10 @@ router.post('/aggregated-target', async (req, res) => {
     });
 
     res.status(201).json({
+      success: true,
+      message: 'Team target created successfully',
       target: teamTarget,
-      message: 'Team target created successfully'
+      action: 'created'
     });
 
   } catch (error) {

@@ -46,9 +46,9 @@ router.post('/register', async (req, res) => {
 
     const { email, password, first_name, last_name, company_name, company_domain } = value;
 
-    // Check if user already exists
+    // Check if user already exists (normalize email for lookup)
     const existingUser = await prisma.users.findUnique({
-      where: { email }
+      where: { email: email.toLowerCase() }
     });
 
     if (existingUser) {
@@ -69,7 +69,7 @@ router.post('/register', async (req, res) => {
     // Create user - First user in company gets manager role with admin privileges
     const user = await prisma.users.create({
       data: {
-        email,
+        email: email.toLowerCase(), // Normalize email to lowercase
         password: passwordHash,
         first_name,
         last_name,
@@ -126,9 +126,9 @@ router.post('/login', async (req, res) => {
 
     const { email, password } = value;
 
-    // Find user
+    // Find user (normalize email for lookup)
     const user = await prisma.users.findUnique({
-      where: { email },
+      where: { email: email.toLowerCase() },
       include: { company: true }
     });
 
