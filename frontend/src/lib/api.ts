@@ -176,6 +176,11 @@ export const targetsApi = {
     const response = await api.post('/targets/resolve-conflicts', data);
     return response.data;
   },
+
+  getChildTargets: async (parentId: string): Promise<any> => {
+    const response = await api.get(`/targets/${parentId}/children`);
+    return response.data;
+  },
 };
 
 // Commissions API

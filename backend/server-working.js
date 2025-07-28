@@ -623,9 +623,38 @@ app.post('/api/analytics/categorization-log', authMiddleware, async (req, res) =
 });
 
 
-// Health check
-app.get('/health', (req, res) => {
-  res.json({ status: 'OK', timestamp: new Date().toISOString() });
+// Health check endpoint with database connectivity
+app.get('/health', async (req, res) => {
+  try {
+    // Test database connection
+    await prisma.$queryRaw`SELECT 1`;
+    
+    // Test critical queries
+    const userCount = await prisma.users.count();
+    const targetCount = await prisma.targets.count();
+    const dealCount = await prisma.deals.count();
+    
+    res.json({
+      status: 'healthy',
+      database: 'connected',
+      counts: {
+        users: userCount,
+        targets: targetCount,
+        deals: dealCount
+      },
+      timestamp: new Date().toISOString(),
+      version: '1.2.0'
+    });
+  } catch (error) {
+    console.error('Health check failed:', error);
+    res.status(500).json({
+      status: 'unhealthy',
+      database: 'disconnected',
+      error: error.message,
+      timestamp: new Date().toISOString(),
+      version: '1.2.0'
+    });
+  }
 });
 
 

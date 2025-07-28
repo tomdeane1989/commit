@@ -11,9 +11,10 @@ import { InviteModal } from '../components/team/InviteModal';
 import { InviteSuccessMessage } from '../components/team/InviteSuccessMessage';
 import { QuotaWizard } from '../components/team/QuotaWizard';
 import { TargetModal } from '../components/team/TargetModal';
+import { TargetDistributionModal } from '../components/team/TargetDistributionModal';
 import EditMemberModal from '../components/team/EditMemberModal';
 import TeamAggregationModal from '../components/team/TeamAggregationModal';
-import { Target, Users, Settings, TrendingUp, Plus, ChevronRight, ChevronDown, Edit, Trash2, X } from 'lucide-react';
+import { Target, Users, Settings, TrendingUp, Plus, ChevronRight, ChevronDown, ChevronUp, Edit, Trash2, X } from 'lucide-react';
 
 interface TeamMember {
   id: string;
@@ -65,6 +66,9 @@ interface Target {
   quota_amount: number;
   commission_rate: number;
   is_active: boolean;
+  distribution_method?: string | null;
+  distribution_config?: any | null;
+  parent_target_id?: string | null;
   user: {
     id: string;
     first_name: string;
@@ -90,6 +94,8 @@ const TeamPage = () => {
   // Modals
   const [inviteModalOpen, setInviteModalOpen] = useState(false);
   const [quotaWizardOpen, setQuotaWizardOpen] = useState(false);
+  const [distributionModalOpen, setDistributionModalOpen] = useState(false);
+  const [selectedTarget, setSelectedTarget] = useState<Target | null>(null);
   
   // Success message state
   const [successMessageOpen, setSuccessMessageOpen] = useState(false);
@@ -113,6 +119,9 @@ const TeamPage = () => {
   // Target edit modal state
   const [editingTarget, setEditingTarget] = useState<Target | null>(null);
   const [showTargetModal, setShowTargetModal] = useState(false);
+  
+  // Target distribution modal state (selectedTargetForDistribution only, distributionModalOpen declared above)
+  const [selectedTargetForDistribution, setSelectedTargetForDistribution] = useState<Target | null>(null);
   
   // Debug log for inactive members toggle
   useEffect(() => {
@@ -290,6 +299,46 @@ const TeamPage = () => {
   const managers = (teamData || []).filter((member: TeamMember) => 
     member.role === 'manager' && member.is_active
   );
+
+  // Helper function to get distribution type info
+  const getDistributionInfo = (target: Target) => {
+    const method = target.distribution_method || 'even';
+    
+    switch (method) {
+      case 'seasonal':
+        const config = target.distribution_config?.seasonal;
+        const granularity = config?.seasonal_granularity || 'quarterly';
+        const allocMethod = config?.seasonal_allocation_method || 'percentage';
+        return {
+          label: `Seasonal (${granularity})`,
+          color: 'bg-blue-100 text-blue-800',
+          icon: '📊',
+          description: `${allocMethod === 'percentage' ? 'Percentage' : 'Revenue'} based ${granularity} distribution`
+        };
+      case 'custom':
+        const customPeriods = target.distribution_config?.custom?.length || 0;
+        return {
+          label: `Custom (${customPeriods} periods)`,
+          color: 'bg-yellow-100 text-yellow-800',
+          icon: '⚙️',
+          description: `Custom breakdown across ${customPeriods} periods`
+        };
+      case 'one-time':
+        return {
+          label: 'One-time',
+          color: 'bg-green-100 text-green-800',
+          icon: '🎯',
+          description: 'Single target for specific period'
+        };
+      default:
+        return {
+          label: 'Even',
+          color: 'bg-gray-100 text-gray-800',
+          icon: '📈',
+          description: 'Evenly distributed across months'
+        };
+    }
+  };
 
   // Group targets for display
   const groupedTargets = React.useMemo(() => {
@@ -729,22 +778,38 @@ const TeamPage = () => {
                                       )}
                                     </div>
                                     <div className="text-sm text-gray-500">
-                                      {isTeamTarget ? (
-                                        <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-purple-100 text-purple-800">
-                                          Team Target
-                                        </span>
-                                      ) : !isRoleBased ? (
-                                        <>
-                                          <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800 mr-2">
-                                            Individual
+                                      <div className="flex items-center space-x-2">
+                                        {isTeamTarget ? (
+                                          <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-purple-100 text-purple-800">
+                                            Team Target
                                           </span>
-                                          {mainTarget.user?.email || 'N/A'}
-                                        </>
-                                      ) : (
-                                        <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-800">
-                                          Role-based ({group.length} members)
-                                        </span>
-                                      )}
+                                        ) : !isRoleBased ? (
+                                          <>
+                                            <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800 mr-2">
+                                              Individual
+                                            </span>
+                                            <span className="text-gray-500">{mainTarget.user?.email || 'N/A'}</span>
+                                          </>
+                                        ) : (
+                                          <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-800">
+                                            Role-based ({group.length} members)
+                                          </span>
+                                        )}
+                                        
+                                        {/* Distribution Type Badge */}
+                                        {(() => {
+                                          const distInfo = getDistributionInfo(mainTarget);
+                                          return (
+                                            <span 
+                                              className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${distInfo.color}`}
+                                              title={distInfo.description}
+                                            >
+                                              <span className="mr-1">{distInfo.icon}</span>
+                                              {distInfo.label}
+                                            </span>
+                                          );
+                                        })()}
+                                      </div>
                                     </div>
                                   </div>
                                 </div>
@@ -787,6 +852,42 @@ const TeamPage = () => {
                               </td>
                               <td className="px-6 py-4 whitespace-nowrap">
                                 <div className="flex items-center space-x-2">
+                                  {/* View Distribution Button - only show for non-even distributions */}
+                                  {mainTarget.distribution_method && mainTarget.distribution_method !== 'even' && (
+                                    <button
+                                      onClick={() => {
+                                        setSelectedTargetForDistribution(mainTarget);
+                                        setDistributionModalOpen(true);
+                                      }}
+                                      className="p-2 text-gray-400 hover:text-purple-600 hover:bg-purple-50 rounded-lg transition-colors"
+                                      title="View distribution breakdown"
+                                    >
+                                      <Target className="w-4 h-4" />
+                                    </button>
+                                  )}
+                                  {/* Expand/Collapse Button for distributed targets */}
+                                  {mainTarget.distribution_method && mainTarget.distribution_method !== 'even' && (
+                                    <button
+                                      onClick={() => {
+                                        if (expandedTargets.has(mainTarget.id)) {
+                                          setExpandedTargets(prev => {
+                                            const newSet = new Set(prev);
+                                            newSet.delete(mainTarget.id);
+                                            return newSet;
+                                          });
+                                        } else {
+                                          setExpandedTargets(prev => new Set(prev).add(mainTarget.id));
+                                        }
+                                      }}
+                                      className="p-2 text-gray-400 hover:text-green-600 hover:bg-green-50 rounded-lg transition-colors"
+                                      title={expandedTargets.has(mainTarget.id) ? "Collapse periods" : "Expand periods"}
+                                    >
+                                      {expandedTargets.has(mainTarget.id) ? 
+                                        <ChevronUp className="w-4 h-4" /> : 
+                                        <ChevronDown className="w-4 h-4" />
+                                      }
+                                    </button>
+                                  )}
                                   <button
                                     onClick={() => handleTargetEdit(mainTarget)}
                                     className="p-2 text-gray-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors"
@@ -804,6 +905,11 @@ const TeamPage = () => {
                                 </div>
                               </td>
                             </tr>
+                            
+                            {/* Expanded rows for seasonal/custom distribution child targets */}
+                            {expandedTargets.has(mainTarget.id) && mainTarget.distribution_method && mainTarget.distribution_method !== 'even' && (
+                              <ChildTargetsDisplay parentTargetId={mainTarget.id} />
+                            )}
                             
                             {/* Expanded rows for role-based targets */}
                             {isRoleBased && isExpanded && group.map((target: Target) => (
@@ -947,7 +1053,87 @@ const TeamPage = () => {
         loading={updateTargetMutation.isPending}
         editingTarget={editingTarget}
       />
+
+      {/* Target Distribution Modal */}
+      <TargetDistributionModal
+        isOpen={distributionModalOpen}
+        onClose={() => setDistributionModalOpen(false)}
+        target={selectedTargetForDistribution}
+      />
     </Layout>
+  );
+};
+
+// Component to display child targets when expanded
+const ChildTargetsDisplay: React.FC<{ parentTargetId: string }> = ({ parentTargetId }) => {
+  const { data: childrenData, isLoading } = useQuery({
+    queryKey: ['child-targets', parentTargetId],
+    queryFn: () => targetsApi.getChildTargets(parentTargetId),
+    enabled: !!parentTargetId
+  });
+
+  if (isLoading) {
+    return (
+      <tr>
+        <td colSpan={4} className="px-6 py-4 text-center text-gray-500">
+          Loading child targets...
+        </td>
+      </tr>
+    );
+  }
+
+  if (!childrenData?.children || childrenData.children.length === 0) {
+    return (
+      <tr>
+        <td colSpan={4} className="px-6 py-4 text-center text-gray-500">
+          No child periods found
+        </td>
+      </tr>
+    );
+  }
+
+  return (
+    <>
+      {childrenData.children.map((child: any) => (
+        <tr key={child.id} className="bg-blue-50 border-l-4 border-blue-200">
+          <td className="px-6 py-3 whitespace-nowrap">
+            <div className="flex items-center">
+              <div className="w-8 h-8 mr-3" /> {/* Spacer */}
+              <div className="flex-shrink-0 w-6 h-6 bg-blue-100 rounded-full flex items-center justify-center mr-3 border">
+                <Target className="w-3 h-3 text-blue-600" />
+              </div>
+              <div>
+                <div className="text-sm font-medium text-gray-900">
+                  {child.distribution_config?.period_name || 'Period'}
+                </div>
+                <div className="text-xs text-gray-500">
+                  {new Date(child.period_start).toLocaleDateString('en-GB')} - {new Date(child.period_end).toLocaleDateString('en-GB')}
+                </div>
+              </div>
+            </div>
+          </td>
+          <td className="px-6 py-3 whitespace-nowrap">
+            <div className="text-sm font-medium text-gray-900">
+              {new Intl.NumberFormat('en-GB', {
+                style: 'currency',
+                currency: 'GBP',
+                minimumFractionDigits: 0
+              }).format(child.quota_amount)}
+            </div>
+          </td>
+          <td className="px-6 py-3 whitespace-nowrap">
+            <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-800">
+              📅 Child Period
+            </span>
+          </td>
+          <td className="px-6 py-3 whitespace-nowrap">
+            <div className="text-xs text-gray-500">
+              Child of parent target
+            </div>
+          </td>
+        </tr>
+      ))}
+    </>
   );
 };
 
