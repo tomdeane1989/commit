@@ -2,6 +2,7 @@
 import React from 'react';
 import { useRouter } from 'next/router';
 import { useAuth } from '@/hooks/useAuth';
+import VersionDisplay from './VersionDisplay';
 import { 
   Home, 
   BarChart3, 
@@ -267,6 +268,9 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
           {children}
         </main>
       </div>
+      
+      {/* Version Display */}
+      <VersionDisplay />
     </div>
   );
 };

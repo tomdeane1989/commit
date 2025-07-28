@@ -153,6 +153,50 @@
 - AI-powered deal probability predictions
 - Multi-tenant company management
 
+## 📊 **Version Management**
+
+### **🏷️ Semantic Versioning Protocol**
+The application uses semantic versioning (SemVer) format: **MAJOR.MINOR.PATCH**
+
+#### **Version Number Guidelines**
+- **MAJOR** (X.0.0): Breaking changes, major system updates, architecture overhauls
+- **MINOR** (X.Y.0): New features, significant enhancements, major UI changes
+- **PATCH** (X.Y.Z): Bug fixes, small style changes, minor improvements
+
+#### **Current Version: 1.1.0**
+- **1.0.0**: Initial production release with core features
+- **1.1.0**: Docker containerization implementation (current)
+
+### **🔧 Version Display**
+- **Location**: Bottom left corner, next to transparent logo
+- **Style**: Subtle, faded text that becomes visible on hover
+- **Environment Indicators**: 
+  - 🔵 Blue dot = Development
+  - 🟡 Yellow dot = Staging  
+  - 🟢 Green dot = Production
+
+### **📝 Version Update Process**
+```typescript
+// File: /frontend/src/lib/version.ts
+export const VERSION = {
+  major: 1,    // ← Increment for breaking changes
+  minor: 1,    // ← Increment for new features  
+  patch: 0,    // ← Increment for bug fixes
+  prerelease: '', // ← For beta/rc releases
+};
+```
+
+#### **When to Update Versions**
+- **PATCH** (1.1.0 → 1.1.1): CSS fixes, typo corrections, small bug fixes
+- **MINOR** (1.1.0 → 1.2.0): New pages, features, significant enhancements
+- **MAJOR** (1.1.0 → 2.0.0): Breaking API changes, major architecture changes
+
+### **🌍 Environment Detection**
+The version system automatically detects environment:
+- **localhost**: Shows "(dev)" suffix
+- **staging/preview URLs**: Shows staging indicator
+- **production URLs**: Clean version display
+
 ## 🗄️ **Database Configuration**
 
 ### **📊 Database Overview**

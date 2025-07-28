@@ -127,10 +127,6 @@ const DashboardPage = () => {
     <ProtectedRoute>
       <Layout>
       <div className="max-w-7xl mx-auto space-y-8">
-        {/* Build Version Indicator */}
-        <div className="bg-green-100 border border-green-400 text-green-700 px-4 py-2 rounded">
-          ✅ NEW BUILD v0.2.0 - Team Filtering Features Active - If you see this, the latest code deployed!
-        </div>
         
         {/* Header */}
         <div className="flex items-center justify-between">
