@@ -328,6 +328,144 @@ router.get('/', async (req, res) => {
       orderBy: { period_start: 'desc' }
     });
 
+    // Auto-calculate missing commissions for team members when viewing team data
+    if (req.user.role === 'manager' && (view === 'team' || view === 'all') && include_historical === 'true') {
+      console.log('🔄 Auto-calculating missing commissions for team members...');
+      
+      // Get all team members
+      const directReports = await prisma.users.findMany({
+        where: {
+          manager_id: req.user.id,
+          company_id: req.user.company_id,
+          is_active: true
+        },
+        select: { id: true, first_name: true, last_name: true, email: true }
+      });
+      
+      // Include manager in 'all' view
+      const allUsers = view === 'all' ? [...directReports, { id: req.user.id, first_name: req.user.first_name, last_name: req.user.last_name, email: req.user.email }] : directReports;
+      
+      console.log(`📊 Checking commission records for ${allUsers.length} team members`);
+      
+      // Generate last 12 monthly periods
+      const periods = [];
+      const now = new Date();
+      for (let i = 0; i < 12; i++) {
+        const targetYear = now.getUTCFullYear();
+        let targetMonth = now.getUTCMonth() - i;
+        let year = targetYear;
+        
+        while (targetMonth < 0) {
+          targetMonth += 12;
+          year -= 1;
+        }
+        
+        const periodStart = new Date(Date.UTC(year, targetMonth, 1));
+        const periodEnd = new Date(Date.UTC(year, targetMonth + 1, 0, 23, 59, 59, 999));
+        
+        // Only include past periods
+        if (periodEnd < now) {
+          periods.push({
+            start: periodStart.toISOString().split('T')[0],
+            end: periodEnd.toISOString().split('T')[0],
+            year,
+            month: targetMonth
+          });
+        }
+      }
+      
+      // For each user and period, ensure commission record exists
+      for (const user of allUsers) {
+        for (const period of periods) {
+          try {
+            // Check if commission already exists
+            const existingCommission = await prisma.commissions.findFirst({
+              where: {
+                user_id: user.id,
+                period_start: new Date(period.start),
+                period_end: new Date(period.end)
+              }
+            });
+            
+            if (!existingCommission) {
+              // Check if user has target and deals for this period
+              const target = await prisma.targets.findFirst({
+                where: {
+                  user_id: user.id,
+                  period_start: { lte: new Date(period.end) },
+                  period_end: { gte: new Date(period.start) },
+                  is_active: true
+                }
+              });
+              
+              if (target) {
+                const closedDeals = await prisma.deals.findMany({
+                  where: {
+                    user_id: user.id,
+                    status: 'closed_won',
+                    close_date: {
+                      gte: new Date(period.start),
+                      lte: new Date(period.end)
+                    }
+                  }
+                });
+                
+                // Calculate commission (even if zero deals)
+                const totalClosedAmount = closedDeals.reduce((sum, deal) => sum + Number(deal.amount), 0);
+                const totalCommissionEarned = totalClosedAmount * Number(target.commission_rate);
+                
+                // Calculate prorated quota
+                let proratedQuotaAmount = Number(target.quota_amount);
+                if (target.period_type === 'annual' && target.commission_payment_schedule === 'monthly') {
+                  proratedQuotaAmount = Number(target.quota_amount) / 12;
+                } else if (target.period_type === 'annual' && target.commission_payment_schedule === 'quarterly') {
+                  proratedQuotaAmount = Number(target.quota_amount) / 4;
+                }
+                
+                const quotaAttainmentPercentage = proratedQuotaAmount > 0 ? (totalClosedAmount / proratedQuotaAmount) * 100 : 0;
+                
+                // Create commission record
+                const commission = await prisma.commissions.create({
+                  data: {
+                    user_id: user.id,
+                    target_id: target.id,
+                    company_id: req.user.company_id,
+                    period_start: new Date(period.start),
+                    period_end: new Date(period.end),
+                    quota_amount: proratedQuotaAmount,
+                    actual_amount: totalClosedAmount,
+                    attainment_pct: quotaAttainmentPercentage,
+                    commission_rate: Number(target.commission_rate),
+                    commission_earned: totalCommissionEarned,
+                    base_commission: totalCommissionEarned
+                  }
+                });
+                
+                // Create deal commission details
+                await Promise.all(
+                  closedDeals.map(deal => 
+                    prisma.commission_details.create({
+                      data: {
+                        deal_id: deal.id,
+                        commission_id: commission.id,
+                        commission_amount: Number(deal.amount) * Number(target.commission_rate)
+                      }
+                    })
+                  )
+                );
+                
+                console.log(`✅ Created commission for ${user.first_name} ${user.last_name} - ${period.start}: £${totalCommissionEarned.toFixed(2)}`);
+              }
+            }
+          } catch (error) {
+            console.error(`❌ Failed to create commission for ${user.email} ${period.start}:`, error.message);
+          }
+        }
+      }
+      
+      console.log('🔄 Finished auto-calculating missing commissions');
+    }
+
     // If historical data is requested, calculate missing periods
     // Look for ANY targets (not just active ones) to determine payment schedule
     if (include_historical === 'true') {

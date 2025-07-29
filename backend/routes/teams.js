@@ -18,6 +18,7 @@ router.get('/', async (req, res) => {
 
     // Get period filter (default to quarterly) and active filter
     const { period = 'quarterly', show_inactive = 'false' } = req.query;
+    console.log(`🔍 Team endpoint - period filter: ${period}`);
     
     // Calculate date range for the period filter
     const now = new Date();
@@ -204,8 +205,15 @@ router.get('/', async (req, res) => {
         const parentTargets = targets.filter(t => t.parent_target_id === null && !t.team_target);
         const teamTargets = targets.filter(t => t.team_target === true);
         
-        // For personal targets: prefer child targets over parent targets
-        const selectedPersonalTarget = childTargets.length > 0 ? childTargets[0] : (parentTargets.length > 0 ? parentTargets[0] : null);
+        // For personal targets: choose target based on period filter
+        let selectedPersonalTarget;
+        if (period === 'yearly') {
+          // For yearly view: prefer parent targets (annual) over child targets (quarterly)
+          selectedPersonalTarget = parentTargets.length > 0 ? parentTargets[0] : (childTargets.length > 0 ? childTargets[0] : null);
+        } else {
+          // For quarterly/monthly view: prefer child targets over parent targets
+          selectedPersonalTarget = childTargets.length > 0 ? childTargets[0] : (parentTargets.length > 0 ? parentTargets[0] : null);
+        }
         
         if (selectedPersonalTarget) {
           console.log(`🎯 Target selection for user ${userId}: Using ${selectedPersonalTarget.parent_target_id ? 'CHILD' : 'PARENT'} target of £${selectedPersonalTarget.quota_amount} (${selectedPersonalTarget.period_type})`);
