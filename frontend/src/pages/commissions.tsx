@@ -251,9 +251,18 @@ const CommissionsPage = () => {
       const results = [];
       for (const period of periods) {
         try {
-          const result = await commissionsApi.calculateCommissions(period);
-          results.push({ success: true, period, result });
+          // For individual member view, calculate for that specific member
+          const requestData = {
+            period_start: period.period_start,
+            period_end: period.period_end,
+            ...(managerView === 'member' && selectedMemberId && { user_id: selectedMemberId })
+          };
+          
+          console.log('🔄 Calculating historical commission with data:', requestData);
+          const result = await api.post('/commissions/calculate', requestData);
+          results.push({ success: true, period, result: result.data });
         } catch (error) {
+          console.log('⚠️ Historical commission calculation failed:', error);
           results.push({ success: false, period, error });
         }
       }
@@ -273,6 +282,11 @@ const CommissionsPage = () => {
   // Auto-calculate historical commissions when missing periods are available
   const [hasAutoCalculated, setHasAutoCalculated] = useState(false);
   
+  // Reset auto-calculation flag when view or selected member changes
+  useEffect(() => {
+    setHasAutoCalculated(false);
+  }, [managerView, selectedMemberId]);
+  
   useEffect(() => {
     if (
       missingPeriods && 
@@ -286,7 +300,8 @@ const CommissionsPage = () => {
       );
       
       if (calculablePeriods.length > 0) {
-        console.log(`🔄 Auto-calculating ${calculablePeriods.length} historical commission periods`);
+        console.log(`🔄 Auto-calculating ${calculablePeriods.length} historical commission periods for view: ${managerView}${selectedMemberId ? ` (member: ${selectedMemberId})` : ''}`);
+        console.log('🔄 Calculable periods:', calculablePeriods);
         setHasAutoCalculated(true);
         calculateHistoricalCommissionsMutation.mutate(
           calculablePeriods.map((p: any) => ({
@@ -296,7 +311,7 @@ const CommissionsPage = () => {
         );
       }
     }
-  }, [missingPeriods, hasAutoCalculated, calculateHistoricalCommissionsMutation.isPending]);
+  }, [missingPeriods, hasAutoCalculated, calculateHistoricalCommissionsMutation.isPending, managerView, selectedMemberId]);
   
   // Calculate current period based on payment schedule
   const getCurrentPeriod = () => {
