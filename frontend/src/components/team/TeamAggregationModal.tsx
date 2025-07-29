@@ -77,7 +77,9 @@ const TeamAggregationModal: React.FC<TeamAggregationModalProps> = ({
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['team-aggregation', manager?.id] });
       queryClient.invalidateQueries({ queryKey: ['team'] });
+      queryClient.invalidateQueries({ queryKey: ['targets'] }); // Also refresh targets page
       setSaving(false);
+      onClose(); // Close the modal after successful save
     },
     onError: (error: any) => {
       console.error('Failed to save team target:', error);

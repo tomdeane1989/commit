@@ -340,29 +340,51 @@ router.get('/', async (req, res) => {
 
     } else {
       // For management tab - return parent targets (so they can be expanded to see children)
-      const where = {
+      const baseWhere = {
         // Admin/Manager can see all targets in their company if no user_id specified
         ...(user_id ? { user_id } : (req.user.role === 'admin' || req.user.role === 'manager') ? { 
           user: { company_id: req.user.company_id } 
         } : { user_id: req.user.id }),
         ...(active_only === 'true' && { is_active: true })
-        // Skip parent_target_id filter for backward compatibility with older schemas
       };
 
-      targets = await prisma.targets.findMany({
-        where,
-        include: {
-          user: {
-            select: {
-              id: true,
-              first_name: true,
-              last_name: true,
-              email: true
+      try {
+        // Try to filter for parent targets only (new schema)
+        targets = await prisma.targets.findMany({
+          where: {
+            ...baseWhere,
+            parent_target_id: null // Only parent targets
+          },
+          include: {
+            user: {
+              select: {
+                id: true,
+                first_name: true,
+                last_name: true,
+                email: true
+              }
             }
-          }
-        },
-        orderBy: { created_at: 'desc' }
-      });
+          },
+          orderBy: { created_at: 'desc' }
+        });
+      } catch (error) {
+        console.log('New schema fields not available, falling back to basic target query');
+        // Fallback for older schema without parent_target_id field
+        targets = await prisma.targets.findMany({
+          where: baseWhere,
+          include: {
+            user: {
+              select: {
+                id: true,
+                first_name: true,
+                last_name: true,
+                email: true
+              }
+            }
+          },
+          orderBy: { created_at: 'desc' }
+        });
+      }
 
       console.log(`🎯 Targets endpoint (management): Found ${targets.length} parent targets for user ${req.user.email}`);
     }
