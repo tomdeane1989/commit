@@ -102,10 +102,13 @@ const CommissionsPage = () => {
         }
       }
       
+      console.log('🔍 Fetching commissions with params:', params.toString());
       const response = await api.get(`/commissions?${params}`);
+      console.log('🔍 Commissions response:', response.data);
       return response.data;
     },
-    enabled: !!user
+    enabled: !!user,
+    staleTime: 0 // Always refetch when query key changes
   });
 
   // Fetch team members for manager dropdown
@@ -139,22 +142,10 @@ const CommissionsPage = () => {
       return results;
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['commissions', user?.id] });
+      queryClient.invalidateQueries({ queryKey: ['commissions'] });
     },
     throwOnError: false
   });
-
-  // Auto-trigger team commission calculations when viewing team/all and no commissions exist
-  useEffect(() => {
-    if (isManager && (managerView === 'team' || managerView === 'all') && 
-        teamMembers.length > 0 && commissions.length === 0 && 
-        !calculateTeamCommissionsMutation.isPending) {
-      
-      console.log('🎯 Auto-calculating team commission data');
-      const teamMemberIds = teamMembers.map(member => member.id);
-      calculateTeamCommissionsMutation.mutate(teamMemberIds);
-    }
-  }, [isManager, managerView, teamMembers, commissions, calculateTeamCommissionsMutation.isPending]);
 
   const commissions = Array.isArray(commissionsResponse) 
     ? commissionsResponse 
@@ -164,6 +155,26 @@ const CommissionsPage = () => {
   const teamSummary: TeamSummary[] = commissionsResponse?.team_summary || [];
   const viewContext = commissionsResponse?.view_context;
   const teamMembers: TeamMember[] = teamMembersResponse?.team_members || [];
+
+  // Auto-trigger team commission calculations when viewing team/all and no commissions exist
+  useEffect(() => {
+    console.log('🔍 Team calculation check:', {
+      isManager,
+      managerView,
+      teamMembersLength: teamMembers.length,
+      commissionsLength: commissions.length,
+      isPending: calculateTeamCommissionsMutation.isPending
+    });
+    
+    if (isManager && (managerView === 'team' || managerView === 'all') && 
+        teamMembers.length > 0 && commissions.length === 0 && 
+        !calculateTeamCommissionsMutation.isPending) {
+      
+      console.log('🎯 Auto-calculating team commission data for team members:', teamMembers.map(m => m.email));
+      const teamMemberIds = teamMembers.map(member => member.id);
+      calculateTeamCommissionsMutation.mutate(teamMemberIds);
+    }
+  }, [isManager, managerView, teamMembers, commissions, calculateTeamCommissionsMutation.isPending]);
 
   // Fetch user's target to determine payment schedule
   const { data: targetsResponse } = useQuery({
@@ -186,7 +197,7 @@ const CommissionsPage = () => {
       });
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['commissions', user?.id] });
+      queryClient.invalidateQueries({ queryKey: ['commissions'] });
     },
     onError: (error: any) => {
       // Handle the specific case where no target is found
@@ -201,10 +212,10 @@ const CommissionsPage = () => {
     throwOnError: false
   });
 
-  // Auto-trigger calculation on page load for all views except team/all (which don't need individual calculations)
+  // Auto-trigger calculation on page load for personal and individual member views
   useEffect(() => {
     const shouldAutoCalculate = user && !calculateCurrentPeriodMutation.isPending && 
-      ((!isManager) || (isManager && (managerView === 'personal' || managerView === 'member')));
+      ((!isManager) || (isManager && managerView === 'personal'));
     
     if (shouldAutoCalculate && !calculateCurrentPeriodMutation.isSuccess) {
       console.log('🎯 Auto-calculating current period commission on page load');
@@ -214,6 +225,25 @@ const CommissionsPage = () => {
       });
     }
   }, [user, isManager, managerView]); // Depend on managerView for managers
+
+  // Auto-trigger calculation for specific team member when viewing member view
+  useEffect(() => {
+    if (isManager && managerView === 'member' && selectedMemberId && 
+        commissions.length === 0 && !calculateCurrentPeriodMutation.isPending) {
+      
+      console.log('🎯 Auto-calculating commission for selected team member:', selectedMemberId);
+      // Use direct API call for specific team member
+      api.post('/commissions/calculate', {
+        user_id: selectedMemberId,
+        period_start: currentPeriod.start,
+        period_end: currentPeriod.end
+      }).then(() => {
+        queryClient.invalidateQueries({ queryKey: ['commissions'] });
+      }).catch(error => {
+        console.log(`⚠️ Failed to calculate commission for member ${selectedMemberId}:`, error);
+      });
+    }
+  }, [isManager, managerView, selectedMemberId, commissions.length]);
 
   // Mutation for calculating historical commissions
   const calculateHistoricalCommissionsMutation = useMutation({
@@ -230,7 +260,7 @@ const CommissionsPage = () => {
       return results;
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['commissions', user?.id] });
+      queryClient.invalidateQueries({ queryKey: ['commissions'] });
     },
     throwOnError: false
   });
