@@ -59,7 +59,7 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
 
   const navigation = [
     { name: 'Forecasting', href: '/deals', icon: BarChart3 },
-    { name: 'Commissions', href: '/commissions', icon: PoundSterling },
+    { name: 'Performance', href: '/commissions', icon: PoundSterling },
     { name: 'Team', href: '/team', icon: Users, adminOnly: true },
     { name: 'Dashboard', href: '/dashboard', icon: Home },
     { name: 'Settings', href: '/settings', icon: Settings },
@@ -226,7 +226,7 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
                 </div>
                 <input
                   type="text"
-                  placeholder="Search deals, commissions, team..."
+                  placeholder="Search deals, performance, team..."
                   className="block w-64 lg:w-96 pl-12 pr-4 py-3 bg-gray-50 border border-gray-200 rounded-2xl text-sm placeholder-gray-500 focus:outline-none focus:ring-2 focus:border-transparent transition-all duration-300"
                   style={{ '--tw-ring-color': '#82a365' } as React.CSSProperties}
                 />

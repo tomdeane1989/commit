@@ -153,6 +153,13 @@ const CommissionChart: React.FC<CommissionChartProps> = ({
 
   return (
     <div className="space-y-6">
+      {/* Chart Header */}
+      <div className="flex items-center justify-end pb-2">
+        <div className="text-sm font-medium text-gray-600">
+          Commission Earned
+        </div>
+      </div>
+      
       {/* Bar Chart */}
       <div className="relative">
         <div className="space-y-4">
@@ -179,7 +186,7 @@ const CommissionChart: React.FC<CommissionChartProps> = ({
               }));
               
               return (
-                <div key={`team-${item.period_start}`} className="space-y-2">
+                <div key={`team-${item.period_start}`} className={`space-y-2 p-4 rounded-lg ${index % 2 === 0 ? 'bg-gray-50' : 'bg-white'}`}>
                   {/* Period Label and Stats */}
                   <div className="flex items-center space-x-4">
                     <div className="w-16 text-sm font-medium text-gray-700 text-right">
@@ -187,7 +194,7 @@ const CommissionChart: React.FC<CommissionChartProps> = ({
                     </div>
                     <div className="flex-1">
                       <div className="text-xs text-gray-600 mb-1">
-                        Sales Attainment: {teamAttainment.toFixed(1)}% • Total Commission: £{teamCommission.toLocaleString()}
+                        Sales Attainment: {teamAttainment.toFixed(1)}% • Team Quota: £{teamQuota.toLocaleString()} • Total Sales: £{teamActual.toLocaleString()}
                       </div>
                     </div>
                   </div>
@@ -208,11 +215,11 @@ const CommissionChart: React.FC<CommissionChartProps> = ({
                       <div className="flex h-full">
                         {membersWithPercentages.map((member: any, memberIndex: number) => {
                           const memberColors = [
-                            '#10B981', // green
-                            '#8B5CF6', // purple  
-                            '#F59E0B', // orange
-                            '#EC4899', // pink
-                            '#6366F1'  // indigo
+                            'linear-gradient(135deg, #059669 0%, #10B981 100%)', // emerald gradient
+                            'linear-gradient(135deg, #7C3AED 0%, #A855F7 100%)', // purple gradient
+                            'linear-gradient(135deg, #DC2626 0%, #EF4444 100%)', // red gradient
+                            'linear-gradient(135deg, #0891B2 0%, #06B6D4 100%)', // cyan gradient
+                            'linear-gradient(135deg, #4338CA 0%, #6366F1 100%)'  // indigo gradient
                           ];
                           const color = memberColors[memberIndex % memberColors.length];
                           const memberWidth = teamCommission > 0 ? (member.commission_earned / teamCommission) * barWidth : 0;
@@ -225,7 +232,7 @@ const CommissionChart: React.FC<CommissionChartProps> = ({
                               className="h-full relative"
                               style={{ 
                                 width: `${memberWidth}%`,
-                                backgroundColor: color
+                                background: color
                               }}
                               title={`${member.user?.first_name} ${member.user?.last_name}: £${member.commission_earned.toLocaleString()} (${member.percentageOfTotal.toFixed(1)}% of team total)`}
                             >
@@ -253,7 +260,7 @@ const CommissionChart: React.FC<CommissionChartProps> = ({
                   <div className="ml-20 flex flex-wrap gap-4 text-xs text-gray-600">
                     {membersWithPercentages.map((member: any, memberIndex: number) => {
                       const memberColors = [
-                        '#10B981', '#8B5CF6', '#F59E0B', '#EC4899', '#6366F1'
+                        '#059669', '#7C3AED', '#DC2626', '#0891B2', '#4338CA'
                       ];
                       const color = memberColors[memberIndex % memberColors.length];
                       
@@ -288,12 +295,21 @@ const CommissionChart: React.FC<CommissionChartProps> = ({
               const quotaIndicator = chartMax > 0 ? (quotaAmount * 0.1 / chartMax) * 100 : 0;
               
               return (
-                <div key={commission.id}>
-                  <div className="flex items-center space-x-4">
-                    {/* Period Label */}
+                <div key={commission.id} className={`p-4 rounded-lg ${index % 2 === 0 ? 'bg-gray-50' : 'bg-white'}`}>
+                  {/* Period Label and Stats */}
+                  <div className="flex items-center space-x-4 mb-2">
                     <div className="w-16 text-sm font-medium text-gray-700 text-right">
                       {periodLabel}
                     </div>
+                    <div className="flex-1">
+                      <div className="text-xs text-gray-600">
+                        Sales Attainment: {attainment.toFixed(1)}% • Quota: £{quotaAmount.toLocaleString()} • Total Sales: £{actualAmount.toLocaleString()}
+                      </div>
+                    </div>
+                  </div>
+                  
+                  <div className="flex items-center space-x-4">
+                    <div className="w-16"></div> {/* Spacer for alignment */}
                     
                     {/* Bar Container */}
                     <div className="flex-1 relative h-8 bg-gray-100 rounded-lg overflow-hidden">

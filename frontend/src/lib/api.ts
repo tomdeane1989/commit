@@ -236,7 +236,8 @@ export const teamApi = {
     console.log('🔍 TeamAPI - Auth token being used (full):', localStorage.getItem('token'));
     const response = await api.get('/team', { params });
     console.log('🔍 TeamAPI - Response received:', response.data);
-    return response.data;
+    // Extract team_members array from the response object
+    return response.data.team_members || response.data;
   },
 
   inviteTeamMember: async (memberData: {

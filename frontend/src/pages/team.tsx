@@ -132,6 +132,13 @@ const TeamPage = () => {
   const canManageTeam = user?.role === 'manager';
   const isAdmin = user?.is_admin === true && user?.role === 'manager';
 
+  // Redirect if user doesn't have permission - MUST be before conditional returns
+  useEffect(() => {
+    if (user && !canManageTeam) {
+      router.push('/dashboard');
+    }
+  }, [user, canManageTeam, router]);
+
   // Fetch team data - MUST be called before any conditional returns
   const { data: teamData, isLoading: teamLoading } = useQuery({
     queryKey: ['team', user?.id, periodFilter, showInactiveMembers], // User-specific cache key
@@ -145,13 +152,13 @@ const TeamPage = () => {
         show_inactive: showInactiveMembers.toString()
       });
       console.log('🔍 Team API - Response received:', response);
-      console.log('🔍 Team API - Team members count:', response.team_members?.length || 0);
-      console.log('🔍 Team API - Team members:', response.team_members?.map(m => ({
+      console.log('🔍 Team API - Team members count:', response?.length || 0);
+      console.log('🔍 Team API - Team members:', response?.map(m => ({
         name: `${m.first_name} ${m.last_name}`,
         email: m.email,
         is_active: m.is_active
       })));
-      return response.team_members || [];
+      return response || [];
     },
     enabled: canManageTeam
   });
@@ -501,14 +508,6 @@ const TeamPage = () => {
       deleteTargetMutation.mutate(targetId);
     }
   };
-
-  // Redirect if user doesn't have permission
-  useEffect(() => {
-    if (user && !canManageTeam) {
-      router.push('/dashboard');
-    }
-  }, [user, canManageTeam, router]);
-
 
   if (!canManageTeam) {
     return (

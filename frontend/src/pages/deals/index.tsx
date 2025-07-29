@@ -618,9 +618,119 @@ const DealsPage = () => {
               </div>
             )}
 
+            {/* Deal Details Grid */}
+            <div className="grid grid-cols-2 gap-4 mb-3">
+              {/* Left Column */}
+              <div className="space-y-2">
+                {/* Deal Value */}
+                <div>
+                  <span className="text-xs font-medium text-gray-600">Deal Value:</span>
+                  <div className="text-sm font-bold text-green-600">
+                    £{Number(deal.amount).toLocaleString()}
+                  </div>
+                </div>
+                
+                {/* Commission Potential */}
+                <div>
+                  <span className="text-xs font-medium text-gray-600">Commission:</span>
+                  <div className="text-sm font-medium text-blue-600">
+                    £{commission.toLocaleString()}
+                  </div>
+                </div>
+                
+                {/* Probability */}
+                <div>
+                  <span className="text-xs font-medium text-gray-600">Probability:</span>
+                  <div className="text-sm font-medium text-gray-900">
+                    {deal.probability}%
+                  </div>
+                </div>
+              </div>
+
+              {/* Right Column */}
+              <div className="space-y-2">
+                {/* CRM Source */}
+                <div>
+                  <span className="text-xs font-medium text-gray-600">Source:</span>
+                  <div className="text-sm font-medium text-gray-900 capitalize">
+                    {deal.crm_type}
+                  </div>
+                </div>
+                
+                {/* Stage */}
+                {deal.stage && (
+                  <div>
+                    <span className="text-xs font-medium text-gray-600">Stage:</span>
+                    <div className="text-sm font-medium text-gray-900">
+                      {deal.stage}
+                    </div>
+                  </div>
+                )}
+                
+                {/* Status */}
+                <div>
+                  <span className="text-xs font-medium text-gray-600">Status:</span>
+                  <div className={`text-sm font-medium capitalize ${
+                    deal.status === 'closed_won' ? 'text-green-600' :
+                    deal.status === 'closed_lost' ? 'text-red-600' : 'text-blue-600'
+                  }`}>
+                    {deal.status.replace('_', ' ')}
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {/* Dates Section */}
+            <div className="grid grid-cols-2 gap-4 mb-3 pt-2 border-t border-gray-200">
+              {/* Created Date */}
+              <div>
+                <span className="text-xs font-medium text-gray-600">Created:</span>
+                <div className="text-sm font-medium text-gray-900">
+                  {new Date(deal.created_date).toLocaleDateString('en-GB', {
+                    day: 'numeric',
+                    month: 'short',
+                    year: 'numeric'
+                  })}
+                </div>
+              </div>
+
+              {/* Close Date */}
+              <div>
+                <span className="text-xs font-medium text-gray-600">Expected Close:</span>
+                <div className={`text-sm font-medium ${isOverdue ? 'text-red-600' : 'text-gray-900'}`}>
+                  {new Date(deal.close_date).toLocaleDateString('en-GB', {
+                    day: 'numeric',
+                    month: 'short',
+                    year: 'numeric'
+                  })}
+                  {isOverdue && (
+                    <span className="text-xs text-red-500 ml-1">
+                      ({daysOverdue} days overdue)
+                    </span>
+                  )}
+                </div>
+              </div>
+            </div>
+
+            {/* CRM Link */}
+            {deal.crm_url && (
+              <div className="pt-2 border-t border-gray-200">
+                <a 
+                  href={deal.crm_url} 
+                  target="_blank" 
+                  rel="noopener noreferrer"
+                  className="inline-flex items-center text-xs text-blue-600 hover:text-blue-800 font-medium"
+                  onClick={(e) => e.stopPropagation()}
+                >
+                  <span>View in {deal.crm_type.charAt(0).toUpperCase() + deal.crm_type.slice(1)}</span>
+                  <ArrowRight className="w-3 h-3 ml-1" />
+                </a>
+              </div>
+            )}
+
             {/* Time Remaining */}
-            {daysToClose !== null && (
-              <div className="flex items-center justify-between mb-3">
+            {daysToClose !== null && !isOverdue && (
+              <div className="flex items-center justify-between mt-3 pt-2 border-t border-gray-200">
                 <span className="text-xs font-medium text-gray-600">
                   {isOverdue ? 'Days overdue' : 'Time to close'}
                 </span>

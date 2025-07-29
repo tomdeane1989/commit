@@ -419,11 +419,45 @@ const CommissionsPage = () => {
     return targetStart <= currentEnd && targetEnd >= currentStart;
   }) || false;
   
-  // Find current period commission
-  const currentCommission = commissions?.find(c => {
-    const commissionStart = new Date(c.period_start).toISOString().split('T')[0];
-    return commissionStart === currentPeriod.start;
-  });
+  // Calculate current period commission based on view
+  const getCurrentPeriodCommission = () => {
+    const currentPeriodCommissions = commissions?.filter(c => {
+      const commissionStart = new Date(c.period_start).toISOString().split('T')[0];
+      return commissionStart === currentPeriod.start;
+    }) || [];
+
+    if (currentPeriodCommissions.length === 0) return null;
+
+    // For team view, aggregate all team members' commissions
+    if (isManager && (managerView === 'team' || managerView === 'all')) {
+      // Aggregate commission details from all team members
+      const allCommissionDetails = currentPeriodCommissions.reduce((details, c) => {
+        if (c.commission_details && Array.isArray(c.commission_details)) {
+          return [...details, ...c.commission_details];
+        }
+        return details;
+      }, [] as any[]);
+
+      return {
+        id: 'team-aggregated', // Synthetic ID for team view
+        commission_earned: currentPeriodCommissions.reduce((sum, c) => sum + Number(c.commission_earned), 0),
+        quota_amount: currentPeriodCommissions.reduce((sum, c) => sum + Number(c.quota_amount), 0),
+        actual_amount: currentPeriodCommissions.reduce((sum, c) => sum + Number(c.actual_amount), 0),
+        attainment_pct: currentPeriodCommissions.length > 0 ? 
+          currentPeriodCommissions.reduce((sum, c) => sum + Number(c.attainment_pct), 0) / currentPeriodCommissions.length : 0,
+        period_start: currentPeriodCommissions[0].period_start,
+        period_end: currentPeriodCommissions[0].period_end,
+        status: 'calculated', // Default status for aggregated data
+        calculated_at: new Date().toISOString(),
+        commission_details: allCommissionDetails
+      };
+    }
+
+    // For individual view, return single commission
+    return currentPeriodCommissions[0];
+  };
+
+  const currentCommission = getCurrentPeriodCommission();
 
   // Filter historical commissions
   const historicalCommissions = commissions?.filter(c => {
@@ -451,12 +485,38 @@ const CommissionsPage = () => {
   return (
     <Layout>
       <div className="space-y-8">
+        {/* Breadcrumb Navigation */}
+        {isManager && (
+          <nav className="flex items-center space-x-2 text-sm text-gray-600 mb-4">
+            <span>Performance</span>
+            <span className="text-gray-400">→</span>
+            <span className="font-medium text-gray-900">
+              {managerView === 'personal' && 'Personal View'}
+              {managerView === 'team' && 'Team View'}
+              {managerView === 'all' && 'All Team Members'}
+              {managerView === 'member' && selectedMemberId && 
+                `${teamMembers.find(m => m.id === selectedMemberId)?.first_name} ${teamMembers.find(m => m.id === selectedMemberId)?.last_name}`
+              }
+            </span>
+            {managerView !== 'personal' && (
+              <>
+                <span className="text-gray-400">→</span>
+                <span className="px-2 py-1 bg-blue-100 text-blue-700 rounded-md text-xs font-medium">
+                  {managerView === 'team' && `${commissions?.length || 0} Active Team Members`}
+                  {managerView === 'all' && `All Team Data`}
+                  {managerView === 'member' && 'Individual Member'}
+                </span>
+              </>
+            )}
+          </nav>
+        )}
+
         {/* Header */}
         <div className="flex items-center justify-between">
           <div>
-            <h1 className="text-3xl font-bold text-gray-900">Commission Overview</h1>
+            <h1 className="text-3xl font-bold text-gray-900">Performance</h1>
             <p className="text-gray-600 mt-1">
-              {isManager ? `Manage team commission calculations and performance` : `Track your earnings and performance across ${paymentSchedule} payment periods`}
+              {isManager ? `Track team performance, quota attainment, and commission earnings` : `Monitor your quota performance and commission earnings across ${paymentSchedule} payment periods`}
             </p>
           </div>
           <div className="flex flex-col items-end space-y-2">
@@ -671,28 +731,80 @@ const CommissionsPage = () => {
                     className="flex items-center text-blue-600 hover:text-blue-700 font-medium"
                   >
                     <Eye className="w-4 h-4 mr-1" />
-                    View Deal Breakdown ({currentCommission.commission_details.length} deals)
+                    View Deal Breakdown ({currentCommission.commission_details?.length || 0} deals)
                   </button>
                   
                   {expandedCommission === currentCommission.id && (
                     <div className="mt-4 bg-gray-50 rounded-lg p-4">
                       <div className="space-y-3">
-                        {currentCommission.commission_details.map((detail) => (
-                          <div key={detail.id} className="flex items-center justify-between py-2 border-b border-gray-200 last:border-b-0">
-                            <div>
-                              <p className="font-medium text-gray-900">{detail.deal.account_name}</p>
-                              <p className="text-sm text-gray-600">{detail.deal.deal_name}</p>
+                        {(currentCommission.commission_details || []).map((detail) => {
+                          // Calculate sales cycle length - handle both close_date and closed_date
+                          const createdDate = new Date(detail.deal.created_date);
+                          const actualCloseDate = detail.deal.closed_date || detail.deal.close_date;
+                          const closeDate = new Date(actualCloseDate);
+                          
+                          // Only calculate if both dates are valid
+                          const salesCycleDays = (createdDate && actualCloseDate && !isNaN(createdDate.getTime()) && !isNaN(closeDate.getTime())) 
+                            ? Math.ceil((closeDate.getTime() - createdDate.getTime()) / (1000 * 60 * 60 * 24))
+                            : null;
+
+                          return (
+                            <div key={detail.id} className="py-3 border-b border-gray-200 last:border-b-0">
+                              {/* Deal Header */}
+                              <div className="flex items-start justify-between mb-2">
+                                <div className="flex-1">
+                                  <p className="font-medium text-gray-900">{detail.deal.account_name}</p>
+                                  <p className="text-sm text-gray-600">{detail.deal.deal_name}</p>
+                                </div>
+                                <div className="text-right ml-4">
+                                  <p className="font-medium text-gray-900">
+                                    £{Number(detail.commission_amount).toLocaleString()}
+                                  </p>
+                                  <p className="text-xs text-gray-500">Commission</p>
+                                </div>
+                              </div>
+
+                              {/* Deal Details Grid */}
+                              <div className="grid grid-cols-3 gap-4 text-sm">
+                                {/* Deal Value */}
+                                <div>
+                                  <span className="text-gray-500">Deal Value:</span>
+                                  <div className="font-medium text-green-600">
+                                    £{Number(detail.deal.amount).toLocaleString()}
+                                  </div>
+                                </div>
+
+                                {/* Sales Cycle */}
+                                <div>
+                                  <span className="text-gray-500">Sales Cycle:</span>
+                                  <div className="font-medium text-blue-600">
+                                    {salesCycleDays !== null ? `${salesCycleDays} days` : 'Unknown'}
+                                  </div>
+                                </div>
+
+                                {/* Deal Owner */}
+                                <div>
+                                  <span className="text-gray-500">Owner:</span>
+                                  <div className="font-medium text-gray-700">
+                                    {detail.deal.user ? 
+                                      `${detail.deal.user.first_name} ${detail.deal.user.last_name}` : 
+                                      'Unknown'
+                                    }
+                                  </div>
+                                </div>
+                              </div>
+
+                              {/* Close Date */}
+                              <div className="mt-2 text-xs text-gray-500">
+                                Closed: {actualCloseDate ? new Date(actualCloseDate).toLocaleDateString('en-GB', {
+                                  day: 'numeric',
+                                  month: 'short',
+                                  year: 'numeric'
+                                }) : 'Unknown'}
+                              </div>
                             </div>
-                            <div className="text-right">
-                              <p className="font-medium text-gray-900">
-                                £{Number(detail.commission_amount).toLocaleString()}
-                              </p>
-                              <p className="text-sm text-gray-600">
-                                {new Date(detail.deal.close_date).toLocaleDateString('en-GB')}
-                              </p>
-                            </div>
-                          </div>
-                        ))}
+                          );
+                        })}
                       </div>
                     </div>
                   )}
@@ -810,9 +922,9 @@ const CommissionsPage = () => {
         <div className="bg-white rounded-lg shadow">
           <div className="px-6 py-4 border-b border-gray-200">
             <h3 className="text-lg font-semibold text-gray-900">
-              {isManager && managerView !== 'personal' ? 'Team Commission History' : 'Historical Commissions'}
+              Quota Performance & Earnings
               <span className="text-sm font-normal text-gray-600 ml-2">
-                (Last {paymentSchedule === 'quarterly' ? '4 quarters' : '12 months'})
+                (Calendar Year)
               </span>
             </h3>
           </div>

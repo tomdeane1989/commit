@@ -313,13 +313,15 @@ router.get('/', async (req, res) => {
         commission_details: {
           include: {
             deal: {
-              select: {
-                id: true,
-                deal_name: true,
-                account_name: true,
-                amount: true,
-                close_date: true,
-                closed_date: true
+              include: {
+                user: {
+                  select: {
+                    id: true,
+                    first_name: true,
+                    last_name: true,
+                    email: true
+                  }
+                }
               }
             }
           }
