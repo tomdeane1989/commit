@@ -822,6 +822,7 @@ const CommissionsPage = () => {
               isManager={isManager}
               managerView={managerView}
               isCalculating={calculateHistoricalCommissionsMutation.isPending}
+              teamMembers={teamMembers}
             />
           </div>
         </div>

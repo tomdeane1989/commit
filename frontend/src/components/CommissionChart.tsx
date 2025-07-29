@@ -18,18 +18,28 @@ interface Commission {
   };
 }
 
+interface TeamMember {
+  id: string;
+  first_name: string;
+  last_name: string;
+  email: string;
+  role: string;
+}
+
 interface CommissionChartProps {
   commissions: Commission[];
   isManager: boolean;
   managerView: string;
   isCalculating?: boolean;
+  teamMembers?: TeamMember[];
 }
 
 const CommissionChart: React.FC<CommissionChartProps> = ({
   commissions,
   isManager,
   managerView,
-  isCalculating = false
+  isCalculating = false,
+  teamMembers = []
 }) => {
   if (commissions.length === 0) {
     return (
@@ -95,10 +105,41 @@ const CommissionChart: React.FC<CommissionChartProps> = ({
       new Date(a.period_start).getTime() - new Date(b.period_start).getTime()
     );
     
+    // Ensure all team members appear in each period, even with zero commissions
+    if (teamMembers.length > 0) {
+      chartData.forEach((period: any) => {
+        teamMembers.forEach(teamMember => {
+          const existingMember = period.members.find((m: any) => m.user?.id === teamMember.id);
+          if (!existingMember) {
+            // Add team member with zero commission data
+            period.members.push({
+              user: {
+                id: teamMember.id,
+                first_name: teamMember.first_name,
+                last_name: teamMember.last_name,
+                email: teamMember.email
+              },
+              commission_earned: 0,
+              quota_amount: 0,
+              actual_amount: 0,
+              attainment_pct: 0
+            });
+          }
+        });
+        
+        // Sort members by name for consistent display
+        period.members.sort((a: any, b: any) => {
+          const nameA = `${a.user?.first_name} ${a.user?.last_name}`;
+          const nameB = `${b.user?.first_name} ${b.user?.last_name}`;
+          return nameA.localeCompare(nameB);
+        });
+      });
+    }
+    
     // Debug: Log team members found in commission data
-    console.log('🔍 Team members in commission data:');
+    console.log('🔍 Team members in commission data (after padding):');
     chartData.forEach((period: any) => {
-      console.log(`📅 ${period.period_start}:`, period.members.map((m: any) => `${m.user?.first_name} ${m.user?.last_name} (${m.user?.email})`));
+      console.log(`📅 ${period.period_start}:`, period.members.map((m: any) => `${m.user?.first_name} ${m.user?.last_name} (${m.user?.email}) £${m.commission_earned}`));
     });
     
     chartMax = Math.max(...chartData.map((period: any) => period.total_commission));
@@ -122,7 +163,7 @@ const CommissionChart: React.FC<CommissionChartProps> = ({
             });
             
             if (isTeamView) {
-              // Team view - show aggregated team data with member breakdown
+              // Team view - show stacked bar with member contributions
               const teamCommission = item.total_commission;
               const teamQuota = item.total_quota;
               const teamActual = item.total_actual;
@@ -131,99 +172,108 @@ const CommissionChart: React.FC<CommissionChartProps> = ({
               const barWidth = chartMax > 0 ? (teamCommission / chartMax) * 100 : 0;
               const quotaIndicator = chartMax > 0 ? (teamQuota * 0.1 / chartMax) * 100 : 0;
               
+              // Calculate member percentages of total commission
+              const membersWithPercentages = item.members.map((member: any) => ({
+                ...member,
+                percentageOfTotal: teamCommission > 0 ? (member.commission_earned / teamCommission) * 100 : 0
+              }));
+              
               return (
                 <div key={`team-${item.period_start}`} className="space-y-2">
-                  {/* Team Total Bar */}
+                  {/* Period Label and Stats */}
                   <div className="flex items-center space-x-4">
-                    {/* Period Label */}
                     <div className="w-16 text-sm font-medium text-gray-700 text-right">
                       {periodLabel}
                     </div>
-                    
-                    {/* Bar Container */}
-                    <div className="flex-1 relative h-10 bg-gray-100 rounded-lg overflow-hidden">
-                      {/* Quota Reference Line */}
-                      <div 
-                        className="absolute top-0 bottom-0 w-0.5 bg-gray-400 opacity-50"
-                        style={{ left: `${Math.min(quotaIndicator, 100)}%` }}
-                        title={`Team Target: £${teamQuota.toLocaleString()}`}
-                      />
-                      
-                      {/* Team Commission Bar */}
-                      <div 
-                        className="h-full bg-gradient-to-r from-blue-500 to-blue-600 rounded-lg"
-                        style={{ width: `${Math.min(barWidth, 100)}%` }}
-                        title={`Team Commission: £${teamCommission.toLocaleString()}, Attainment: ${teamAttainment.toFixed(1)}%`}
-                      />
-                      
-                      {/* Team Attainment Indicator */}
-                      <div className="absolute inset-0 flex items-center justify-start pl-3">
-                        <span className="text-sm font-semibold text-white drop-shadow">
-                          TEAM {teamAttainment.toFixed(0)}%
-                        </span>
+                    <div className="flex-1">
+                      <div className="text-xs text-gray-600 mb-1">
+                        Sales Attainment: {teamAttainment.toFixed(1)}% • Total Commission: £{teamCommission.toLocaleString()}
                       </div>
-                    </div>
-                    
-                    {/* Team Commission Amount */}
-                    <div className="w-28 text-sm font-bold text-gray-900 text-right">
-                      £{teamCommission.toLocaleString()}
-                    </div>
-                    
-                    {/* Team Members Count */}
-                    <div className="w-16 text-xs text-gray-600 text-center">
-                      {item.members.length} members
                     </div>
                   </div>
                   
-                  {/* Individual Member Bars */}
-                  <div className="ml-20 space-y-1">
-                    {item.members.map((member: any, memberIndex: number) => {
-                      const memberBarWidth = chartMax > 0 ? (member.commission_earned / chartMax) * 100 : 0;
+                  {/* Stacked Bar Container */}
+                  <div className="flex items-center space-x-4">
+                    <div className="w-16"></div> {/* Spacer for alignment */}
+                    
+                    <div className="flex-1 relative h-8 bg-gray-100 rounded-lg overflow-hidden">
+                      {/* Quota Reference Line */}
+                      <div 
+                        className="absolute top-0 bottom-0 w-0.5 bg-gray-400 opacity-70 z-10"
+                        style={{ left: `${Math.min(quotaIndicator, 100)}%` }}
+                        title={`Team Commission Target: £${(teamQuota * 0.1).toLocaleString()}`}
+                      />
+                      
+                      {/* Stacked Member Bars */}
+                      <div className="flex h-full">
+                        {membersWithPercentages.map((member: any, memberIndex: number) => {
+                          const memberColors = [
+                            '#10B981', // green
+                            '#8B5CF6', // purple  
+                            '#F59E0B', // orange
+                            '#EC4899', // pink
+                            '#6366F1'  // indigo
+                          ];
+                          const color = memberColors[memberIndex % memberColors.length];
+                          const memberWidth = teamCommission > 0 ? (member.commission_earned / teamCommission) * barWidth : 0;
+                          
+                          if (member.commission_earned === 0) return null;
+                          
+                          return (
+                            <div
+                              key={`stack-${member.user?.id}`}
+                              className="h-full relative"
+                              style={{ 
+                                width: `${memberWidth}%`,
+                                backgroundColor: color
+                              }}
+                              title={`${member.user?.first_name} ${member.user?.last_name}: £${member.commission_earned.toLocaleString()} (${member.percentageOfTotal.toFixed(1)}% of team total)`}
+                            >
+                              {/* Member initials if bar is wide enough */}
+                              {memberWidth > 8 && (
+                                <div className="absolute inset-0 flex items-center justify-center">
+                                  <span className="text-xs font-medium text-white drop-shadow">
+                                    {member.user?.first_name.charAt(0)}{member.user?.last_name.charAt(0)}
+                                  </span>
+                                </div>
+                              )}
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </div>
+                    
+                    {/* Total Amount */}
+                    <div className="w-28 text-sm font-bold text-gray-900 text-right">
+                      £{teamCommission.toLocaleString()}
+                    </div>
+                  </div>
+                  
+                  {/* Member Legend */}
+                  <div className="ml-20 flex flex-wrap gap-4 text-xs text-gray-600">
+                    {membersWithPercentages.map((member: any, memberIndex: number) => {
                       const memberColors = [
-                        'from-green-400 to-green-500',
-                        'from-purple-400 to-purple-500', 
-                        'from-orange-400 to-orange-500',
-                        'from-pink-400 to-pink-500',
-                        'from-indigo-400 to-indigo-500'
+                        '#10B981', '#8B5CF6', '#F59E0B', '#EC4899', '#6366F1'
                       ];
-                      const colorClass = memberColors[memberIndex % memberColors.length];
+                      const color = memberColors[memberIndex % memberColors.length];
                       
                       return (
-                        <div key={`member-${member.user?.id}-${item.period_start}`} className="flex items-center space-x-3">
-                          {/* Member Bar */}
-                          <div className="flex-1 relative h-6 bg-gray-50 rounded overflow-hidden">
-                            <div 
-                              className={`h-full bg-gradient-to-r ${colorClass} rounded`}
-                              style={{ width: `${Math.min(memberBarWidth, 100)}%` }}
-                              title={`${member.user?.first_name} ${member.user?.last_name}: £${member.commission_earned.toLocaleString()}, ${member.attainment_pct.toFixed(1)}% attainment`}
-                            />
-                            
-                            {/* Member Attainment */}
-                            <div className="absolute inset-0 flex items-center justify-start pl-2">
-                              <span className="text-xs font-medium text-white drop-shadow">
-                                {member.attainment_pct.toFixed(0)}%
-                              </span>
-                            </div>
-                          </div>
-                          
-                          {/* Member Amount */}
-                          <div className="w-20 text-xs font-medium text-gray-700 text-right">
+                        <div key={`legend-${member.user?.id}`} className="flex items-center space-x-1">
+                          <div 
+                            className="w-3 h-3 rounded"
+                            style={{ backgroundColor: color }}
+                          ></div>
+                          <span>
+                            {member.user?.first_name.charAt(0)}{member.user?.last_name.charAt(0)}: 
                             £{member.commission_earned.toLocaleString()}
-                          </div>
-                          
-                          {/* Member Badge */}
-                          <div className="w-12">
-                            {member.user && (
-                              <span className="px-1.5 py-0.5 text-xs bg-gray-100 text-gray-700 rounded">
-                                {member.user.first_name.charAt(0)}{member.user.last_name.charAt(0)}
-                              </span>
+                            {member.commission_earned > 0 && (
+                              <span className="text-gray-500"> ({member.percentageOfTotal.toFixed(1)}%)</span>
                             )}
-                          </div>
+                          </span>
                         </div>
                       );
                     })}
                   </div>
-                  
                 </div>
               );
             } else {
