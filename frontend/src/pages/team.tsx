@@ -132,21 +132,7 @@ const TeamPage = () => {
   const canManageTeam = user?.role === 'manager';
   const isAdmin = user?.is_admin === true && user?.role === 'manager';
 
-  // Show loading while authentication is in progress
-  if (authLoading) {
-    return (
-      <Layout>
-        <div className="flex items-center justify-center min-h-64">
-          <div className="text-center">
-            <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-indigo-600 mx-auto mb-4"></div>
-            <p className="text-gray-600">Loading...</p>
-          </div>
-        </div>
-      </Layout>
-    );
-  }
-
-  // Fetch team data
+  // Fetch team data - MUST be called before any conditional returns
   const { data: teamData, isLoading: teamLoading } = useQuery({
     queryKey: ['team', user?.id, periodFilter, showInactiveMembers], // User-specific cache key
     queryFn: async () => {
@@ -294,6 +280,7 @@ const TeamPage = () => {
       queryClient.invalidateQueries({ queryKey: ['targets'] });
     }
   });
+
   // Filter team members
   const filteredMembers = (teamData || []).filter((member: TeamMember) => {
     const matchesSearch = 
@@ -313,6 +300,44 @@ const TeamPage = () => {
   const managers = (teamData || []).filter((member: TeamMember) => 
     member.role === 'manager' && member.is_active
   );
+
+  // Group targets for display - MUST be before conditional returns
+  const groupedTargets = React.useMemo(() => {
+    if (!targetsData) return [];
+    
+    const groups: { [key: string]: Target[] } = {};
+    
+    targetsData.forEach((target: Target) => {
+      if (target.role) {
+        // Role-based target - group by role + period + quota + commission
+        const key = `${target.role}-${target.period_start}-${target.period_end}-${target.quota_amount}-${target.commission_rate}`;
+        if (!groups[key]) {
+          groups[key] = [];
+        }
+        groups[key].push(target);
+      } else {
+        // Individual target - each gets its own group
+        const key = `individual-${target.id}`;
+        groups[key] = [target];
+      }
+    });
+    
+    return Object.values(groups);
+  }, [targetsData]);
+
+  // Show loading while authentication is in progress - AFTER all hooks
+  if (authLoading) {
+    return (
+      <Layout>
+        <div className="flex items-center justify-center min-h-64">
+          <div className="text-center">
+            <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-indigo-600 mx-auto mb-4"></div>
+            <p className="text-gray-600">Loading...</p>
+          </div>
+        </div>
+      </Layout>
+    );
+  }
 
   // Helper function to get distribution type info
   const getDistributionInfo = (target: Target) => {
@@ -353,30 +378,6 @@ const TeamPage = () => {
         };
     }
   };
-
-  // Group targets for display
-  const groupedTargets = React.useMemo(() => {
-    if (!targetsData) return [];
-    
-    const groups: { [key: string]: Target[] } = {};
-    
-    targetsData.forEach((target: Target) => {
-      if (target.role) {
-        // Role-based target - group by role + period + quota + commission
-        const key = `${target.role}-${target.period_start}-${target.period_end}-${target.quota_amount}-${target.commission_rate}`;
-        if (!groups[key]) {
-          groups[key] = [];
-        }
-        groups[key].push(target);
-      } else {
-        // Individual target - each gets its own group
-        const key = `individual-${target.id}`;
-        groups[key] = [target];
-      }
-    });
-    
-    return Object.values(groups);
-  }, [targetsData]);
 
   // Toggle expanded state for a target group
   const toggleExpanded = (groupKey: string) => {

@@ -258,7 +258,7 @@ const DealsPage = () => {
 
   // Get quota targets based on manager view
   const { data: targetsData } = useQuery({
-    queryKey: ['targets', user?.id, managerView, selectedMemberId],
+    queryKey: ['targets', user?.id, managerView, selectedMemberId, quotaPeriod],
     queryFn: async () => {
       let endpoint = `/targets`;
       const params = new URLSearchParams();
@@ -283,8 +283,8 @@ const DealsPage = () => {
         params.append('user_id', user?.id || '');
       }
       
-      // Add view parameter to get current period targets for forecasting
-      params.append('view', 'current_period');
+      // Add view parameter - use management view for annual, current_period for others
+      params.append('view', quotaPeriod === 'annual' ? 'management' : 'current_period');
       
       const queryString = params.toString();
       const url = queryString ? `${endpoint}?${queryString}` : endpoint;
@@ -353,12 +353,12 @@ const DealsPage = () => {
       const memberTarget = targets.find((t: any) => t.is_active && t.user_id === selectedMemberId);
       quotaAmount = Number(memberTarget?.quota_amount) || 0;
     } else if (managerView === 'team') {
-      // Team view: sum of all team members' quotas (excluding manager)
-      const teamTargets = targets.filter((t: any) => t.is_active && t.user_id !== user?.id);
+      // Team view: sum of all team members' quotas (excluding manager and team targets)
+      const teamTargets = targets.filter((t: any) => t.is_active && t.user_id !== user?.id && !t.team_target);
       quotaAmount = teamTargets.reduce((sum: number, target: any) => sum + Number(target.quota_amount), 0);
     } else if (managerView === 'all') {
-      // All view: manager + team quotas combined
-      const allActiveTargets = targets.filter((t: any) => t.is_active);
+      // All view: manager + team quotas combined (exclude team targets to avoid double counting)
+      const allActiveTargets = targets.filter((t: any) => t.is_active && !t.team_target);
       quotaAmount = allActiveTargets.reduce((sum: number, target: any) => sum + Number(target.quota_amount), 0);
     }
   } else {
@@ -436,11 +436,15 @@ const DealsPage = () => {
     deals.filter((d: Deal) => d.deal_type === 'best_case').reduce((sum: number, deal: Deal) => sum + Number(deal.amount), 0) :
     dealsByCategory.best_case.reduce((sum: number, deal: Deal) => sum + Number(deal.amount), 0);
     
-  // Since the backend now returns current period targets, use them directly for quarterly view
-  // Only use calculation for other periods (weekly, monthly, annual)
+  // Quota target calculation based on selected period:
+  // - Quarterly: Use child targets from current_period view
+  // - Annual: Use parent targets from management view (no multiplication needed)
+  // - Weekly/Monthly: Calculate from quarterly base (multiply by 4 for annual equivalent)
   const quotaTarget = quotaPeriod === 'quarterly' 
     ? currentPeriodQuotaTarget 
-    : calculateQuotaForPeriod(currentPeriodQuotaTarget * 4, quotaPeriod); // Multiply by 4 to get estimated annual for other periods
+    : quotaPeriod === 'annual' 
+      ? currentPeriodQuotaTarget // Parent target (already annual amount)
+      : calculateQuotaForPeriod(currentPeriodQuotaTarget * 4, quotaPeriod); // Estimate from quarterly
   
   const totalCategorized = closedAmount + commitAmount + bestCaseAmount;
   const closedProgress = (closedAmount / quotaTarget) * 100;
