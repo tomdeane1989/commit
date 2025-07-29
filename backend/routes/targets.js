@@ -612,27 +612,38 @@ router.post('/', async (req, res) => {
         seasonalData
       });
       
-      try {
-        quotaDistribution = distributeQuota(
-          quota_amount, 
-          distribution_method, 
-          period_start, 
-          period_end, 
-          custom_breakdown,
-          seasonalData
-        );
-        
-        console.log(`✅ Quota distribution successful for ${targetUser.email}:`, quotaDistribution);
-      } catch (error) {
-        console.error(`Error distributing quota for user ${targetUser.email}:`, error);
-        skippedUsers.push({
-          user_id: targetUser.id,
-          name: `${targetUser.first_name} ${targetUser.last_name}`,
-          email: targetUser.email,
-          role: targetUser.role,
-          error: error.message
-        });
-        continue;
+      // For even distribution, we don't need to create child targets, just use simple distribution
+      if (distribution_method === 'even') {
+        quotaDistribution = [{
+          period_start: period_start,
+          period_end: period_end,
+          quota_amount: quota_amount,
+          period_type: period_type
+        }];
+        console.log(`✅ Even distribution - using single period for ${targetUser.email}`);
+      } else {
+        try {
+          quotaDistribution = distributeQuota(
+            quota_amount, 
+            distribution_method, 
+            period_start, 
+            period_end, 
+            custom_breakdown,
+            seasonalData
+          );
+          
+          console.log(`✅ Quota distribution successful for ${targetUser.email}:`, quotaDistribution);
+        } catch (error) {
+          console.error(`Error distributing quota for user ${targetUser.email}:`, error);
+          skippedUsers.push({
+            user_id: targetUser.id,
+            name: `${targetUser.first_name} ${targetUser.last_name}`,
+            email: targetUser.email,
+            role: targetUser.role,
+            error: error.message
+          });
+          continue;
+        }
       }
 
       // Create parent annual target first
@@ -649,8 +660,8 @@ router.post('/', async (req, res) => {
           is_active: true,
           role: target_type === 'role' ? role : null,
           // Add distribution metadata
-          distribution_method: distribution_method,
-          distribution_config: distribution_method !== 'even' ? {
+          distribution_method: distribution_method || 'even',
+          distribution_config: distribution_method !== 'even' && (seasonalData || custom_breakdown) ? {
             ...(seasonalData && { seasonal: seasonalData }),
             ...(custom_breakdown && { custom: custom_breakdown }),
             original_quota: quota_amount,
@@ -661,8 +672,8 @@ router.post('/', async (req, res) => {
 
       createdTargets.push(parentTarget);
 
-      // Create child targets for each period in the distribution (if not even distribution)
-      if (distribution_method !== 'even' && quotaDistribution.length > 1) {
+      // Create child targets for each period in the distribution (only for non-even distribution methods)
+      if (distribution_method !== 'even' && quotaDistribution && quotaDistribution.length > 1) {
         for (const quotaPeriod of quotaDistribution) {
         // Calculate pro-rated quota if user was hired mid-period
         let finalQuotaAmount = quotaPeriod.quota_amount;
