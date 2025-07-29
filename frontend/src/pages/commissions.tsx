@@ -118,6 +118,44 @@ const CommissionsPage = () => {
     enabled: isManager
   });
 
+  // Auto-calculate commissions for team members when viewing team data
+  const calculateTeamCommissionsMutation = useMutation({
+    mutationFn: async (teamMemberIds: string[]) => {
+      const results = [];
+      for (const memberId of teamMemberIds) {
+        try {
+          // Use direct API call since commissionsApi.calculateCommissions doesn't support user_id
+          const result = await api.post('/commissions/calculate', {
+            user_id: memberId,
+            period_start: currentPeriod.start,
+            period_end: currentPeriod.end
+          });
+          results.push({ success: true, memberId, result: result.data });
+        } catch (error) {
+          console.log(`⚠️ Failed to calculate commission for team member ${memberId}:`, error);
+          results.push({ success: false, memberId, error });
+        }
+      }
+      return results;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['commissions', user?.id] });
+    },
+    throwOnError: false
+  });
+
+  // Auto-trigger team commission calculations when viewing team/all and no commissions exist
+  useEffect(() => {
+    if (isManager && (managerView === 'team' || managerView === 'all') && 
+        teamMembers.length > 0 && commissions.length === 0 && 
+        !calculateTeamCommissionsMutation.isPending) {
+      
+      console.log('🎯 Auto-calculating team commission data');
+      const teamMemberIds = teamMembers.map(member => member.id);
+      calculateTeamCommissionsMutation.mutate(teamMemberIds);
+    }
+  }, [isManager, managerView, teamMembers, commissions, calculateTeamCommissionsMutation.isPending]);
+
   const commissions = Array.isArray(commissionsResponse) 
     ? commissionsResponse 
     : commissionsResponse?.commissions || [];
@@ -139,7 +177,7 @@ const CommissionsPage = () => {
 
   const targets = targetsResponse?.targets || [];
 
-  // Calculate commission for current period
+  // Auto-calculate commission for current period on page load
   const calculateCurrentPeriodMutation = useMutation({
     mutationFn: async (period: { start: string; end: string }) => {
       return await commissionsApi.calculateCommissions({
@@ -162,6 +200,20 @@ const CommissionsPage = () => {
     // CRITICAL: Prevent React Query from throwing this error to error boundaries
     throwOnError: false
   });
+
+  // Auto-trigger calculation on page load for all views except team/all (which don't need individual calculations)
+  useEffect(() => {
+    const shouldAutoCalculate = user && !calculateCurrentPeriodMutation.isPending && 
+      ((!isManager) || (isManager && (managerView === 'personal' || managerView === 'member')));
+    
+    if (shouldAutoCalculate && !calculateCurrentPeriodMutation.isSuccess) {
+      console.log('🎯 Auto-calculating current period commission on page load');
+      calculateCurrentPeriodMutation.mutate({
+        start: currentPeriod.start,
+        end: currentPeriod.end
+      });
+    }
+  }, [user, isManager, managerView]); // Depend on managerView for managers
 
   // Mutation for calculating historical commissions
   const calculateHistoricalCommissionsMutation = useMutation({
@@ -339,12 +391,7 @@ const CommissionsPage = () => {
   const averageAttainment = commissions?.length ? 
     commissions.reduce((sum, c) => sum + Number(c.attainment_pct), 0) / commissions.length : 0;
 
-  const handleCalculateCurrentPeriod = () => {
-    calculateCurrentPeriodMutation.mutate({
-      start: currentPeriod.start,
-      end: currentPeriod.end
-    });
-  };
+  // handleCalculateCurrentPeriod removed - now auto-calculated on page load
 
   if (isLoading) {
     return (
@@ -375,15 +422,29 @@ const CommissionsPage = () => {
               </div>
             )}
             <div className="flex space-x-3">
-              {!isManager && (
-                <button
-                  onClick={handleCalculateCurrentPeriod}
-                  disabled={calculateCurrentPeriodMutation.isPending}
-                  className="inline-flex items-center px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 disabled:opacity-50 transition-colors"
-                >
-                  <BarChart3 className="w-4 h-4 mr-2" />
-                  {calculateCurrentPeriodMutation.isPending ? 'Calculating...' : 'Calculate Current Period'}
-                </button>
+              {(!isManager || (isManager && (managerView === 'personal' || managerView === 'member'))) && calculateCurrentPeriodMutation.isPending && (
+                <div className="inline-flex items-center px-4 py-2 bg-blue-100 text-blue-700 rounded-lg">
+                  <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-blue-600 mr-2"></div>
+                  Calculating commission...
+                </div>
+              )}
+              {isManager && (managerView === 'team' || managerView === 'all') && calculateTeamCommissionsMutation.isPending && (
+                <div className="inline-flex items-center px-4 py-2 bg-blue-100 text-blue-700 rounded-lg">
+                  <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-blue-600 mr-2"></div>
+                  Calculating team commissions...
+                </div>
+              )}
+              {(!isManager || (isManager && (managerView === 'personal' || managerView === 'member'))) && (calculateCurrentPeriodMutation.isSuccess || calculateCurrentPeriodMutation.isError) && (
+                <div className="inline-flex items-center px-4 py-2 bg-green-100 text-green-700 rounded-lg">
+                  <CheckCircle className="w-4 h-4 mr-2" />
+                  Auto-calculated
+                </div>
+              )}
+              {isManager && (managerView === 'team' || managerView === 'all') && calculateTeamCommissionsMutation.isSuccess && (
+                <div className="inline-flex items-center px-4 py-2 bg-green-100 text-green-700 rounded-lg">
+                  <CheckCircle className="w-4 h-4 mr-2" />
+                  Team commissions calculated
+                </div>
               )}
             </div>
           </div>
@@ -631,14 +692,18 @@ const CommissionsPage = () => {
                   <p className="text-gray-600">No commission calculated for current period</p>
                 )}
                 
-                <button
-                  onClick={handleCalculateCurrentPeriod}
-                  disabled={calculateCurrentPeriodMutation.isPending}
-                  className="mt-4 inline-flex items-center px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 disabled:opacity-50"
-                >
-                  <BarChart3 className="w-4 h-4 mr-2" />
-                  {calculateCurrentPeriodMutation.isPending ? 'Calculating...' : 'Calculate Now'}
-                </button>
+                {calculateCurrentPeriodMutation.isPending && (
+                  <div className="mt-4 inline-flex items-center px-4 py-2 bg-blue-100 text-blue-700 rounded-lg">
+                    <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-blue-600 mr-2"></div>
+                    Calculating commission...
+                  </div>
+                )}
+                {!calculateCurrentPeriodMutation.isPending && (
+                  <div className="mt-4 inline-flex items-center px-4 py-2 bg-gray-100 text-gray-600 rounded-lg">
+                    <BarChart3 className="w-4 h-4 mr-2" />
+                    Auto-calculation complete
+                  </div>
+                )}
                 
                 {calculateCurrentPeriodMutation.isError && !(
                   (calculateCurrentPeriodMutation.error as any)?.response?.status === 400 && 
