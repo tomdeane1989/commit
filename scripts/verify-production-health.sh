@@ -6,8 +6,8 @@
 set -e
 
 # Configuration
-BACKEND_URL="https://sales-commission-backend-latest.onrender.com"
-FRONTEND_URL="https://sales-commission-saas.vercel.app"
+BACKEND_URL="https://commit-5moi.onrender.com"
+FRONTEND_URL="https://commit-snowy.vercel.app"
 TIMEOUT=30
 
 echo "🏥 Starting production health checks..."

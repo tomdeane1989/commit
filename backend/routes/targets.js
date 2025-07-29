@@ -603,8 +603,16 @@ router.post('/', async (req, res) => {
         seasonal_allocations
       } : null;
       
+      console.log(`🔍 About to distribute quota for user ${targetUser.email}:`, {
+        quota_amount,
+        distribution_method,
+        period_start,
+        period_end,
+        custom_breakdown,
+        seasonalData
+      });
+      
       try {
-
         quotaDistribution = distributeQuota(
           quota_amount, 
           distribution_method, 
@@ -613,6 +621,8 @@ router.post('/', async (req, res) => {
           custom_breakdown,
           seasonalData
         );
+        
+        console.log(`✅ Quota distribution successful for ${targetUser.email}:`, quotaDistribution);
       } catch (error) {
         console.error(`Error distributing quota for user ${targetUser.email}:`, error);
         skippedUsers.push({
@@ -782,8 +792,33 @@ router.post('/', async (req, res) => {
       })
     });
   } catch (error) {
-    console.error('Create target error:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    console.error('❌ Error creating target:', error);
+    console.error('❌ Error stack:', error.stack);
+    console.error('❌ Request body:', JSON.stringify(req.body, null, 2));
+    console.error('❌ User info:', {
+      id: req.user?.id,
+      email: req.user?.email,
+      role: req.user?.role,
+      company_id: req.user?.company_id
+    });
+    
+    // More specific error messages
+    if (error.code === 'P2002') {
+      return res.status(400).json({ 
+        error: 'Duplicate target - a target already exists for this period',
+        details: error.meta?.target 
+      });
+    } else if (error.code?.startsWith('P')) {
+      return res.status(400).json({ 
+        error: 'Database validation error',
+        details: error.message 
+      });
+    } else {
+      return res.status(500).json({ 
+        error: 'Internal server error',
+        details: process.env.NODE_ENV === 'development' ? error.message : undefined
+      });
+    }
   }
 });
 
