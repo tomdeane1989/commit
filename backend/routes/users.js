@@ -2,6 +2,7 @@ import express from 'express';
 import { PrismaClient } from '@prisma/client';
 import bcrypt from 'bcrypt';
 import Joi from 'joi';
+import { canManageTeam, isManager } from '../middleware/roleHelpers.js';
 
 const router = express.Router();
 const prisma = new PrismaClient();
@@ -153,7 +154,7 @@ router.put('/password', async (req, res) => {
 // Get team members (for managers/admins)
 router.get('/team', async (req, res) => {
   try {
-    if (req.user.role !== 'manager' && req.user.role !== 'admin') {
+    if (!canManageTeam(req.user)) {
       return res.status(403).json({ error: 'Access denied' });
     }
 
@@ -162,8 +163,8 @@ router.get('/team', async (req, res) => {
       is_active: true
     };
 
-    // If manager, only show their reports
-    if (req.user.role === 'manager') {
+    // If manager (but not admin), only show their reports
+    if (isManager(req.user) && !req.user.is_admin) {
       where.manager_id = req.user.id;
     }
 

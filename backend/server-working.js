@@ -10,11 +10,15 @@ import { csrfProtection, csrfTokenHandler } from './middleware/csrfProtection.js
 import { errorHandler, notFoundHandler } from './middleware/errorHandler.js';
 import adminRoutes from './routes/admin.js';
 import authRoutes from './routes/auth.js';
-import teamsRoutes from './routes/teams.js';
+// import teamsRoutes from './routes/teams.js'; // Commented out due to syntax error - using teams-new instead
 import targetsRoutes from './routes/targets.js';
 import dealsRoutes from './routes/deals.js';
 import commissionsRoutes from './routes/commissions.js';
 import integrationsRoutes from './routes/integrations.js';
+import userManagementRoutes from './routes/user-management.js';
+import teamManagementRoutes from './routes/team-management.js';
+import teamsNewRoutes from './routes/teams-new.js';
+import allocationPatternsRoutes from './routes/allocation-patterns.js';
 
 
 
@@ -196,7 +200,7 @@ const authMiddleware = authenticateToken;
 // Protected routes (require authentication)
 
 app.use('/api/admin', adminRoutes);
-app.use('/api/team', authMiddleware, teamsRoutes);
+// app.use('/api/team', authMiddleware, teamsRoutes); // Commented out due to syntax error - using teams-new instead
 app.use('/api/targets', authMiddleware, targetsRoutes);
 app.use('/api/deals', authMiddleware, dealsRoutes);
 app.use('/api/commissions', (req, res, next) => {
@@ -204,6 +208,10 @@ app.use('/api/commissions', (req, res, next) => {
   next();
 }, authMiddleware, commissionsRoutes);
 app.use('/api/integrations', authMiddleware, integrationsRoutes);
+app.use('/api/user-management', authMiddleware, userManagementRoutes);
+app.use('/api/team-management', authMiddleware, teamManagementRoutes);
+app.use('/api/teams-new', authMiddleware, teamsNewRoutes);
+app.use('/api/allocation-patterns', authMiddleware, allocationPatternsRoutes);
 
 // Dashboard routes
 app.get('/api/dashboard/sales-rep', authMiddleware, async (req, res) => {

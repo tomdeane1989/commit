@@ -87,6 +87,8 @@ router.post('/register', async (req, res) => {
         email: user.email,
         role: user.role,
         is_admin: user.is_admin,
+        is_manager: user.is_manager,
+        can_view_all_teams: user.can_view_all_teams,
         company_id: user.company_id
       }, 
       process.env.JWT_SECRET, 
@@ -104,6 +106,8 @@ router.post('/register', async (req, res) => {
         last_name: user.last_name,
         role: user.role,
         is_admin: user.is_admin,
+        is_manager: user.is_manager,
+        can_view_all_teams: user.can_view_all_teams,
         company_id: user.company_id
       }
     });
@@ -149,6 +153,8 @@ router.post('/login', async (req, res) => {
         email: user.email,
         role: user.role,
         is_admin: user.is_admin,
+        is_manager: user.is_manager,
+        can_view_all_teams: user.can_view_all_teams,
         company_id: user.company_id
       }, 
       process.env.JWT_SECRET, 
@@ -166,6 +172,8 @@ router.post('/login', async (req, res) => {
         last_name: user.last_name,
         role: user.role,
         is_admin: user.is_admin,
+        is_manager: user.is_manager,
+        can_view_all_teams: user.can_view_all_teams,
         company_id: user.company_id,
         company_name: user.company.name
       }
@@ -205,6 +213,8 @@ router.get('/me', async (req, res) => {
         last_name: user.last_name,
         role: user.role,
         is_admin: user.is_admin,
+        is_manager: user.is_manager,
+        can_view_all_teams: user.can_view_all_teams,
         company_id: user.company_id,
         company_name: user.company.name
       }

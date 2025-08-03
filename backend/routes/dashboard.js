@@ -1,6 +1,7 @@
 // routes/dashboard.js
 import express from 'express';
 import { PrismaClient } from '@prisma/client';
+import { canManageTeam } from '../middleware/roleHelpers.js';
 
 const router = express.Router();
 const prisma = new PrismaClient();
@@ -160,7 +161,7 @@ router.get('/sales-rep/:userId', async (req, res) => {
     const userId = req.params.userId;
     
     // Verify user can access this data
-    if (userId !== req.user.id && req.user.role !== 'manager' && req.user.role !== 'admin') {
+    if (userId !== req.user.id && !canManageTeam(req.user)) {
       return res.status(403).json({ error: 'Access denied' });
     }
 
@@ -266,7 +267,7 @@ router.patch('/deals/:dealId/category', async (req, res) => {
       return res.status(404).json({ error: 'Deal not found' });
     }
 
-    if (deal.user_id !== req.user.id && req.user.role !== 'manager' && req.user.role !== 'admin') {
+    if (deal.user_id !== req.user.id && !canManageTeam(req.user)) {
       return res.status(403).json({ error: 'Access denied' });
     }
 

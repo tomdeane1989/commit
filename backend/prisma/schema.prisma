@@ -32,6 +32,10 @@ model companies {
   crm_integrations crm_integrations[]
   activity_log    activity_log[]
   forecasts       forecasts[]
+  company_roles   company_roles[]
+  company_sub_roles company_sub_roles[]
+  teams           teams[]
+  allocation_patterns allocation_patterns[]
 }
 
 model users {
@@ -40,12 +44,16 @@ model users {
   password        String
   first_name      String
   last_name       String
-  role            String    @default("sales_rep") // sales_rep, manager
-  is_admin        Boolean   @default(false) // Admin permission for managers
+  role            String    // Flexible role (e.g., "New Sales", "Account Management")
+  sub_role        String?   // Optional sub-role (e.g., "UK", "Enterprise", "Mid-market")
+  is_admin        Boolean   @default(false) // Admin permission - can be applied to any role
+  is_manager      Boolean   @default(false) // Manager permission - can manage teams and invite users
+  can_view_all_teams Boolean @default(false) // Override to view all teams regardless of direct reports
   is_active       Boolean   @default(true)
   hire_date       DateTime?
-  territory       String?   // For geographic/vertical segmentation
-  manager_id      String?   // For org hierarchy
+  territory       String?   // Deprecated - use sub_role instead
+  manager_id      String?   // Deprecated - use reports_to_id instead
+  reports_to_id   String?   // Hierarchical reporting structure
   created_at      DateTime  @default(now())
   updated_at      DateTime  @updatedAt
   
@@ -60,6 +68,8 @@ model users {
   company         companies @relation(fields: [company_id], references: [id])
   manager         users?    @relation("UserManager", fields: [manager_id], references: [id])
   reports         users[]   @relation("UserManager")
+  reports_to      users?    @relation("UserReportsTo", fields: [reports_to_id], references: [id])
+  direct_reports  users[]   @relation("UserReportsTo")
   deals           deals[]
   targets         targets[]
   commissions     commissions[]
@@ -67,9 +77,21 @@ model users {
   deal_categorizations deal_categorizations[]
   forecasts       forecasts[]
   
+  // New enhanced user management relations
+  created_roles   company_roles[]     @relation("CreatedByAdmin")
+  created_sub_roles company_sub_roles[]  @relation("CreatedByAdmin")
+  created_teams   teams[]             @relation("CreatedByAdmin")
+  leading_teams   teams[]             @relation("TeamLead")
+  team_memberships team_members[]
+  added_team_members team_members[]   @relation("AddedByAdmin")
+  created_allocation_patterns allocation_patterns[] @relation("CreatedByAdmin")
+  
   @@index([company_id])
   @@index([manager_id])
+  @@index([reports_to_id])
   @@index([role])
+  @@index([role, sub_role])
+  @@index([is_admin])
 }
 
 model deals {
@@ -164,11 +186,16 @@ model targets {
   commission_payment_schedule String @default("monthly") // monthly, quarterly - when commissions are paid
   is_active       Boolean   @default(true)
   
+  // New allocation system fields
+  annual_quota_amount Decimal? @db.Decimal(12, 2) // Single canonical annual amount
+  target_year     Int?      // Year this target applies to
+  allocation_pattern_id String? // Link to allocation pattern
+  
   // Target type tracking
   role            String?   // Role if this is a role-based target (e.g., "sales_rep")
   team_target     Boolean   @default(false) // Flag to indicate this is a team aggregated target
   
-  // Distribution metadata
+  // Distribution metadata (legacy - will be deprecated)
   distribution_method     String?   // even, seasonal, custom, one-time
   distribution_config     Json?     // Stores seasonal/custom configuration data
   parent_target_id        String?   // Links to parent target if this is part of a distributed target
@@ -188,16 +215,21 @@ model targets {
   // Relations
   user            users     @relation(fields: [user_id], references: [id])
   company         companies @relation(fields: [company_id], references: [id])
+  allocation_pattern allocation_patterns? @relation(fields: [allocation_pattern_id], references: [id])
   commissions     commissions[]
   forecasts       forecasts[]
+  target_allocations target_allocations[]
   
   @@index([user_id])
   @@index([period_start, period_end])
   @@index([period_type])
   @@index([team_target])
+  @@index([allocation_pattern_id])
+  @@index([target_year])
   // Critical composite indexes for performance
   @@index([user_id, period_start, period_end])  // Target lookups
   @@index([company_id, is_active])               // Company queries
+  @@unique([user_id, target_year, team_target]) // One target per user per year
 }
 
 model commissions {
@@ -368,4 +400,173 @@ model activity_log {
   @@index([created_at])
   @@index([action])
   @@index([entity_type, entity_id])
+}
+
+// Enhanced User Management System Models
+
+model company_roles {
+  id              String    @id @default(cuid())
+  role_name       String
+  description     String?
+  is_default      Boolean   @default(false)
+  created_at      DateTime  @default(now())
+  updated_at      DateTime  @updatedAt
+  
+  // Foreign Keys
+  company_id      String
+  created_by_admin_id String
+  
+  // Relations
+  company         companies @relation(fields: [company_id], references: [id], onDelete: Cascade)
+  created_by      users     @relation("CreatedByAdmin", fields: [created_by_admin_id], references: [id])
+  
+  @@index([company_id])
+  @@index([role_name])
+  @@unique([company_id, role_name], name: "unique_company_role")
+}
+
+model company_sub_roles {
+  id              String    @id @default(cuid())
+  sub_role_name   String
+  description     String?
+  is_default      Boolean   @default(false)
+  created_at      DateTime  @default(now())
+  updated_at      DateTime  @updatedAt
+  
+  // Foreign Keys
+  company_id      String
+  created_by_admin_id String
+  
+  // Relations
+  company         companies @relation(fields: [company_id], references: [id], onDelete: Cascade)
+  created_by      users     @relation("CreatedByAdmin", fields: [created_by_admin_id], references: [id])
+  
+  @@index([company_id])
+  @@index([sub_role_name])
+  @@unique([company_id, sub_role_name], name: "unique_company_sub_role")
+}
+
+model teams {
+  id              String    @id @default(cuid())
+  team_name       String
+  description     String?
+  default_role    String?
+  default_sub_role String?
+  is_active       Boolean   @default(true)
+  created_at      DateTime  @default(now())
+  updated_at      DateTime  @updatedAt
+  
+  // Foreign Keys
+  company_id      String
+  team_lead_id    String?
+  created_by_admin_id String
+  
+  // Relations
+  company         companies @relation(fields: [company_id], references: [id], onDelete: Cascade)
+  team_lead       users?    @relation("TeamLead", fields: [team_lead_id], references: [id], onDelete: SetNull)
+  created_by      users     @relation("CreatedByAdmin", fields: [created_by_admin_id], references: [id])
+  team_members    team_members[]
+  
+  @@index([company_id])
+  @@index([team_lead_id])
+  @@index([is_active])
+  @@unique([company_id, team_name], name: "unique_company_team")
+}
+
+model team_members {
+  id              String    @id @default(cuid())
+  role_override   String?
+  sub_role_override String?
+  joined_date     DateTime  @default(now())
+  is_active       Boolean   @default(true)
+  created_at      DateTime  @default(now())
+  updated_at      DateTime  @updatedAt
+  
+  // Foreign Keys
+  team_id         String
+  user_id         String
+  added_by_admin_id String
+  
+  // Relations
+  team            teams     @relation(fields: [team_id], references: [id], onDelete: Cascade)
+  user            users     @relation(fields: [user_id], references: [id], onDelete: Cascade)
+  added_by        users     @relation("AddedByAdmin", fields: [added_by_admin_id], references: [id])
+  
+  @@index([team_id])
+  @@index([user_id])
+  @@index([is_active])
+  @@unique([user_id, team_id], name: "unique_user_team")
+}
+
+// Allocation System Models
+
+model allocation_patterns {
+  id              String    @id @default(cuid())
+  pattern_name    String    // "UK Tech Sales 2025", "New Hire 6M Ramp"
+  description     String?
+  base_period_type String   // "quarterly", "monthly", "annual", "custom"
+  is_active       Boolean   @default(true)
+  created_at      DateTime  @default(now())
+  updated_at      DateTime  @updatedAt
+  
+  // Foreign Keys
+  company_id      String
+  created_by_id   String
+  
+  // Relations
+  company         companies @relation(fields: [company_id], references: [id], onDelete: Cascade)
+  created_by      users     @relation("CreatedByAdmin", fields: [created_by_id], references: [id])
+  allocation_periods allocation_periods[]
+  targets         targets[]
+  
+  @@index([company_id])
+  @@index([pattern_name])
+  @@index([is_active])
+  @@unique([company_id, pattern_name])
+}
+
+model allocation_periods {
+  id              String    @id @default(cuid())
+  period_name     String    // "Q1 2025", "Month 1", "Peak Season"
+  start_date      DateTime  @db.Date
+  end_date        DateTime  @db.Date
+  allocation_percentage Decimal @db.Decimal(5, 2) // 0.00 to 100.00
+  notes           String?   // "Holiday slowdown", "Ramp period"
+  sort_order      Int       @default(0)
+  created_at      DateTime  @default(now())
+  
+  // Foreign Keys
+  allocation_pattern_id String
+  
+  // Relations
+  allocation_pattern allocation_patterns @relation(fields: [allocation_pattern_id], references: [id], onDelete: Cascade)
+  target_allocations target_allocations[]
+  
+  @@index([allocation_pattern_id])
+  @@index([start_date])
+  @@index([end_date])
+  @@index([sort_order])
+}
+
+model target_allocations {
+  id              String    @id @default(cuid())
+  period_quota_amount Decimal @db.Decimal(12, 2)
+  period_start_date DateTime @db.Date
+  period_end_date DateTime  @db.Date
+  allocation_percentage Decimal @db.Decimal(5, 2)
+  created_at      DateTime  @default(now())
+  
+  // Foreign Keys
+  target_id       String
+  allocation_period_id String
+  
+  // Relations
+  target          targets   @relation(fields: [target_id], references: [id], onDelete: Cascade)
+  allocation_period allocation_periods @relation(fields: [allocation_period_id], references: [id], onDelete: Cascade)
+  
+  @@index([target_id])
+  @@index([allocation_period_id])
+  @@index([period_start_date])
+  @@index([period_end_date])
+  @@unique([target_id, allocation_period_id])
 }

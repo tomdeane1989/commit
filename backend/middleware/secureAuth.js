@@ -185,3 +185,30 @@ export const clearAuthCookies = (res) => {
   res.clearCookie('token');
   res.clearCookie('refreshToken');
 };
+
+// Admin-only middleware - requires user to be authenticated and have admin privileges
+export const requireAdmin = (req, res, next) => {
+  // Check if user is authenticated
+  if (!req.user) {
+    return res.status(401).json({ 
+      success: false,
+      error: 'Authentication required',
+      code: 'AUTH_REQUIRED'
+    });
+  }
+
+  // Check if user has admin privileges
+  if (!req.user.is_admin) {
+    return res.status(403).json({ 
+      success: false,
+      error: 'Admin privileges required',
+      code: 'ADMIN_REQUIRED'
+    });
+  }
+
+  next();
+};
+
+// Convenience exports
+export const requireAuth = authenticateToken;
+export const requireAuthAndAdmin = [authenticateToken, requireAdmin];

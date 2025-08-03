@@ -7,6 +7,150 @@ import { isAdmin, isManager, canManageTeam } from '../middleware/roleHelpers.js'
 const router = express.Router();
 const prisma = new PrismaClient();
 
+// Helper function to distribute quota using allocation patterns
+const distributeQuotaWithAllocationPattern = async (
+  totalQuota,
+  allocationPatternId,
+  allocationPatternMode,
+  allocationPatternName,
+  allocationPatternDescription,
+  allocationPatternTemplate,
+  customPeriods,
+  user
+) => {
+  let allocationPattern;
+  let shouldCreatePattern = false;
+
+  if (allocationPatternMode === 'existing') {
+    // Use existing allocation pattern
+    allocationPattern = await prisma.allocation_patterns.findFirst({
+      where: {
+        id: allocationPatternId,
+        company_id: user.company_id,
+        is_active: true
+      },
+      include: {
+        allocation_periods: {
+          orderBy: { sort_order: 'asc' }
+        }
+      }
+    });
+
+    if (!allocationPattern) {
+      throw new Error('Allocation pattern not found or inactive');
+    }
+  } else if (allocationPatternMode === 'create-new') {
+    // Create new allocation pattern
+    shouldCreatePattern = true;
+    
+    // Generate periods based on template
+    let periods = [];
+    
+    if (allocationPatternTemplate === 'even-quarterly') {
+      const year = new Date().getFullYear();
+      periods = [
+        { period_name: `Q1 ${year}`, start_date: `${year}-01-01`, end_date: `${year}-03-31`, allocation_percentage: 25, sort_order: 1 },
+        { period_name: `Q2 ${year}`, start_date: `${year}-04-01`, end_date: `${year}-06-30`, allocation_percentage: 25, sort_order: 2 },
+        { period_name: `Q3 ${year}`, start_date: `${year}-07-01`, end_date: `${year}-09-30`, allocation_percentage: 25, sort_order: 3 },
+        { period_name: `Q4 ${year}`, start_date: `${year}-10-01`, end_date: `${year}-12-31`, allocation_percentage: 25, sort_order: 4 }
+      ];
+    } else if (allocationPatternTemplate === 'even-monthly') {
+      const year = new Date().getFullYear();
+      const months = [
+        'January', 'February', 'March', 'April', 'May', 'June',
+        'July', 'August', 'September', 'October', 'November', 'December'
+      ];
+      
+      periods = months.map((month, index) => {
+        const monthNum = index + 1;
+        const startDate = new Date(year, index, 1);
+        const endDate = new Date(year, index + 1, 0);
+        
+        return {
+          period_name: `${month} ${year}`,
+          start_date: startDate.toISOString().split('T')[0],
+          end_date: endDate.toISOString().split('T')[0],
+          allocation_percentage: Math.round((100 / 12) * 100) / 100,
+          sort_order: index + 1
+        };
+      });
+    } else if (allocationPatternTemplate === 'custom') {
+      periods = customPeriods;
+    }
+
+    // Validate periods total 100%
+    const totalPercentage = periods.reduce((sum, period) => sum + Number(period.allocation_percentage), 0);
+    if (Math.abs(totalPercentage - 100) > 0.01) {
+      throw new Error(`Allocation percentages must total 100% (currently ${totalPercentage.toFixed(1)}%)`);
+    }
+
+    // Create the allocation pattern
+    allocationPattern = await prisma.allocation_patterns.create({
+      data: {
+        company_id: user.company_id,
+        created_by_id: user.id,
+        pattern_name: allocationPatternName,
+        description: allocationPatternDescription || null,
+        base_period_type: allocationPatternTemplate === 'even-quarterly' ? 'quarterly' : 
+                          allocationPatternTemplate === 'even-monthly' ? 'monthly' : 'custom'
+      }
+    });
+
+    // Create allocation periods
+    const createdPeriods = await prisma.allocation_periods.createMany({
+      data: periods.map(period => ({
+        allocation_pattern_id: allocationPattern.id,
+        period_name: period.period_name,
+        start_date: new Date(period.start_date),
+        end_date: new Date(period.end_date),
+        allocation_percentage: Number(period.allocation_percentage),
+        notes: period.notes || null,
+        sort_order: period.sort_order
+      }))
+    });
+
+    // Fetch the complete pattern with periods
+    allocationPattern = await prisma.allocation_patterns.findUnique({
+      where: { id: allocationPattern.id },
+      include: {
+        allocation_periods: {
+          orderBy: { sort_order: 'asc' }
+        }
+      }
+    });
+
+    console.log(`✅ Created new allocation pattern: ${allocationPatternName} with ${periods.length} periods`);
+  }
+
+  // Calculate quota distribution based on allocation periods
+  const quotaDistribution = allocationPattern.allocation_periods.map(period => {
+    const periodQuota = Math.round((totalQuota * period.allocation_percentage) / 100);
+    
+    return {
+      period_start: period.start_date.toISOString().split('T')[0],
+      period_end: period.end_date.toISOString().split('T')[0],
+      quota_amount: periodQuota,
+      period_type: 'custom',
+      allocation_percentage: period.allocation_percentage,
+      period_name: period.period_name,
+      allocation_pattern_id: allocationPattern.id
+    };
+  });
+
+  // Adjust last period for rounding differences
+  const totalDistributed = quotaDistribution.reduce((sum, dist) => sum + dist.quota_amount, 0);
+  const difference = totalQuota - totalDistributed;
+  if (difference !== 0 && quotaDistribution.length > 0) {
+    quotaDistribution[quotaDistribution.length - 1].quota_amount += difference;
+  }
+
+  return {
+    distribution: quotaDistribution,
+    allocation_pattern_id: allocationPattern.id,
+    was_created: shouldCreatePattern
+  };
+};
+
 // Helper function to calculate pro-rated quota for mid-year hires
 const calculateProRatedQuota = (baseQuota, hireDate, periodStart, periodEnd) => {
   const hireDateObj = new Date(hireDate);
@@ -283,7 +427,7 @@ router.get('/', async (req, res) => {
       const now = new Date();
       const allTargetsWhere = {
         // Admin/Manager can see all targets in their company if no user_id specified
-        ...(user_id ? { user_id } : (req.user.role === 'admin' || req.user.role === 'manager') ? { 
+        ...(user_id ? { user_id } : canManageTeam(req.user) ? { 
           user: { company_id: req.user.company_id } 
         } : { user_id: req.user.id }),
         ...(active_only === 'true' && { is_active: true }),
@@ -342,7 +486,7 @@ router.get('/', async (req, res) => {
       // For management tab - return parent targets (so they can be expanded to see children)
       const baseWhere = {
         // Admin/Manager can see all targets in their company if no user_id specified
-        ...(user_id ? { user_id } : (req.user.role === 'admin' || req.user.role === 'manager') ? { 
+        ...(user_id ? { user_id } : canManageTeam(req.user) ? { 
           user: { company_id: req.user.company_id } 
         } : { user_id: req.user.id }),
         ...(active_only === 'true' && { is_active: true })
@@ -465,6 +609,13 @@ router.post('/', async (req, res) => {
       seasonal_allocation_method,
       seasonal_allocations,
       custom_breakdown,
+      // Allocation pattern fields
+      allocation_pattern_id,
+      allocation_pattern_mode,
+      allocation_pattern_name,
+      allocation_pattern_description,
+      allocation_pattern_template,
+      custom_periods,
       wizard_data 
     } = req.body;
 
@@ -485,6 +636,26 @@ router.post('/', async (req, res) => {
     // Validate distribution method specific requirements
     if (distribution_method === 'custom' && !custom_breakdown) {
       return res.status(400).json({ error: 'Custom breakdown required for custom distribution method' });
+    }
+
+    if (distribution_method === 'allocation-pattern') {
+      if (allocation_pattern_mode === 'existing') {
+        if (!allocation_pattern_id) {
+          return res.status(400).json({ error: 'Allocation pattern ID required when using existing pattern' });
+        }
+      } else if (allocation_pattern_mode === 'create-new') {
+        if (!allocation_pattern_name) {
+          return res.status(400).json({ error: 'Pattern name required when creating new allocation pattern' });
+        }
+        if (!allocation_pattern_template) {
+          return res.status(400).json({ error: 'Template required when creating new allocation pattern' });
+        }
+        if (allocation_pattern_template === 'custom' && (!custom_periods || custom_periods.length === 0)) {
+          return res.status(400).json({ error: 'Custom periods required for custom allocation template' });
+        }
+      } else {
+        return res.status(400).json({ error: 'Allocation pattern mode must be "existing" or "create-new"' });
+      }
     }
 
     if (target_type === 'individual' && !user_id) {
@@ -617,6 +788,7 @@ router.post('/', async (req, res) => {
 
       // Get distribution breakdown for this user's quota
       let quotaDistribution;
+      let allocationResult = null; // Store allocation pattern result for metadata
       
       // Prepare seasonal data object if seasonal distribution is selected
       const seasonalData = distribution_method === 'seasonal' ? {
@@ -643,6 +815,31 @@ router.post('/', async (req, res) => {
           period_type: period_type
         }];
         console.log(`✅ Even distribution - using single period for ${targetUser.email}`);
+      } else if (distribution_method === 'allocation-pattern') {
+        try {
+          allocationResult = await distributeQuotaWithAllocationPattern(
+            quota_amount,
+            allocation_pattern_id,
+            allocation_pattern_mode,
+            allocation_pattern_name,
+            allocation_pattern_description,
+            allocation_pattern_template,
+            custom_periods,
+            req.user
+          );
+          quotaDistribution = allocationResult.distribution;
+          console.log(`✅ Allocation pattern distribution successful for ${targetUser.email}:`, quotaDistribution);
+        } catch (error) {
+          console.error(`Error distributing quota with allocation pattern for user ${targetUser.email}:`, error);
+          skippedUsers.push({
+            user_id: targetUser.id,
+            name: `${targetUser.first_name} ${targetUser.last_name}`,
+            email: targetUser.email,
+            role: targetUser.role,
+            error: error.message
+          });
+          continue;
+        }
       } else {
         try {
           quotaDistribution = distributeQuota(
@@ -683,12 +880,30 @@ router.post('/', async (req, res) => {
           role: target_type === 'role' ? role : null,
           // Add distribution metadata
           distribution_method: distribution_method || 'even',
-          distribution_config: distribution_method !== 'even' && (seasonalData || custom_breakdown) ? {
-            ...(seasonalData && { seasonal: seasonalData }),
-            ...(custom_breakdown && { custom: custom_breakdown }),
-            original_quota: quota_amount,
-            created_via_wizard: true
-          } : null
+          distribution_config: (() => {
+            if (distribution_method === 'allocation-pattern') {
+              return {
+                allocation_pattern_id: allocationResult?.allocation_pattern_id,
+                allocation_pattern_mode,
+                ...(allocationResult?.was_created && { 
+                  created_pattern_name: allocation_pattern_name,
+                  template_used: allocation_pattern_template 
+                }),
+                original_quota: quota_amount,
+                created_via_wizard: true
+              };
+            } else if (distribution_method !== 'even' && (seasonalData || custom_breakdown)) {
+              return {
+                ...(seasonalData && { seasonal: seasonalData }),
+                ...(custom_breakdown && { custom: custom_breakdown }),
+                original_quota: quota_amount,
+                created_via_wizard: true
+              };
+            }
+            return null;
+          })(),
+          // Link to allocation pattern if used
+          allocation_pattern_id: distribution_method === 'allocation-pattern' ? allocationResult?.allocation_pattern_id : null
         }
       });
 
@@ -771,6 +986,33 @@ router.post('/', async (req, res) => {
             success: true
           }
           });
+        }
+        
+        // Create target_allocations records for allocation pattern targets
+        if (distribution_method === 'allocation-pattern' && allocationResult?.allocation_pattern_id) {
+          for (const quotaPeriod of quotaDistribution) {
+            // Find the corresponding allocation period
+            const allocationPeriod = await prisma.allocation_periods.findFirst({
+              where: {
+                allocation_pattern_id: allocationResult.allocation_pattern_id,
+                period_name: quotaPeriod.period_name
+              }
+            });
+            
+            if (allocationPeriod) {
+              await prisma.target_allocations.create({
+                data: {
+                  target_id: parentTarget.id,
+                  allocation_period_id: allocationPeriod.id,
+                  period_quota_amount: quotaPeriod.quota_amount,
+                  period_start_date: new Date(quotaPeriod.period_start),
+                  period_end_date: new Date(quotaPeriod.period_end),
+                  allocation_percentage: quotaPeriod.allocation_percentage
+                }
+              });
+            }
+          }
+          console.log(`✅ Created ${quotaDistribution.length} target allocation records for ${targetUser.email}`);
         }
       }
 
@@ -939,8 +1181,22 @@ router.patch('/:id/deactivate', async (req, res) => {
       data: { is_active: false }
     });
 
-    // If there are related targets from the same role-based creation, deactivate them too
     let batchDeactivated = 0;
+    
+    // If this is a parent target, deactivate all child targets
+    if (!existingTarget.parent_target_id) {
+      // This is a parent target, deactivate all its children
+      const childTargets = await prisma.targets.updateMany({
+        where: {
+          parent_target_id: id,
+          is_active: true
+        },
+        data: { is_active: false }
+      });
+      batchDeactivated += childTargets.count;
+    }
+
+    // Also deactivate related targets from the same role-based creation (legacy logic)
     if (existingTarget.role && relatedTargets.length > 0) {
       const batchUpdate = await prisma.targets.updateMany({
         where: {
@@ -948,7 +1204,7 @@ router.patch('/:id/deactivate', async (req, res) => {
         },
         data: { is_active: false }
       });
-      batchDeactivated = batchUpdate.count;
+      batchDeactivated += batchUpdate.count;
     }
 
     // Log activity
@@ -1217,6 +1473,100 @@ router.post('/resolve-conflicts', async (req, res) => {
 
   } catch (error) {
     console.error('Resolve conflicts error:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// Apply role-based target to specific user
+router.post('/apply-to-user', async (req, res) => {
+  try {
+    console.log('🎯 Apply target to user request:', req.body);
+    
+    if (!canManageTeam(req.user)) {
+      return res.status(403).json({ error: 'Access denied' });
+    }
+
+    const { target_id, user_id } = req.body;
+
+    if (!target_id || !user_id) {
+      return res.status(400).json({ error: 'target_id and user_id are required' });
+    }
+
+    // Get the source target (role-based)
+    const sourceTarget = await prisma.targets.findFirst({
+      where: {
+        id: target_id,
+        is_active: true,
+        role: { not: null }, // Must be a role-based target
+        user_id: null // Must not be an individual target
+      }
+    });
+
+    if (!sourceTarget) {
+      return res.status(404).json({ error: 'Source target not found or invalid' });
+    }
+
+    // Verify user exists and is in same company
+    const targetUser = await prisma.users.findFirst({
+      where: {
+        id: user_id,
+        company_id: req.user.company_id,
+        is_active: true
+      }
+    });
+
+    if (!targetUser) {
+      return res.status(404).json({ error: 'Target user not found' });
+    }
+
+    // Check if user already has an active target for the same period
+    const existingTarget = await prisma.targets.findFirst({
+      where: {
+        user_id: user_id,
+        is_active: true,
+        period_start: sourceTarget.period_start,
+        period_end: sourceTarget.period_end
+      }
+    });
+
+    if (existingTarget) {
+      return res.status(409).json({ 
+        error: 'User already has an active target for this period',
+        existing_target: existingTarget
+      });
+    }
+
+    // Create individual target based on role target
+    const newTarget = await prisma.targets.create({
+      data: {
+        user_id: user_id,
+        company_id: req.user.company_id,
+        quota_amount: sourceTarget.quota_amount,
+        commission_rate: sourceTarget.commission_rate,
+        period_type: sourceTarget.period_type,
+        period_start: sourceTarget.period_start,
+        period_end: sourceTarget.period_end,
+        is_active: true,
+        parent_target_id: target_id, // Link to the source role target
+        role: null, // Individual target, not role-based
+        team_target: false
+      }
+    });
+
+    console.log('✅ Target applied to user:', {
+      new_target_id: newTarget.id,
+      user_email: targetUser.email,
+      quota_amount: newTarget.quota_amount
+    });
+
+    res.json({
+      success: true,
+      target: newTarget,
+      message: `Target of ${sourceTarget.quota_amount} applied to ${targetUser.first_name} ${targetUser.last_name}`
+    });
+
+  } catch (error) {
+    console.error('Error applying target to user:', error);
     res.status(500).json({ error: 'Internal server error' });
   }
 });
