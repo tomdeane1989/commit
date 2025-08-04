@@ -268,15 +268,13 @@ const TargetsPage = () => {
                         </div>
                       </div>
                       <div className="flex items-center space-x-2">
-                        {target.team_target && (
-                          <button
-                            onClick={() => handleDistribution(target)}
-                            className="inline-flex items-center px-3 py-1 border border-gray-300 text-xs font-medium rounded text-gray-700 bg-white hover:bg-gray-50"
-                          >
-                            <TrendingUp className="w-3 h-3 mr-1" />
-                            Distribute
-                          </button>
-                        )}
+                        <button
+                          onClick={() => handleDistribution(target)}
+                          className="inline-flex items-center px-3 py-1 border border-gray-300 text-xs font-medium rounded text-gray-700 bg-white hover:bg-gray-50"
+                        >
+                          <TrendingUp className="w-3 h-3 mr-1" />
+                          Distribute
+                        </button>
                         <button
                           onClick={() => handleTargetEdit(target)}
                           className="inline-flex items-center px-3 py-1 border border-gray-300 text-xs font-medium rounded text-gray-700 bg-white hover:bg-gray-50"
@@ -349,12 +347,7 @@ const TargetsPage = () => {
             setShowDistributionModal(false);
             setDistributionData(null);
           }}
-          targetData={distributionData}
-          onSuccess={() => {
-            queryClient.invalidateQueries({ queryKey: ['targets'] });
-            setShowDistributionModal(false);
-            setDistributionData(null);
-          }}
+          target={distributionData}
         />
       )}
     </Layout>

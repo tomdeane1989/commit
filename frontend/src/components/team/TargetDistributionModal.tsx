@@ -1,5 +1,5 @@
 import React from 'react';
-import { X, Calendar, DollarSign, TrendingUp } from 'lucide-react';
+import { X, Calendar, DollarSign, TrendingUp, BarChart3 } from 'lucide-react';
 
 interface Target {
   id: string;
@@ -233,74 +233,127 @@ export const TargetDistributionModal: React.FC<TargetDistributionModalProps> = (
 
         {/* Distribution Breakdown */}
         <div className="p-6">
-          <h3 className="text-lg font-medium text-gray-900 mb-4">Distribution Breakdown</h3>
+          <h3 className="text-lg font-medium text-gray-900 mb-4 flex items-center">
+            <BarChart3 className="w-5 h-5 mr-2 text-indigo-600" />
+            Distribution Breakdown
+          </h3>
           
           {breakdown.length > 0 ? (
-            <div className="overflow-x-auto">
-              <table className="w-full">
-                <thead className="bg-gray-50">
-                  <tr>
-                    <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                      Period
-                    </th>
-                    <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                      Date Range
-                    </th>
-                    <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                      Quota Amount
-                    </th>
-                    {method === 'seasonal' && (
+            <div className="space-y-6">
+              {/* Bar Chart Visualization */}
+              <div className="bg-gray-50 p-4 rounded-lg">
+                <h4 className="text-sm font-medium text-gray-700 mb-4">Visual Distribution</h4>
+                <div className="space-y-3">
+                  {breakdown.map((period, index) => {
+                    const maxAmount = Math.max(...breakdown.map(p => p.quota_amount));
+                    const percentage = (period.quota_amount / target.quota_amount) * 100;
+                    const barWidth = (period.quota_amount / maxAmount) * 100;
+                    
+                    return (
+                      <div key={index} className="space-y-2">
+                        <div className="flex items-center justify-between text-sm">
+                          <span className="font-medium text-gray-700">
+                            {period.period_name}
+                          </span>
+                          <div className="flex items-center space-x-2">
+                            <span className="text-gray-600">{percentage.toFixed(1)}%</span>
+                            <span className="font-semibold text-gray-900">
+                              {new Intl.NumberFormat('en-GB', {
+                                style: 'currency',
+                                currency: 'GBP',
+                                minimumFractionDigits: 0
+                              }).format(period.quota_amount)}
+                            </span>
+                          </div>
+                        </div>
+                        <div className="w-full bg-gray-200 rounded-full h-6 relative overflow-hidden">
+                          <div
+                            className="bg-gradient-to-r from-indigo-500 to-indigo-600 h-6 rounded-full transition-all duration-500 ease-out flex items-center justify-end pr-2 border-r-2 border-indigo-700"
+                            style={{ width: `${barWidth}%` }}
+                          >
+                            {barWidth > 20 && (
+                              <span className="text-gray-900 text-xs font-bold bg-white/90 px-1 rounded">
+                                {period.quota_amount > 10000 
+                                  ? `£${(period.quota_amount / 1000).toFixed(0)}K`
+                                  : `£${period.quota_amount.toLocaleString()}`
+                                }
+                              </span>
+                            )}
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+
+              {/* Data Table */}
+              <div className="overflow-x-auto">
+                <table className="w-full">
+                  <thead className="bg-gray-50">
+                    <tr>
                       <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                        Allocation
+                        Period
                       </th>
-                    )}
-                    <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                      % of Total
-                    </th>
-                  </tr>
-                </thead>
-                <tbody className="bg-white divide-y divide-gray-200">
-                  {breakdown.map((period, index) => (
-                    <tr key={index} className="hover:bg-gray-50">
-                      <td className="px-4 py-4 whitespace-nowrap">
-                        <div className="text-sm font-medium text-gray-900">
-                          {period.period_name}
-                        </div>
-                        <div className="text-xs text-gray-500 capitalize">
-                          {period.period_type}
-                        </div>
-                      </td>
-                      <td className="px-4 py-4 whitespace-nowrap text-sm text-gray-600">
-                        {new Date(period.period_start).toLocaleDateString('en-GB')} - {new Date(period.period_end).toLocaleDateString('en-GB')}
-                      </td>
-                      <td className="px-4 py-4 whitespace-nowrap">
-                        <div className="text-sm font-medium text-gray-900">
-                          {new Intl.NumberFormat('en-GB', {
-                            style: 'currency',
-                            currency: 'GBP',
-                            minimumFractionDigits: 0
-                          }).format(period.quota_amount)}
-                        </div>
-                      </td>
+                      <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                        Date Range
+                      </th>
+                      <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                        Quota Amount
+                      </th>
                       {method === 'seasonal' && (
+                        <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                          Allocation
+                        </th>
+                      )}
+                      <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                        % of Total
+                      </th>
+                    </tr>
+                  </thead>
+                  <tbody className="bg-white divide-y divide-gray-200">
+                    {breakdown.map((period, index) => (
+                      <tr key={index} className="hover:bg-gray-50">
+                        <td className="px-4 py-4 whitespace-nowrap">
+                          <div className="text-sm font-medium text-gray-900">
+                            {period.period_name}
+                          </div>
+                          <div className="text-xs text-gray-500 capitalize">
+                            {period.period_type}
+                          </div>
+                        </td>
                         <td className="px-4 py-4 whitespace-nowrap text-sm text-gray-600">
-                          {period.allocation_type === 'percentage' ? 
-                            `${period.allocation_value}%` : 
-                            new Intl.NumberFormat('en-GB', {
+                          {new Date(period.period_start).toLocaleDateString('en-GB')} - {new Date(period.period_end).toLocaleDateString('en-GB')}
+                        </td>
+                        <td className="px-4 py-4 whitespace-nowrap">
+                          <div className="text-sm font-medium text-gray-900">
+                            {new Intl.NumberFormat('en-GB', {
                               style: 'currency',
                               currency: 'GBP',
                               minimumFractionDigits: 0
-                            }).format(period.allocation_value)
-                          }
+                            }).format(period.quota_amount)}
+                          </div>
                         </td>
-                      )}
-                      <td className="px-4 py-4 whitespace-nowrap text-sm text-gray-600">
-                        {((period.quota_amount / target.quota_amount) * 100).toFixed(1)}%
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
+                        {method === 'seasonal' && (
+                          <td className="px-4 py-4 whitespace-nowrap text-sm text-gray-600">
+                            {period.allocation_type === 'percentage' ? 
+                              `${period.allocation_value}%` : 
+                              new Intl.NumberFormat('en-GB', {
+                                style: 'currency',
+                                currency: 'GBP',
+                                minimumFractionDigits: 0
+                              }).format(period.allocation_value)
+                            }
+                          </td>
+                        )}
+                        <td className="px-4 py-4 whitespace-nowrap text-sm text-gray-600">
+                          {((period.quota_amount / target.quota_amount) * 100).toFixed(1)}%
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
             </div>
           ) : (
             <div className="text-center py-8 text-gray-500">
