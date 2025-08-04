@@ -11,12 +11,21 @@ interface TeamMember {
   hire_date: string | null;
 }
 
+interface Team {
+  id: string;
+  team_name: string;
+  _count?: {
+    team_members: number;
+  };
+}
+
 interface QuotaWizardProps {
   isOpen: boolean;
   onClose: () => void;
   onSubmit: (data: any) => void;
   onResolveConflicts: (data: any) => void;
-  teamMembers: TeamMember[];
+  teamMembers?: TeamMember[];
+  teams?: Team[];
   loading: boolean;
   onConflictDetected?: (conflicts: any[]) => void;
   mutationError?: any;
@@ -124,7 +133,8 @@ export const QuotaWizard: React.FC<QuotaWizardProps> = ({
   onClose,
   onSubmit,
   onResolveConflicts,
-  teamMembers,
+  teamMembers = [],
+  teams = [],
   loading,
   onConflictDetected,
   mutationError,
@@ -539,6 +549,7 @@ export const QuotaWizard: React.FC<QuotaWizardProps> = ({
               data={wizardData} 
               updateData={updateWizardData}
               teamMembers={teamMembers}
+              teams={teams}
             />
           )}
           {currentStep === 2 && (
@@ -558,6 +569,7 @@ export const QuotaWizard: React.FC<QuotaWizardProps> = ({
               data={wizardData} 
               updateData={updateWizardData}
               teamMembers={teamMembers}
+              teams={teams}
             />
           )}
         </div>
@@ -642,8 +654,9 @@ export const QuotaWizard: React.FC<QuotaWizardProps> = ({
 const Step1ScopeAndTiming: React.FC<{
   data: WizardData;
   updateData: (updates: Partial<WizardData>) => void;
-  teamMembers: TeamMember[];
-}> = ({ data, updateData, teamMembers }) => {
+  teamMembers?: TeamMember[];
+  teams?: Team[];
+}> = ({ data, updateData, teamMembers = [], teams = [] }) => {
   const activeMembers = teamMembers.filter(m => m.is_active);
   const uniqueRoles = [...new Set(activeMembers.map(m => m.role))];
 
@@ -1081,14 +1094,22 @@ const Step2SetAmounts: React.FC<{
 const Step4ReviewAndConflicts: React.FC<{
   data: WizardData;
   updateData: (updates: Partial<WizardData>) => void;
-  teamMembers: TeamMember[];
-}> = ({ data, updateData, teamMembers }) => {
+  teamMembers?: TeamMember[];
+  teams?: Team[];
+}> = ({ data, updateData, teamMembers = [], teams = [] }) => {
   const getAffectedMembers = () => {
     if (data.scope === 'individual') {
       return teamMembers.filter(m => m.id === data.user_id);
     } else if (data.scope === 'role') {
       return teamMembers.filter(m => m.role === data.role && m.is_active);
+    } else if (data.scope === 'team') {
+      // Filter by team membership
+      return teamMembers.filter(m => 
+        m.is_active && 
+        m.team_memberships?.some(tm => tm.team_id === data.team_id)
+      );
     } else {
+      // All teams scope
       return teamMembers.filter(m => m.is_active);
     }
   };

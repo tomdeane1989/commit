@@ -8,6 +8,7 @@ interface TeamMember {
   last_name: string;
   role: string;
   is_admin: boolean;
+  is_manager: boolean;
   is_active: boolean;
   hire_date: string | null;
   territory: string | null;
@@ -17,6 +18,13 @@ interface TeamMember {
     last_name: string;
     email: string;
   } | null;
+  team_memberships?: Array<{
+    team_id: string;
+    team: {
+      id: string;
+      team_name: string;
+    };
+  }>;
   reports_count: number;
   performance: {
     // Legacy fields for backward compatibility
@@ -81,6 +89,13 @@ export const TeamMemberCard: React.FC<TeamMemberCardProps> = ({
   onViewTeamTargets
 }) => {
   const [showActions, setShowActions] = useState(false);
+  
+  // Debug logging
+  if (member.email === 'tom@test.com') {
+    console.log('🎯 TeamMemberCard - Tom\'s data received:', member);
+    console.log('🎯 TeamMemberCard - is_admin:', member.is_admin, 'type:', typeof member.is_admin);
+    console.log('🎯 TeamMemberCard - is_manager:', member.is_manager, 'type:', typeof member.is_manager);
+  }
 
   // Progress Meter Component
   const ProgressMeter = ({ 
@@ -118,11 +133,6 @@ export const TeamMemberCard: React.FC<TeamMemberCardProps> = ({
             {subtitle && (
               <span className="ml-2 inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-800">
                 {subtitle}
-              </span>
-            )}
-            {isTeam && metrics.teamMemberCount && (
-              <span className="ml-2 text-xs text-gray-400">
-                ({metrics.teamMemberCount} members)
               </span>
             )}
           </div>
@@ -263,8 +273,8 @@ export const TeamMemberCard: React.FC<TeamMemberCardProps> = ({
               Edit Member
             </button>
             
-            {/* Team Aggregation option - only for managers */}
-            {member.is_manager && onViewTeamTargets && (
+            {/* Team Aggregation option - only for managers or admins who manage teams */}
+            {(member.is_manager || member.is_admin) && onViewTeamTargets && (
               <button
                 onClick={() => {
                   onViewTeamTargets(member);
@@ -343,7 +353,7 @@ export const TeamMemberCard: React.FC<TeamMemberCardProps> = ({
             <div className="flex items-center text-sm text-gray-600">
               <Building className="w-4 h-4 mr-2" />
               <span>
-                {member.is_admin ? 'Administrator' : member.is_manager ? 'Manager' : 'Sales User'}
+                {(member.is_admin || member.is_manager) ? 'Manager' : 'Sales User'}
               </span>
               {member.territory && (
                 <span className="ml-2 px-2 py-1 bg-gray-100 text-xs rounded">
@@ -351,6 +361,24 @@ export const TeamMemberCard: React.FC<TeamMemberCardProps> = ({
                 </span>
               )}
             </div>
+            
+            {/* Team Memberships */}
+            {member.team_memberships && member.team_memberships.length > 0 && (
+              <div className="flex items-center text-sm text-gray-600">
+                <Users className="w-4 h-4 mr-2" />
+                <span className="mr-2">Teams:</span>
+                <div className="flex flex-wrap gap-1">
+                  {member.team_memberships.map((membership) => (
+                    <span
+                      key={membership.team_id}
+                      className="px-2 py-1 bg-indigo-100 text-indigo-800 text-xs rounded-full"
+                    >
+                      {membership.team.team_name}
+                    </span>
+                  ))}
+                </div>
+              </div>
+            )}
             
             {member.hire_date && (
               <div className="flex items-center text-sm text-gray-600">
@@ -405,7 +433,6 @@ export const TeamMemberCard: React.FC<TeamMemberCardProps> = ({
             <ProgressMeter
               metrics={member.performance.team_metrics}
               title="Team Quota Progress"
-              subtitle="Aggregated"
               isTeam={true}
             />
           </div>
@@ -422,7 +449,6 @@ export const TeamMemberCard: React.FC<TeamMemberCardProps> = ({
           <ProgressMeter
             metrics={member.performance.team_metrics}
             title="Team Quota Progress"
-            subtitle="Team Target"
             isTeam={true}
           />
         )}

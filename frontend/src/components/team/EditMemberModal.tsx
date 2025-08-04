@@ -36,8 +36,9 @@ interface EditMemberModalProps {
     is_admin: boolean;
     is_manager: boolean;
     manager_id: string | null;
-    team_ids: string[];
   }) => void;
+  managers?: any[];
+  loading?: boolean;
 }
 
 const EditMemberModal: React.FC<EditMemberModalProps> = ({
@@ -45,6 +46,8 @@ const EditMemberModal: React.FC<EditMemberModalProps> = ({
   isOpen,
   onClose,
   onSave,
+  managers,
+  loading
 }) => {
   const [formData, setFormData] = useState({
     first_name: '',
@@ -55,16 +58,8 @@ const EditMemberModal: React.FC<EditMemberModalProps> = ({
     team_ids: [] as string[],
   });
 
-  // Fetch all potential managers (users with manager role in the same company)
-  const { data: managersData } = useQuery({
-    queryKey: ['managers'],
-    queryFn: async () => {
-      const response = await teamApi.getTeam();
-      // Filter for managers only
-      return response.team_members?.filter((user: any) => user.role === 'manager' || user.is_manager === true) || [];
-    },
-    enabled: isOpen
-  });
+  // Use managers prop passed from parent
+  const managersData = managers || [];
 
   // Fetch all teams
   const { data: teamsData } = useQuery({
@@ -105,7 +100,6 @@ const EditMemberModal: React.FC<EditMemberModalProps> = ({
       is_admin: formData.is_admin,
       is_manager: formData.is_manager,
       manager_id: formData.manager_id,
-      team_ids: formData.team_ids,
     });
   };
 

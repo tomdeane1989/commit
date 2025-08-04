@@ -8,6 +8,18 @@ import { requireTeamView, requireTeamManagement, attachPermissions } from '../mi
 const router = express.Router();
 const prisma = new PrismaClient();
 
+// Utility function to capitalize names properly
+const capitalizeName = (name) => {
+  if (!name) return name;
+  const result = name
+    .toLowerCase()
+    .split(' ')
+    .map(word => word.charAt(0).toUpperCase() + word.slice(1))
+    .join(' ');
+  console.log('🔍 BACKEND - Capitalizing name:', name, '->', result);
+  return result;
+};
+
 // Attach permissions to all team routes for conditional logic
 router.use(attachPermissions);
 
@@ -50,6 +62,7 @@ router.get('/', requireTeamView, async (req, res) => {
         last_name: true,
         role: true,
         is_admin: true,
+        is_manager: true,
         is_active: true,
         hire_date: true,
         territory: true,
@@ -74,6 +87,16 @@ router.get('/', requireTeamView, async (req, res) => {
       },
       orderBy: { created_at: 'desc' }
     });
+
+    // DEBUG: Log what fields are actually being returned
+    console.log('🔍 BACKEND DEBUG - Team members data:', teamMembers.map(member => ({
+      email: member.email,
+      is_admin: member.is_admin,
+      is_manager: member.is_manager,
+      role: member.role,
+      hasIsAdmin: 'is_admin' in member,
+      hasIsManager: 'is_manager' in member
+    })));
 
     // Get aggregated data for all team members in batch queries
     // Include the requesting user (manager) to get their team targets
@@ -444,6 +467,41 @@ router.get('/', requireTeamView, async (req, res) => {
         }
       }
       
+      // Team metrics for non-managers with team targets
+      if (teamTarget && member.role !== 'manager' && !teamMetrics) {
+        // For team members, show their individual contribution to team target
+        const teamTargetStart = new Date(teamTarget.period_start);
+        const teamTargetEnd = new Date(teamTarget.period_end);
+        const originalTeamQuota = Number(teamTarget.quota_amount);
+        
+        let proRatedTeamQuota = originalTeamQuota;
+        const teamOverlapStart = new Date(Math.max(teamTargetStart.getTime(), startDate.getTime()));
+        const teamOverlapEnd = new Date(Math.min(teamTargetEnd.getTime(), endDate.getTime()));
+        
+        if (teamOverlapStart <= teamOverlapEnd) {
+          let teamProRatio = 1;
+          if (teamTarget.period_type === 'annual' && period === 'quarterly') {
+            teamProRatio = 1 / 4;
+          } else if (teamTarget.period_type === 'annual' && period === 'monthly') {
+            teamProRatio = 1 / 12;
+          } else if (teamTarget.period_type === 'quarterly' && period === 'monthly') {
+            teamProRatio = 1 / 3;
+          }
+          proRatedTeamQuota = originalTeamQuota * teamProRatio;
+        }
+        
+        teamMetrics = {
+          closedAmount: closedWonAmount,
+          commitAmount: commitAmount,
+          bestCaseAmount: bestCaseAmount,
+          pipelineAmount: openDealsAmount,
+          quotaAmount: proRatedTeamQuota,
+          commissionRate: Number(teamTarget.commission_rate),
+          quotaProgress: closedWonAmount + commitAmount + bestCaseAmount,
+          teamMemberCount: 1 // Individual team member
+        };
+      }
+      
       // Total progress = closed + commit + best case (for quota progress bar)
       const quotaProgressAmount = closedWonAmount + commitAmount + bestCaseAmount;
       // Pipeline amount is separate (for reference in key)
@@ -511,11 +569,14 @@ router.get('/', requireTeamView, async (req, res) => {
         first_name: member.first_name,
         last_name: member.last_name,
         role: member.role,
+        is_admin: member.is_admin,
+        is_manager: member.is_manager,
         is_active: member.is_active,
         hire_date: member.hire_date,
         territory: member.territory,
         created_at: member.created_at,
         manager: member.manager,
+        team_memberships: member.team_memberships,
         reports_count: member._count.reports,
         performance: {
           // Legacy fields for backward compatibility
@@ -565,12 +626,21 @@ router.get('/', requireTeamView, async (req, res) => {
 router.post('/invite', requireTeamManagement, async (req, res) => {
   try {
     // Permission already checked by middleware
+    console.log('🔍 BACKEND - Invite request body:', req.body);
 
-    const { email, first_name, last_name, role, is_admin, manager_id, team_ids } = req.body;
+    const { email, first_name, last_name, is_admin, is_manager, manager_id, team_ids } = req.body;
 
     // Validate required fields
-    if (!email || !first_name || !last_name || !role) {
-      return res.status(400).json({ error: 'Missing required fields' });
+    if (!email || !first_name || !last_name) {
+      console.log('🔍 BACKEND - Missing fields:', { email: !!email, first_name: !!first_name, last_name: !!last_name });
+      return res.status(400).json({ 
+        error: 'Missing required fields',
+        missing: {
+          email: !email,
+          first_name: !first_name,
+          last_name: !last_name
+        }
+      });
     }
 
     // Check if user already exists
@@ -579,6 +649,7 @@ router.post('/invite', requireTeamManagement, async (req, res) => {
     });
 
     if (existingUser) {
+      console.log('🔍 BACKEND - User already exists:', email);
       return res.status(400).json({ error: 'User with this email already exists' });
     }
 
@@ -605,10 +676,11 @@ router.post('/invite', requireTeamManagement, async (req, res) => {
       data: {
         email: email.toLowerCase(), // Normalize email to lowercase
         password: hashedPassword,
-        first_name,
-        last_name,
-        role,
-        is_admin: role === 'manager' && is_admin === true,
+        first_name: capitalizeName(first_name),
+        last_name: capitalizeName(last_name),
+        role: 'sales_rep', // Default role for backward compatibility
+        is_admin: is_admin || false,
+        is_manager: is_manager || false,
         manager_id: manager_id || null,
         company_id: req.user.company_id
       },
@@ -619,8 +691,10 @@ router.post('/invite', requireTeamManagement, async (req, res) => {
       }
     });
 
-    // Add user to teams if specified
+    // Add user to teams if specified and set team lead as manager if not already set
     if (team_ids && Array.isArray(team_ids) && team_ids.length > 0) {
+      let assignedManagerId = manager_id; // Start with explicitly provided manager
+      
       for (const team_id of team_ids) {
         try {
           await prisma.team_members.create({
@@ -631,9 +705,29 @@ router.post('/invite', requireTeamManagement, async (req, res) => {
               is_active: true
             }
           });
+
+          // If no manager assigned yet, try to use team lead as manager
+          if (!assignedManagerId) {
+            const team = await prisma.teams.findUnique({
+              where: { id: team_id },
+              select: { team_lead_id: true }
+            });
+            
+            if (team && team.team_lead_id) {
+              assignedManagerId = team.team_lead_id; // Use first team's lead as manager
+            }
+          }
         } catch (err) {
           console.error(`Failed to add user to team ${team_id}:`, err);
         }
+      }
+
+      // Update user with assigned manager if we found one
+      if (assignedManagerId && assignedManagerId !== manager_id) {
+        await prisma.users.update({
+          where: { id: newUser.id },
+          data: { manager_id: assignedManagerId }
+        });
       }
     }
 
@@ -647,7 +741,7 @@ router.post('/invite', requireTeamManagement, async (req, res) => {
         entity_id: newUser.id,
         context: {
           invited_email: email,
-          invited_role: role,
+          invited_role: 'sales_rep',
           invited_by: req.user.email,
           team_ids: team_ids || []
         },
@@ -684,6 +778,7 @@ router.post('/invite', requireTeamManagement, async (req, res) => {
         last_name: userWithTeams.last_name,
         role: userWithTeams.role,
         is_admin: userWithTeams.is_admin,
+        is_manager: userWithTeams.is_manager,
         manager: userWithTeams.manager,
         team_memberships: userWithTeams.team_memberships,
         created_at: userWithTeams.created_at
@@ -703,7 +798,7 @@ router.patch('/:userId', requireTeamManagement, async (req, res) => {
     // Permission already checked by middleware
 
     const { userId } = req.params;
-    const { first_name, last_name, role, territory, manager_id, is_active, is_admin } = req.body;
+    const { first_name, last_name, territory, manager_id, is_active, is_admin, is_manager } = req.body;
 
     // Validate user exists and is in same company
     const existingUser = await prisma.users.findUnique({
@@ -735,13 +830,13 @@ router.patch('/:userId', requireTeamManagement, async (req, res) => {
     const updatedUser = await prisma.users.update({
       where: { id: userId },
       data: {
-        first_name,
-        last_name,
-        role,
+        first_name: first_name ? capitalizeName(first_name) : undefined,
+        last_name: last_name ? capitalizeName(last_name) : undefined,
         territory,
         manager_id,
         is_active,
-        is_admin
+        is_admin,
+        is_manager
       },
       include: {
         manager: {
@@ -759,7 +854,7 @@ router.patch('/:userId', requireTeamManagement, async (req, res) => {
         entity_type: 'user',
         entity_id: userId,
         context: {
-          updated_fields: { first_name, last_name, role, territory, manager_id, is_active },
+          updated_fields: { first_name, last_name, territory, manager_id, is_active, is_admin, is_manager },
           updated_by: req.user.email
         },
         success: true
@@ -775,6 +870,8 @@ router.patch('/:userId', requireTeamManagement, async (req, res) => {
         role: updatedUser.role,
         territory: updatedUser.territory,
         is_active: updatedUser.is_active,
+        is_admin: updatedUser.is_admin,
+        is_manager: updatedUser.is_manager,
         manager: updatedUser.manager,
         updated_at: updatedUser.updated_at
       },
@@ -1248,6 +1345,35 @@ router.delete('/:userId', requireTeamManagement, async (req, res) => {
     // Deactivate instead of delete to preserve data integrity
     await prisma.users.update({
       where: { id: userId },
+      data: { is_active: false }
+    });
+
+    // Clean up relationships when user is deactivated
+    
+    // 1. Remove as team lead from any teams
+    await prisma.teams.updateMany({
+      where: { team_lead_id: userId },
+      data: { team_lead_id: null }
+    });
+
+    // 2. Remove as manager from any direct reports
+    await prisma.users.updateMany({
+      where: { manager_id: userId },
+      data: { manager_id: null }
+    });
+
+    // 3. Deactivate team memberships
+    await prisma.team_members.updateMany({
+      where: { user_id: userId },
+      data: { is_active: false }
+    });
+
+    // 4. Deactivate any active targets
+    await prisma.targets.updateMany({
+      where: { 
+        user_id: userId,
+        is_active: true
+      },
       data: { is_active: false }
     });
 
