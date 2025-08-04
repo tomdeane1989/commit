@@ -1,34 +1,39 @@
 // Role and permission helper functions
+// Using flag-based permissions (is_admin, is_manager) instead of string roles
 
 /**
  * Check if user has admin permissions
+ * Admin users can perform all actions including user management
  * @param {Object} user - The user object from req.user
  * @returns {boolean} - True if user has admin permissions
  */
 export const isAdmin = (user) => {
-  return user && user.is_admin === true && user.role === 'manager';
+  return user && user.is_admin === true;
 };
 
 /**
- * Check if user has manager permissions (including admin)
+ * Check if user has manager permissions
+ * Managers can view team data and manage targets
  * @param {Object} user - The user object from req.user
- * @returns {boolean} - True if user is a manager or admin
+ * @returns {boolean} - True if user is a manager (but not necessarily admin)
  */
 export const isManager = (user) => {
-  return user && user.role === 'manager';
+  return user && user.is_manager === true;
 };
 
 /**
- * Check if user has manager or admin permissions
+ * Check if user can manage team (managers and admins)
+ * This includes viewing team data, creating targets, etc.
  * @param {Object} user - The user object from req.user
- * @returns {boolean} - True if user is a manager or admin
+ * @returns {boolean} - True if user can manage team
  */
 export const canManageTeam = (user) => {
-  return user && user.role === 'manager'; // All managers can manage team, admins are managers too
+  return user && (user.is_admin === true || user.is_manager === true);
 };
 
 /**
  * Check if user can perform admin-only actions
+ * Such as inviting users, editing team members, etc.
  * @param {Object} user - The user object from req.user
  * @returns {boolean} - True if user has admin permissions
  */
@@ -37,10 +42,25 @@ export const canPerformAdminActions = (user) => {
 };
 
 /**
- * Check if user is a regular sales rep
+ * Check if user is a regular sales user (no special permissions)
  * @param {Object} user - The user object from req.user
- * @returns {boolean} - True if user is a sales rep
+ * @returns {boolean} - True if user has no admin or manager permissions
  */
-export const isSalesRep = (user) => {
-  return user && user.role === 'sales_rep';
+export const isSalesUser = (user) => {
+  return user && !user.is_admin && !user.is_manager;
+};
+
+// Alias for backwards compatibility
+export const isSalesRep = isSalesUser;
+
+/**
+ * Get user permission level for display/logic purposes
+ * @param {Object} user - The user object from req.user
+ * @returns {string} - 'admin', 'manager', or 'sales_rep'
+ */
+export const getUserPermissionLevel = (user) => {
+  if (!user) return null;
+  if (user.is_admin) return 'admin';
+  if (user.is_manager) return 'manager';
+  return 'sales_rep';
 };

@@ -1,9 +1,13 @@
 // routes/dashboard.js
 import express from 'express';
 import { PrismaClient } from '@prisma/client';
+import { attachPermissions } from '../middleware/permissions.js';
 
 const router = express.Router();
 const prisma = new PrismaClient();
+
+// Attach permissions to all routes for conditional logic
+router.use(attachPermissions);
 
 // Helper function to calculate deal behavior analytics
 function calculateDealAnalytics(allCategorizations, closedDeals) {
@@ -159,8 +163,8 @@ router.get('/sales-rep/:userId', async (req, res) => {
   try {
     const userId = req.params.userId;
     
-    // Verify user can access this data
-    if (userId !== req.user.id && req.user.role !== 'manager' && req.user.role !== 'admin') {
+    // Verify user can access this data - use permissions from middleware
+    if (userId !== req.user.id && !req.permissions.canManageTeam) {
       return res.status(403).json({ error: 'Access denied' });
     }
 
@@ -266,7 +270,7 @@ router.patch('/deals/:dealId/category', async (req, res) => {
       return res.status(404).json({ error: 'Deal not found' });
     }
 
-    if (deal.user_id !== req.user.id && req.user.role !== 'manager' && req.user.role !== 'admin') {
+    if (deal.user_id !== req.user.id && !req.permissions.canManageTeam) {
       return res.status(403).json({ error: 'Access denied' });
     }
 

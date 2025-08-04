@@ -1,11 +1,12 @@
 import express from 'express';
 import { PrismaClient } from '@prisma/client';
+import { requireAdmin } from '../middleware/permissions.js';
 // Removed seed-data.js import to prevent auto-execution on server start
 
 const router = express.Router();
 const prisma = new PrismaClient();
 
-router.post('/init', async (req, res) => {
+router.post('/init', requireAdmin, async (req, res) => {
   try {
     console.log('Running DB push...');
     await prisma.$executeRawUnsafe(`CREATE EXTENSION IF NOT EXISTS "uuid-ossp"`); // just in case

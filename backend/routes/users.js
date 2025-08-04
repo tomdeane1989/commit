@@ -2,9 +2,13 @@ import express from 'express';
 import { PrismaClient } from '@prisma/client';
 import bcrypt from 'bcrypt';
 import Joi from 'joi';
+import { attachPermissions, requireTeamView } from '../middleware/permissions.js';
 
 const router = express.Router();
 const prisma = new PrismaClient();
+
+// Attach permissions to all routes
+router.use(attachPermissions);
 
 const updateUserSchema = Joi.object({
   first_name: Joi.string().optional(),
@@ -151,19 +155,17 @@ router.put('/password', async (req, res) => {
 });
 
 // Get team members (for managers/admins)
-router.get('/team', async (req, res) => {
+router.get('/team', requireTeamView, async (req, res) => {
   try {
-    if (req.user.role !== 'manager' && req.user.role !== 'admin') {
-      return res.status(403).json({ error: 'Access denied' });
-    }
+    // Permission already checked by middleware
 
     const where = {
       company_id: req.user.company_id,
       is_active: true
     };
 
-    // If manager, only show their reports
-    if (req.user.role === 'manager') {
+    // If manager but not admin, only show their reports
+    if (req.permissions.isManager && !req.permissions.isAdmin) {
       where.manager_id = req.user.id;
     }
 

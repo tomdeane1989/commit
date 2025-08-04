@@ -47,9 +47,10 @@ export const TeamFilters: React.FC<TeamFiltersProps> = ({
               onChange={(e) => setRoleFilter(e.target.value)}
               className="px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:border-transparent\n            style={{ '--tw-ring-color': '#82a365' } as React.CSSProperties} text-sm"
             >
-              <option value="">All Roles</option>
+              <option value="">All Permission Levels</option>
+              <option value="admin">Administrator</option>
               <option value="manager">Manager</option>
-              <option value="sales_rep">Sales Rep</option>
+              <option value="sales_rep">Sales User</option>
             </select>
           </div>
 

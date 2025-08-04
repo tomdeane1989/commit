@@ -195,7 +195,7 @@ const authMiddleware = authenticateToken;
 
 // Protected routes (require authentication)
 
-app.use('/api/admin', adminRoutes);
+app.use('/api/admin', authMiddleware, adminRoutes);
 app.use('/api/team', authMiddleware, teamsRoutes);
 app.use('/api/targets', authMiddleware, targetsRoutes);
 app.use('/api/deals', authMiddleware, dealsRoutes);
@@ -217,7 +217,7 @@ app.get('/api/dashboard/sales-rep', authMiddleware, async (req, res) => {
     let targetUserIds = [req.user.id];
     let targetUserId = req.user.id;
     
-    if (req.user.role === 'manager' && view) {
+    if ((req.user.is_manager || req.user.is_admin) && view) {
       if (view === 'member' && user_id) {
         // Individual team member view
         targetUserIds = [user_id];
@@ -228,7 +228,8 @@ app.get('/api/dashboard/sales-rep', authMiddleware, async (req, res) => {
           where: {
             company_id: req.user.company_id,
             is_active: true,
-            role: 'sales_rep'
+            is_manager: false,
+            is_admin: false
           },
           select: { id: true }
         });
@@ -240,7 +241,8 @@ app.get('/api/dashboard/sales-rep', authMiddleware, async (req, res) => {
           where: {
             company_id: req.user.company_id,
             is_active: true,
-            role: 'sales_rep'
+            is_manager: false,
+            is_admin: false
           },
           select: { id: true }
         });
@@ -432,122 +434,7 @@ app.get('/api/dashboard/sales-rep', authMiddleware, async (req, res) => {
   }
 });
 
-// Deal categorization update
-app.patch('/api/deals/:dealId/categorize', authMiddleware, async (req, res) => {
-  try {
-    const { dealId } = req.params;
-    const { deal_type, previous_category, categorization_timestamp, user_context } = req.body;
-
-    // Validate that user owns this deal OR is a manager who can access team deals
-    let deal;
-    
-    if (req.user.role === 'manager') {
-      // Managers can categorize deals for their team members (same company)
-      deal = await prisma.deals.findFirst({
-        where: { 
-          id: dealId,
-          user: {
-            company_id: req.user.company_id // Must be same company
-          }
-        },
-        include: {
-          user: {
-            select: {
-              id: true,
-              first_name: true,
-              last_name: true,
-              company_id: true
-            }
-          }
-        }
-      });
-    } else {
-      // Regular users can only categorize their own deals
-      deal = await prisma.deals.findFirst({
-        where: { 
-          id: dealId,
-          user_id: req.user.id 
-        },
-        include: {
-          user: {
-            select: {
-              id: true,
-              first_name: true,
-              last_name: true,
-              company_id: true
-            }
-          }
-        }
-      });
-    }
-
-    if (!deal) {
-      return res.status(404).json({ error: 'Deal not found or access denied' });
-    }
-
-    // Use the deal owner's user ID for categorizations (affects their forecasting)
-    const dealOwnerId = deal.user.id;
-    
-    // If moving to pipeline, remove any existing categorization
-    if (deal_type === 'pipeline') {
-      await prisma.deal_categorizations.deleteMany({
-        where: { 
-          deal_id: dealId,
-          user_id: dealOwnerId 
-        }
-      });
-    } else {
-      // Remove any existing categorization for this deal by the deal owner
-      await prisma.deal_categorizations.deleteMany({
-        where: { 
-          deal_id: dealId,
-          user_id: dealOwnerId 
-        }
-      });
-
-      // Create new categorization for the deal owner
-      await prisma.deal_categorizations.create({
-        data: {
-          deal_id: dealId,
-          user_id: dealOwnerId,
-          category: deal_type,
-          confidence_note: `Categorized via ${user_context?.categorization_method || 'manual'}${
-            req.user.id !== dealOwnerId ? ` by manager ${req.user.first_name} ${req.user.last_name}` : ''
-          }`
-        }
-      });
-    }
-
-    // Log the change for ML training
-    await prisma.activity_log.create({
-      data: {
-        user_id: req.user.id,
-        company_id: req.user.company_id,
-        action: 'deal_categorized',
-        entity_type: 'deal',
-        entity_id: dealId,
-        before_state: { category: previous_category },
-        after_state: { category: deal_type },
-        context: {
-          categorization_method: user_context?.categorization_method,
-          session_id: user_context?.session_id,
-          timestamp: categorization_timestamp
-        },
-        success: true
-      }
-    });
-
-    res.json({ 
-      id: dealId,
-      current_category: deal_type,
-      previous_category,
-      message: 'Deal categorization updated successfully'
-    });
-  } catch (error) {
-    console.error('Update deal categorization error:', error);
-    res.status(500).json({ error: 'Internal server error' });
-  }
-});
+// Deal categorization is handled in /api/deals/:dealId/categorize via deals router
 
 // Deals routes
 app.get('/api/deals', authMiddleware, async (req, res) => {

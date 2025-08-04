@@ -3,18 +3,20 @@ import express from 'express';
 import bcrypt from 'bcrypt';
 import { PrismaClient } from '@prisma/client';
 import { isAdmin, isManager, canManageTeam } from '../middleware/roleHelpers.js';
+import { requireTeamView, requireTeamManagement, attachPermissions } from '../middleware/permissions.js';
 
 const router = express.Router();
 const prisma = new PrismaClient();
 
-// Get team members
-router.get('/', async (req, res) => {
+// Attach permissions to all team routes for conditional logic
+router.use(attachPermissions);
+
+// Get team members - managers and admins can view
+router.get('/', requireTeamView, async (req, res) => {
   try {
-    console.log(`🏢 TEAM ENDPOINT called by ${req.user.email}`);
-    // Only managers (including admins) can view team
-    if (!canManageTeam(req.user)) {
-      return res.status(403).json({ error: 'Insufficient permissions' });
-    }
+    console.log(`🏢 TEAM ENDPOINT called by ${req.user.email} (${req.permissions.level})`);
+    
+    // Permission already checked by middleware
 
     // Get period filter (default to quarterly) and active filter
     const { period = 'quarterly', show_inactive = 'false' } = req.query;
@@ -548,13 +550,10 @@ router.get('/', async (req, res) => {
   }
 });
 
-// Invite team member
-router.post('/invite', async (req, res) => {
+// Invite team member - admin only
+router.post('/invite', requireTeamManagement, async (req, res) => {
   try {
-    // Only admins can invite team members
-    if (!isAdmin(req.user)) {
-      return res.status(403).json({ error: 'Only admins can invite team members' });
-    }
+    // Permission already checked by middleware
 
     const { email, first_name, last_name, role, territory, manager_id } = req.body;
 
@@ -646,13 +645,10 @@ router.post('/invite', async (req, res) => {
   }
 });
 
-// Update team member
-router.patch('/:userId', async (req, res) => {
+// Update team member - admin only
+router.patch('/:userId', requireTeamManagement, async (req, res) => {
   try {
-    // Only admins can edit team members
-    if (!isAdmin(req.user)) {
-      return res.status(403).json({ error: 'Only admins can edit team members' });
-    }
+    // Permission already checked by middleware
 
     const { userId } = req.params;
     const { first_name, last_name, role, territory, manager_id, is_active, is_admin } = req.body;
@@ -1173,13 +1169,10 @@ router.post('/aggregated-target', async (req, res) => {
   }
 });
 
-// Deactivate team member
-router.delete('/:userId', async (req, res) => {
+// Deactivate team member - admin only
+router.delete('/:userId', requireTeamManagement, async (req, res) => {
   try {
-    // Only admins can delete team members
-    if (!isAdmin(req.user)) {
-      return res.status(403).json({ error: 'Only admins can delete team members' });
-    }
+    // Permission already checked by middleware
 
     const { userId } = req.params;
 

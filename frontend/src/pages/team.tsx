@@ -128,9 +128,9 @@ const TeamPage = () => {
     console.log('🔍 Team UI - showInactiveMembers state changed:', showInactiveMembers);
   }, [showInactiveMembers]);
 
-  // Check if user has admin/manager permissions
-  const canManageTeam = user?.role === 'manager';
-  const isAdmin = user?.is_admin === true && user?.role === 'manager';
+  // Check if user has admin/manager permissions using flags
+  const canManageTeam = user?.is_admin === true || user?.is_manager === true;
+  const isAdmin = user?.is_admin === true;
 
   // Show loading while authentication is in progress
   if (authLoading) {
@@ -301,7 +301,11 @@ const TeamPage = () => {
       member.last_name.toLowerCase().includes(searchTerm.toLowerCase()) ||
       member.email.toLowerCase().includes(searchTerm.toLowerCase());
     
-    const matchesRole = !roleFilter || member.role === roleFilter;
+    // Filter by permission level
+    const matchesRole = !roleFilter || 
+      (roleFilter === 'admin' && member.is_admin) ||
+      (roleFilter === 'manager' && member.is_manager && !member.is_admin) ||
+      (roleFilter === 'sales_rep' && !member.is_admin && !member.is_manager);
     const matchesStatus = !statusFilter || 
       (statusFilter === 'active' && member.is_active) ||
       (statusFilter === 'inactive' && !member.is_active);
@@ -309,9 +313,9 @@ const TeamPage = () => {
     return matchesSearch && matchesRole && matchesStatus;
   });
 
-  // Get managers for invite modal
+  // Get managers for invite modal (users with manager permissions)
   const managers = (teamData || []).filter((member: TeamMember) => 
-    member.role === 'manager' && member.is_active
+    member.is_manager && member.is_active
   );
 
   // Helper function to get distribution type info

@@ -2,9 +2,13 @@
 import express from 'express';
 import { PrismaClient } from '@prisma/client';
 import { isAdmin, isManager, canManageTeam } from '../middleware/roleHelpers.js';
+import { attachPermissions, requireOwnerOrManager, requireCommissionApproval } from '../middleware/permissions.js';
 
 const router = express.Router();
 const prisma = new PrismaClient();
+
+// Attach permissions to all routes for conditional logic
+router.use(attachPermissions);
 
 // Calculate commission for a period
 router.post('/calculate', async (req, res) => {
@@ -17,8 +21,8 @@ router.post('/calculate', async (req, res) => {
 
     const targetUserId = user_id || req.user.id;
 
-    // Check permissions
-    if (targetUserId !== req.user.id && !canManageTeam(req.user)) {
+    // Check permissions - use middleware permissions
+    if (targetUserId !== req.user.id && !req.permissions.canManageTeam) {
       return res.status(403).json({ error: 'Access denied' });
     }
 
@@ -208,8 +212,8 @@ router.get('/', async (req, res) => {
       ...(status && { status })
     };
 
-    // Manager view filtering
-    if (req.user.role === 'manager' && view) {
+    // Manager view filtering - use permissions from middleware
+    if (req.permissions.canManageTeam && view) {
       if (view === 'personal') {
         // Manager's own commissions only
         where.user_id = req.user.id;
@@ -275,14 +279,14 @@ router.get('/', async (req, res) => {
     } else {
       // Default behavior: user's own commissions or specific user (with permission check)
       const targetUserId = user_id || req.user.id;
-      if (targetUserId !== req.user.id && !canManageTeam(req.user)) {
+      if (targetUserId !== req.user.id && !req.permissions.canManageTeam) {
         return res.status(403).json({ error: 'Access denied' });
       }
       where.user_id = targetUserId;
     }
 
     // Get user's active target to determine payment schedule
-    const activeTargetUserId = req.user.role === 'manager' && view && view !== 'personal' ? req.user.id : (user_id || req.user.id);
+    const activeTargetUserId = req.permissions.canManageTeam && view && view !== 'personal' ? req.user.id : (user_id || req.user.id);
     const activeTarget = await prisma.targets.findFirst({
       where: {
         user_id: activeTargetUserId,
@@ -430,7 +434,7 @@ router.get('/', async (req, res) => {
       
       // Team member breakdown (for team/all views)
       let teamSummary = null;
-      if (req.user.role === 'manager' && (view === 'team' || view === 'all')) {
+      if (req.permissions.canManageTeam && (view === 'team' || view === 'all')) {
         const teamStats = {};
         commissions.forEach(commission => {
           const ownerId = commission.user_id;
@@ -472,7 +476,7 @@ router.get('/', async (req, res) => {
         team_summary: teamSummary,
         view_context: {
           current_view: view || 'personal',
-          is_manager: req.user.role === 'manager',
+          is_manager: req.permissions.canManageTeam,
           selected_user_id: user_id || null
         }
       });
@@ -480,7 +484,7 @@ router.get('/', async (req, res) => {
 
     // Team member breakdown for non-historical requests (for team/all views)
     let teamSummary = null;
-    if (req.user.role === 'manager' && (view === 'team' || view === 'all')) {
+    if (req.permissions.canManageTeam && (view === 'team' || view === 'all')) {
       const teamStats = {};
       commissions.forEach(commission => {
         const ownerId = commission.user_id;
@@ -530,15 +534,12 @@ router.get('/', async (req, res) => {
   }
 });
 
-// Approve commission calculation
-router.patch('/:id/approve', async (req, res) => {
+// Approve commission calculation - admin only
+router.patch('/:id/approve', requireCommissionApproval, async (req, res) => {
   try {
     const { id } = req.params;
 
-    // Only managers can approve
-    if (!canManageTeam(req.user)) {
-      return res.status(403).json({ error: 'Access denied' });
-    }
+    // Permission already checked by middleware
 
     const commission = await prisma.commissions.findUnique({
       where: { id }
@@ -576,8 +577,8 @@ router.patch('/:id/approve', async (req, res) => {
 // Get team members for manager (for individual member filtering)
 router.get('/team-members', async (req, res) => {
   try {
-    // Only managers can access this endpoint
-    if (req.user.role !== 'manager') {
+    // Only managers can access this endpoint - use permissions from middleware
+    if (!req.permissions.canManageTeam) {
       return res.status(403).json({ error: 'Access denied - managers only' });
     }
 

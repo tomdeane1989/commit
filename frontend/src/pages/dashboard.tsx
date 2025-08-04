@@ -52,7 +52,7 @@ const DashboardPage = () => {
   const { user } = useAuth();
   const [managerView, setManagerView] = useState<'personal' | 'team' | 'member' | 'all'>('personal');
   const [selectedMemberId, setSelectedMemberId] = useState<string>('');
-  const isManager = user?.role === 'manager';
+  const isManager = user?.is_manager === true || user?.is_admin === true;
 
   // Fetch dashboard data with team filtering
   const { data: dashboardData, isLoading, error } = useQuery({

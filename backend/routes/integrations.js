@@ -3,10 +3,14 @@ import express from 'express';
 import { PrismaClient } from '@prisma/client';
 import GoogleSheetsService from '../services/googleSheets.js';
 import Joi from 'joi';
+import { requireIntegrationManagement, attachPermissions } from '../middleware/permissions.js';
 
 const router = express.Router();
 const prisma = new PrismaClient();
 const sheetsService = new GoogleSheetsService();
+
+// All integration routes require admin access
+router.use(requireIntegrationManagement);
 
 // Validation schemas
 const createIntegrationSchema = Joi.object({

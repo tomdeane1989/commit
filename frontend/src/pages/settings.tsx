@@ -65,7 +65,7 @@ const SettingsPage = () => {
     queryFn: async () => {
       return await integrationsApi.getIntegrations();
     },
-    enabled: !!user && user.role === 'manager'
+    enabled: !!user && (user.is_manager === true || user.is_admin === true)
   });
 
   const integrations = integrationsData?.integrations || [];
@@ -392,9 +392,9 @@ const SettingsPage = () => {
             <div className="bg-white/70 backdrop-blur-sm rounded-3xl p-6 shadow-xl border border-gray-200/50 sticky top-8">
               <nav className="space-y-2">
                 {tabs.filter(tab => {
-                  // Show all tabs for managers, hide admin-only tabs for sales reps
+                  // Show all tabs for managers/admins, hide admin-only tabs for sales reps
                   if (!tab.adminOnly) return true;
-                  return user.role === 'manager';
+                  return user.is_manager === true || user.is_admin === true;
                 }).map((tab) => (
                   <TabButton
                     key={tab.id}

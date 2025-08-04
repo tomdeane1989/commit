@@ -2,9 +2,13 @@
 import express from 'express';
 import { PrismaClient } from '@prisma/client';
 import axios from 'axios';
+import { requireIntegrationManagement } from '../middleware/permissions.js';
 
 const router = express.Router();
 const prisma = new PrismaClient();
+
+// All CRM routes require admin access
+router.use(requireIntegrationManagement);
 
 // Get CRM integrations
 router.get('/integrations', async (req, res) => {
@@ -32,10 +36,7 @@ router.post('/integrations', async (req, res) => {
   try {
     const { crm_type, access_token, refresh_token, instance_url } = req.body;
 
-    // Only admins can create integrations
-    if (req.user.role !== 'admin') {
-      return res.status(403).json({ error: 'Access denied' });
-    }
+    // Permission already checked by middleware
 
     const integration = await prisma.crm_integrations.create({
       data: {

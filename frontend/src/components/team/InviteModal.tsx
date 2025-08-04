@@ -143,10 +143,10 @@ export const InviteModal: React.FC<InviteModalProps> = ({
             </div>
           </div>
 
-          {/* Role */}
+          {/* Permission Level */}
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">
-              Role *
+              Permission Level *
             </label>
             <div className="relative">
               <Building className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-4 h-4" />
@@ -158,8 +158,9 @@ export const InviteModal: React.FC<InviteModalProps> = ({
                 style={{ '--tw-ring-color': '#82a365' } as any}
                 disabled={loading}
               >
-                <option value="sales_rep">Sales Representative</option>
+                <option value="sales_rep">Sales User</option>
                 <option value="manager">Manager</option>
+                <option value="manager">Administrator (Manager with Admin rights)</option>
               </select>
             </div>
           </div>

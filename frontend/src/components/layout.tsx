@@ -73,7 +73,7 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
     // If user is not loaded yet, temporarily show the item to prevent flashing
     if (!user) return true;
     
-    return user.role === 'manager';
+    return user.is_manager === true || user.is_admin === true;
   });
 
   const handleNavigation = (href: string) => {

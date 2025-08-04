@@ -264,7 +264,7 @@ export const TeamMemberCard: React.FC<TeamMemberCardProps> = ({
             </button>
             
             {/* Team Aggregation option - only for managers */}
-            {member.role === 'manager' && onViewTeamTargets && (
+            {member.is_manager && onViewTeamTargets && (
               <button
                 onClick={() => {
                   onViewTeamTargets(member);
@@ -339,11 +339,11 @@ export const TeamMemberCard: React.FC<TeamMemberCardProps> = ({
               {member.email}
             </div>
             
+            {/* Display permission level instead of role */}
             <div className="flex items-center text-sm text-gray-600">
               <Building className="w-4 h-4 mr-2" />
-              <span className="capitalize">
-                {member.role.replace('_', ' ')}
-                {member.role === 'manager' && member.is_admin && ' (ADMIN)'}
+              <span>
+                {member.is_admin ? 'Administrator' : member.is_manager ? 'Manager' : 'Sales User'}
               </span>
               {member.territory && (
                 <span className="ml-2 px-2 py-1 bg-gray-100 text-xs rounded">

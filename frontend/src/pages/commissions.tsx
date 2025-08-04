@@ -86,7 +86,7 @@ const CommissionsPage = () => {
   // Manager view state
   const [managerView, setManagerView] = useState<'personal' | 'team' | 'member' | 'all'>('personal');
   const [selectedMemberId, setSelectedMemberId] = useState<string>('');
-  const isManager = user?.role === 'manager';
+  const isManager = user?.is_manager === true || user?.is_admin === true;
 
   // Fetch commissions data with manager filtering support
   const { data: commissionsResponse, isLoading, error } = useQuery({

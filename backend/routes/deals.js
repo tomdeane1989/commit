@@ -2,9 +2,14 @@
 import express from 'express';
 import { PrismaClient } from '@prisma/client';
 import Joi from 'joi';
+import { attachPermissions, requireOwnerOrManager } from '../middleware/permissions.js';
+import { canManageTeam } from '../middleware/roleHelpers.js';
 
 const router = express.Router();
 const prisma = new PrismaClient();
+
+// Attach permissions to all routes for conditional logic
+router.use(attachPermissions);
 
 const dealSchema = Joi.object({
   deal_name: Joi.string().required(),
@@ -74,8 +79,8 @@ router.get('/', async (req, res) => {
       }
     }
 
-    // Manager view filtering
-    if (req.user.role === 'manager' && view) {
+    // Manager view filtering - use permissions from middleware
+    if (req.permissions.canManageTeam && view) {
       if (view === 'personal') {
         // Manager's own deals only
         where.user_id = req.user.id;
@@ -206,7 +211,7 @@ router.get('/', async (req, res) => {
 
     // Team member breakdown (for team/all views)
     let teamSummary = null;
-    if (req.user.role === 'manager' && (view === 'team' || view === 'all')) {
+    if (req.permissions.canManageTeam && (view === 'team' || view === 'all')) {
       const teamStats = {};
       dealsWithCategory.forEach(deal => {
         const ownerId = deal.user_id;
@@ -248,7 +253,7 @@ router.get('/', async (req, res) => {
       team_summary: teamSummary,
       view_context: {
         current_view: view || 'personal',
-        is_manager: req.user.role === 'manager',
+        is_manager: req.permissions.canManageTeam,
         selected_user_id: user_id || null
       },
       success: true
@@ -262,8 +267,8 @@ router.get('/', async (req, res) => {
 // Get team members for manager (for individual member filtering)
 router.get('/team-members', async (req, res) => {
   try {
-    // Only managers can access this endpoint
-    if (req.user.role !== 'manager') {
+    // Only managers can access this endpoint - use permissions from middleware
+    if (!req.permissions.canManageTeam) {
       return res.status(403).json({ error: 'Access denied - managers only' });
     }
 
@@ -347,7 +352,7 @@ router.put('/:id', async (req, res) => {
       return res.status(404).json({ error: 'Deal not found' });
     }
 
-    if (existingDeal.user_id !== req.user.id && req.user.role !== 'manager' && req.user.role !== 'admin') {
+    if (existingDeal.user_id !== req.user.id && !req.permissions.canManageTeam) {
       return res.status(403).json({ error: 'Access denied' });
     }
 
@@ -389,7 +394,7 @@ router.delete('/:id', async (req, res) => {
       return res.status(404).json({ error: 'Deal not found' });
     }
 
-    if (existingDeal.user_id !== req.user.id && req.user.role !== 'manager' && req.user.role !== 'admin') {
+    if (existingDeal.user_id !== req.user.id && !req.permissions.canManageTeam) {
       return res.status(403).json({ error: 'Access denied' });
     }
 
@@ -426,7 +431,7 @@ router.patch('/:dealId/categorize', async (req, res) => {
     // Validate that user owns this deal OR is a manager who can access team deals
     let deal;
     
-    if (req.user.role === 'manager') {
+    if (req.permissions.canManageTeam) {
       // Managers can categorize deals for their team members (same company)
       deal = await prisma.deals.findFirst({
         where: { 

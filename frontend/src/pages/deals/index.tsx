@@ -59,7 +59,7 @@ const DealsPage = () => {
   const [activeTooltip, setActiveTooltip] = useState<string | null>(null);
   
   const queryClient = useQueryClient();
-  const isManager = user?.role === 'manager';
+  const isManager = user?.is_manager === true || user?.is_admin === true;
 
   // Toggle expanded state for a deal
   const toggleDealExpansion = (dealId: string) => {

@@ -98,7 +98,13 @@ export const dashboardApi = {
   },
 
   updateDealCategory: async (dealId: string, category: string): Promise<Deal> => {
-    const response = await api.patch(`/dashboard/deals/${dealId}/category`, { category });
+    const response = await api.patch(`/deals/${dealId}/categorize`, { 
+      deal_type: category,
+      // TODO: Add these fields when implementing full ML tracking
+      // previous_category: previousCategory,
+      // categorization_timestamp: new Date().toISOString(),
+      // user_context: { categorization_method: 'manual' }
+    });
     return response.data;
   },
 };

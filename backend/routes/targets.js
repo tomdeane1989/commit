@@ -3,9 +3,13 @@ import express from 'express';
 import { PrismaClient } from '@prisma/client';
 import Joi from 'joi';
 import { isAdmin, isManager, canManageTeam } from '../middleware/roleHelpers.js';
+import { requireTargetManagement, requireOwnerOrManager, attachPermissions } from '../middleware/permissions.js';
 
 const router = express.Router();
 const prisma = new PrismaClient();
+
+// Attach permissions to all routes for conditional logic
+router.use(attachPermissions);
 
 // Helper function to calculate pro-rated quota for mid-year hires
 const calculateProRatedQuota = (baseQuota, hireDate, periodStart, periodEnd) => {
@@ -262,17 +266,15 @@ const targetSchema = Joi.object({
   team_target: Joi.boolean().optional()
 });
 
-// Get all targets
+// Get all targets - users can see their own, managers can see all
 router.get('/', async (req, res) => {
   try {
     const { user_id, active_only = 'false', view = 'management' } = req.query;
     
-    if (!req.user) {
-      return res.status(401).json({ error: 'Authentication required' });
-    }
+    // Auth already checked by parent middleware
     
-    // Check permissions
-    if (user_id && user_id !== req.user.id && !canManageTeam(req.user)) {
+    // Check permissions - use req.permissions from middleware
+    if (user_id && user_id !== req.user.id && !req.permissions.canManageTeam) {
       return res.status(403).json({ error: 'Access denied' });
     }
 
@@ -283,7 +285,7 @@ router.get('/', async (req, res) => {
       const now = new Date();
       const allTargetsWhere = {
         // Admin/Manager can see all targets in their company if no user_id specified
-        ...(user_id ? { user_id } : (req.user.role === 'admin' || req.user.role === 'manager') ? { 
+        ...(user_id ? { user_id } : req.permissions.canManageTeam ? { 
           user: { company_id: req.user.company_id } 
         } : { user_id: req.user.id }),
         ...(active_only === 'true' && { is_active: true }),
@@ -342,7 +344,7 @@ router.get('/', async (req, res) => {
       // For management tab - return parent targets (so they can be expanded to see children)
       const baseWhere = {
         // Admin/Manager can see all targets in their company if no user_id specified
-        ...(user_id ? { user_id } : (req.user.role === 'admin' || req.user.role === 'manager') ? { 
+        ...(user_id ? { user_id } : req.permissions.canManageTeam ? { 
           user: { company_id: req.user.company_id } 
         } : { user_id: req.user.id }),
         ...(active_only === 'true' && { is_active: true })
@@ -438,17 +440,10 @@ router.get('/:id/children', async (req, res) => {
   }
 });
 
-// Create target
-router.post('/', async (req, res) => {
+// Create target - managers and admins only
+router.post('/', requireTargetManagement, async (req, res) => {
   try {
-    if (!req.user) {
-      return res.status(401).json({ error: 'Authentication required' });
-    }
-    
-    // Only managers (including admins) can create targets
-    if (!canManageTeam(req.user)) {
-      return res.status(403).json({ error: 'Only managers can create targets' });
-    }
+    // Permission already checked by middleware
 
     const { 
       target_type, 
