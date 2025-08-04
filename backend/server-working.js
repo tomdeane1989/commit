@@ -11,6 +11,7 @@ import { errorHandler, notFoundHandler } from './middleware/errorHandler.js';
 import adminRoutes from './routes/admin.js';
 import authRoutes from './routes/auth.js';
 import teamsRoutes from './routes/teams.js';
+import teamManagementRoutes from './routes/team-management.js';
 import targetsRoutes from './routes/targets.js';
 import dealsRoutes from './routes/deals.js';
 import commissionsRoutes from './routes/commissions.js';
@@ -197,6 +198,7 @@ const authMiddleware = authenticateToken;
 
 app.use('/api/admin', authMiddleware, adminRoutes);
 app.use('/api/team', authMiddleware, teamsRoutes);
+app.use('/api/teams', authMiddleware, teamManagementRoutes);
 app.use('/api/targets', authMiddleware, targetsRoutes);
 app.use('/api/deals', authMiddleware, dealsRoutes);
 app.use('/api/commissions', (req, res, next) => {

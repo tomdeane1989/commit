@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
-import { X, User, Mail, Building, UserCheck, Save } from 'lucide-react';
+import { X, User, Mail, Users, UserCheck, Save, Shield } from 'lucide-react';
 import { teamApi } from '../../lib/api';
+import api from '../../lib/api';
 import { useQuery } from '@tanstack/react-query';
 
 interface EditMemberModalProps {
@@ -11,12 +12,20 @@ interface EditMemberModalProps {
     last_name: string;
     role: string;
     is_admin: boolean;
+    is_manager?: boolean;
     territory: string | null;
     manager: {
       first_name: string;
       last_name: string;
       email: string;
     } | null;
+    team_memberships?: Array<{
+      team_id: string;
+      team: {
+        id: string;
+        team_name: string;
+      };
+    }>;
   } | null;
   isOpen: boolean;
   onClose: () => void;
@@ -24,9 +33,10 @@ interface EditMemberModalProps {
     id: string;
     first_name: string;
     last_name: string;
-    role: string;
-    territory: string;
+    is_admin: boolean;
+    is_manager: boolean;
     manager_id: string | null;
+    team_ids: string[];
   }) => void;
 }
 
@@ -39,9 +49,10 @@ const EditMemberModal: React.FC<EditMemberModalProps> = ({
   const [formData, setFormData] = useState({
     first_name: '',
     last_name: '',
-    role: 'sales_rep',
-    territory: '',
+    is_admin: false,
+    is_manager: false,
     manager_id: null as string | null,
+    team_ids: [] as string[],
   });
 
   // Fetch all potential managers (users with manager role in the same company)
@@ -50,21 +61,35 @@ const EditMemberModal: React.FC<EditMemberModalProps> = ({
     queryFn: async () => {
       const response = await teamApi.getTeam();
       // Filter for managers only
-      return response.team_members?.filter((user: any) => user.role === 'manager') || [];
+      return response.team_members?.filter((user: any) => user.role === 'manager' || user.is_manager === true) || [];
     },
     enabled: isOpen
   });
 
+  // Fetch all teams
+  const { data: teamsData } = useQuery({
+    queryKey: ['teams-for-assignment'],
+    queryFn: async () => {
+      const response = await api.get('/teams');
+      return response.data;
+    },
+    enabled: isOpen
+  });
+
+  const teams = teamsData?.teams || [];
+
   // Initialize form when member changes
   useEffect(() => {
     if (member) {
+      const currentTeamIds = member.team_memberships?.map(tm => tm.team.id) || [];
       setFormData({
         first_name: member.first_name || '',
         last_name: member.last_name || '',
-        role: member.role || 'sales_rep',
-        territory: member.territory || '',
+        is_admin: member.is_admin || false,
+        is_manager: member.is_manager || member.role === 'manager' || false,
         manager_id: member.manager ? 
           managersData?.find((m: any) => m.email === member.manager?.email)?.id || null : null,
+        team_ids: currentTeamIds,
       });
     }
   }, [member, managersData]);
@@ -77,9 +102,10 @@ const EditMemberModal: React.FC<EditMemberModalProps> = ({
       id: member.id,
       first_name: formData.first_name,
       last_name: formData.last_name,
-      role: formData.role,
-      territory: formData.territory,
+      is_admin: formData.is_admin,
+      is_manager: formData.is_manager,
       manager_id: formData.manager_id,
+      team_ids: formData.team_ids,
     });
   };
 
@@ -153,39 +179,65 @@ const EditMemberModal: React.FC<EditMemberModalProps> = ({
             <p className="text-xs text-gray-500 mt-1">Email cannot be changed</p>
           </div>
 
-          {/* Role */}
+          {/* Permissions */}
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">
-              Role
+            <label className="block text-sm font-medium text-gray-700 mb-2">
+              Permissions
             </label>
-            <div className="relative">
-              <UserCheck className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-4 h-4" />
-              <select
-                value={formData.role}
-                onChange={(e) => setFormData({ ...formData, role: e.target.value })}
-                className="w-full pl-10 pr-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-              >
-                <option value="sales_rep">Sales Representative</option>
-                <option value="manager">Manager</option>
-              </select>
+            <div className="space-y-3">
+              <label className="flex items-center">
+                <input
+                  type="checkbox"
+                  checked={formData.is_manager}
+                  onChange={(e) => setFormData({ ...formData, is_manager: e.target.checked })}
+                  className="mr-3 h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
+                />
+                <span className="flex items-center text-sm text-gray-700">
+                  <UserCheck className="w-4 h-4 mr-2 text-gray-400" />
+                  Manager (can view team data)
+                </span>
+              </label>
+              <label className="flex items-center">
+                <input
+                  type="checkbox"
+                  checked={formData.is_admin}
+                  onChange={(e) => setFormData({ ...formData, is_admin: e.target.checked })}
+                  className="mr-3 h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
+                />
+                <span className="flex items-center text-sm text-gray-700">
+                  <Shield className="w-4 h-4 mr-2 text-gray-400" />
+                  Administrator (can manage users and settings)
+                </span>
+              </label>
             </div>
           </div>
 
-          {/* Territory */}
+          {/* Team Assignment */}
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">
-              Territory
+              Team Assignment
             </label>
             <div className="relative">
-              <Building className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-4 h-4" />
-              <input
-                type="text"
-                value={formData.territory}
-                onChange={(e) => setFormData({ ...formData, territory: e.target.value })}
-                className="w-full pl-10 pr-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                placeholder="e.g., North, South, Enterprise, etc."
-              />
+              <Users className="absolute left-3 top-2 text-gray-400 w-4 h-4" />
+              <select
+                multiple
+                value={formData.team_ids}
+                onChange={(e) => {
+                  const selectedOptions = Array.from(e.target.selectedOptions, option => option.value);
+                  setFormData({ ...formData, team_ids: selectedOptions });
+                }}
+                className="w-full pl-10 pr-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 min-h-[100px]"
+              >
+                {teams.map((team: any) => (
+                  <option key={team.id} value={team.id}>
+                    {team.team_name} {team.team_lead && `(Lead: ${team.team_lead.first_name} ${team.team_lead.last_name})`}
+                  </option>
+                ))}
+              </select>
             </div>
+            <p className="text-xs text-gray-500 mt-1">
+              Hold Ctrl/Cmd to select multiple teams
+            </p>
           </div>
 
           {/* Reports To (Manager Assignment) */}

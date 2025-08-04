@@ -449,6 +449,7 @@ router.post('/', requireTargetManagement, async (req, res) => {
       target_type, 
       user_id, 
       role, 
+      team_id,
       period_type, 
       period_start, 
       period_end, 
@@ -490,6 +491,10 @@ router.post('/', requireTargetManagement, async (req, res) => {
       return res.status(400).json({ error: 'Role required for role-based targets' });
     }
 
+    if (target_type === 'team' && !team_id) {
+      return res.status(400).json({ error: 'Team ID required for team-based targets' });
+    }
+
     let targetUsers = [];
 
     if (target_type === 'individual') {
@@ -506,7 +511,7 @@ router.post('/', requireTargetManagement, async (req, res) => {
       }
 
       targetUsers = [user];
-    } else {
+    } else if (target_type === 'role') {
       // Get all users with the specified role
       targetUsers = await prisma.users.findMany({
         where: {
@@ -518,6 +523,35 @@ router.post('/', requireTargetManagement, async (req, res) => {
 
       if (targetUsers.length === 0) {
         return res.status(400).json({ error: `No active users found with role: ${role}` });
+      }
+    } else if (target_type === 'team') {
+      // Get all users in the specified team
+      const teamMembers = await prisma.team_members.findMany({
+        where: {
+          team_id: team_id,
+          is_active: true // Only active team members
+        },
+        include: {
+          user: true
+        }
+      });
+
+      targetUsers = teamMembers.map(tm => tm.user).filter(u => u.is_active);
+
+      if (targetUsers.length === 0) {
+        return res.status(400).json({ error: `No active users found in team: ${team_id}` });
+      }
+    } else if (target_type === 'all') {
+      // Get all active users in the company
+      targetUsers = await prisma.users.findMany({
+        where: {
+          company_id: req.user.company_id,
+          is_active: true
+        }
+      });
+
+      if (targetUsers.length === 0) {
+        return res.status(400).json({ error: 'No active users found in the company' });
       }
     }
 
@@ -676,6 +710,7 @@ router.post('/', requireTargetManagement, async (req, res) => {
           commission_payment_schedule: commission_payment_schedule || 'monthly',
           is_active: true,
           role: target_type === 'role' ? role : null,
+          team_id: target_type === 'team' ? team_id : null,
           // Add distribution metadata
           distribution_method: distribution_method || 'even',
           distribution_config: distribution_method !== 'even' && (seasonalData || custom_breakdown) ? {
@@ -728,6 +763,7 @@ router.post('/', requireTargetManagement, async (req, res) => {
               commission_payment_schedule: commission_payment_schedule || 'monthly',
               is_active: true,
               role: target_type === 'role' ? role : null,
+              team_id: target_type === 'team' ? team_id : null,
               parent_target_id: parentTarget.id, // Link to parent target
               // Child targets inherit distribution method but are marked as child
               distribution_method: 'child',

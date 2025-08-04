@@ -3,7 +3,7 @@ import { useRouter } from 'next/router';
 import Layout from '../components/layout';
 import { useAuth } from '../hooks/useAuth';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { teamApi, targetsApi } from '../lib/api';
+import api, { teamApi, targetsApi } from '../lib/api';
 import { TeamStats } from '../components/team/TeamStats';
 import { TeamFilters } from '../components/team/TeamFilters';
 import { TeamMemberCard } from '../components/team/TeamMemberCard';
@@ -23,6 +23,7 @@ interface TeamMember {
   last_name: string;
   role: string;
   is_admin: boolean;
+  is_manager?: boolean;
   is_active: boolean;
   hire_date: string | null;
   territory: string | null;
@@ -32,6 +33,13 @@ interface TeamMember {
     last_name: string;
     email: string;
   } | null;
+  team_memberships?: Array<{
+    team_id: string;
+    team: {
+      id: string;
+      team_name: string;
+    };
+  }>;
   reports_count: number;
   performance: {
     open_deals_amount: number; // Pipeline deals (for reference)
@@ -424,30 +432,61 @@ const TeamPage = () => {
   };
 
   // Handle saving member edits
-  const handleSaveMemberEdit = (memberData: {
+  const handleSaveMemberEdit = async (memberData: {
     id: string;
     first_name: string;
     last_name: string;
-    role: string;
-    territory: string;
+    is_admin: boolean;
+    is_manager: boolean;
     manager_id: string | null;
+    team_ids: string[];
   }) => {
+    // First update the user's basic info and permissions
     updateMemberMutation.mutate(
       { 
         id: memberData.id, 
         data: {
           first_name: memberData.first_name,
           last_name: memberData.last_name,
-          role: memberData.role,
-          territory: memberData.territory,
-          manager_id: memberData.manager_id
+          role: memberData.is_manager ? 'manager' : 'sales_rep', // Keep role for backward compatibility
+          is_admin: memberData.is_admin,
+          is_manager: memberData.is_manager,
+          manager_id: memberData.manager_id,
+          territory: null // Remove territory as it's deprecated
         }
       },
       {
-        onSuccess: () => {
-          setShowEditModal(false);
-          setEditingMember(null);
-          console.log('✅ Team member updated successfully');
+        onSuccess: async () => {
+          // Then handle team assignments
+          try {
+            // Get current team memberships for this user
+            const currentMember = teamData?.find((m: any) => m.id === memberData.id);
+            const currentTeamIds = currentMember?.team_memberships?.map((tm: any) => tm.team.id) || [];
+            
+            // Find teams to add and remove
+            const teamsToAdd = memberData.team_ids.filter(id => !currentTeamIds.includes(id));
+            const teamsToRemove = currentTeamIds.filter((id: string) => !memberData.team_ids.includes(id));
+            
+            // Add to new teams
+            for (const teamId of teamsToAdd) {
+              await api.post(`/teams/${teamId}/members`, { user_ids: [memberData.id] });
+            }
+            
+            // Remove from old teams
+            for (const teamId of teamsToRemove) {
+              await api.delete(`/teams/${teamId}/members/${memberData.id}`);
+            }
+            
+            // Refresh data
+            await queryClient.invalidateQueries({ queryKey: ['team', user?.id] });
+            await queryClient.invalidateQueries({ queryKey: ['teams-management'] });
+            
+            setShowEditModal(false);
+            setEditingMember(null);
+            console.log('✅ Team member and team assignments updated successfully');
+          } catch (error) {
+            console.error('❌ Error updating team assignments:', error);
+          }
         },
         onError: (error) => {
           console.error('❌ Error updating team member:', error);

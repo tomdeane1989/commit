@@ -32,6 +32,7 @@ model companies {
   crm_integrations crm_integrations[]
   activity_log    activity_log[]
   forecasts       forecasts[]
+  teams           teams[]
 }
 
 model users {
@@ -66,6 +67,11 @@ model users {
   activity_log    activity_log[]
   deal_categorizations deal_categorizations[]
   forecasts       forecasts[]
+  // Team relations
+  led_teams         teams[]   @relation("TeamLead")
+  created_teams     teams[]   @relation("TeamCreator")
+  team_memberships  team_members[] 
+  added_team_members team_members[] @relation("TeamMemberAdder")
   
   @@index([company_id])
   @@index([manager_id])
@@ -166,6 +172,7 @@ model targets {
   
   // Target type tracking
   role            String?   // Role if this is a role-based target (e.g., "sales_rep")
+  team_id         String?   // Team if this is a team-based target
   team_target     Boolean   @default(false) // Flag to indicate this is a team aggregated target
   
   // Distribution metadata
@@ -188,6 +195,7 @@ model targets {
   // Relations
   user            users     @relation(fields: [user_id], references: [id])
   company         companies @relation(fields: [company_id], references: [id])
+  team            teams?    @relation(fields: [team_id], references: [id])
   commissions     commissions[]
   forecasts       forecasts[]
   
@@ -195,6 +203,7 @@ model targets {
   @@index([period_start, period_end])
   @@index([period_type])
   @@index([team_target])
+  @@index([team_id])
   // Critical composite indexes for performance
   @@index([user_id, period_start, period_end])  // Target lookups
   @@index([company_id, is_active])               // Company queries
@@ -368,4 +377,59 @@ model activity_log {
   @@index([created_at])
   @@index([action])
   @@index([entity_type, entity_id])
+}
+
+// Teams table for grouping users
+model teams {
+  id                  String    @id @default(cuid())
+  team_name           String
+  description         String?
+  default_role        String?
+  default_sub_role    String?
+  is_active           Boolean   @default(true)
+  created_at          DateTime  @default(now())
+  updated_at          DateTime  @updatedAt
+  
+  // Foreign Keys
+  company_id          String
+  team_lead_id        String?   // Team lead/manager
+  created_by_admin_id String
+  
+  // Relations
+  company             companies @relation(fields: [company_id], references: [id], onDelete: Cascade)
+  team_lead           users?    @relation("TeamLead", fields: [team_lead_id], references: [id], onDelete: SetNull)
+  created_by_admin    users     @relation("TeamCreator", fields: [created_by_admin_id], references: [id])
+  team_members        team_members[]
+  targets             targets[]
+  
+  @@index([company_id])
+  @@index([team_lead_id])
+  @@index([is_active])
+  @@unique([company_id, team_name])
+}
+
+// Team membership table
+model team_members {
+  id                String    @id @default(cuid())
+  role_override     String?
+  sub_role_override String?
+  joined_date       DateTime  @default(now())
+  is_active         Boolean   @default(true)
+  created_at        DateTime  @default(now())
+  updated_at        DateTime  @updatedAt
+  
+  // Foreign Keys
+  team_id           String
+  user_id           String
+  added_by_admin_id String
+  
+  // Relations
+  team              teams     @relation(fields: [team_id], references: [id], onDelete: Cascade)
+  user              users     @relation(fields: [user_id], references: [id], onDelete: Cascade)
+  added_by_admin    users     @relation("TeamMemberAdder", fields: [added_by_admin_id], references: [id])
+  
+  @@index([team_id])
+  @@index([user_id])
+  @@index([is_active])
+  @@unique([user_id, team_id])
 }

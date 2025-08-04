@@ -57,6 +57,17 @@ router.get('/', requireTeamView, async (req, res) => {
         manager: {
           select: { first_name: true, last_name: true, email: true }
         },
+        team_memberships: {
+          where: { is_active: true },
+          include: {
+            team: {
+              select: {
+                id: true,
+                team_name: true
+              }
+            }
+          }
+        },
         _count: {
           select: { reports: true }
         }
@@ -555,7 +566,7 @@ router.post('/invite', requireTeamManagement, async (req, res) => {
   try {
     // Permission already checked by middleware
 
-    const { email, first_name, last_name, role, territory, manager_id } = req.body;
+    const { email, first_name, last_name, role, is_admin, manager_id, team_ids } = req.body;
 
     // Validate required fields
     if (!email || !first_name || !last_name || !role) {
@@ -597,7 +608,7 @@ router.post('/invite', requireTeamManagement, async (req, res) => {
         first_name,
         last_name,
         role,
-        territory: territory || null,
+        is_admin: role === 'manager' && is_admin === true,
         manager_id: manager_id || null,
         company_id: req.user.company_id
       },
@@ -607,6 +618,24 @@ router.post('/invite', requireTeamManagement, async (req, res) => {
         }
       }
     });
+
+    // Add user to teams if specified
+    if (team_ids && Array.isArray(team_ids) && team_ids.length > 0) {
+      for (const team_id of team_ids) {
+        try {
+          await prisma.team_members.create({
+            data: {
+              team_id,
+              user_id: newUser.id,
+              added_by_admin_id: req.user.id,
+              is_active: true
+            }
+          });
+        } catch (err) {
+          console.error(`Failed to add user to team ${team_id}:`, err);
+        }
+      }
+    }
 
     // Log the invitation
     await prisma.activity_log.create({
@@ -619,22 +648,45 @@ router.post('/invite', requireTeamManagement, async (req, res) => {
         context: {
           invited_email: email,
           invited_role: role,
-          invited_by: req.user.email
+          invited_by: req.user.email,
+          team_ids: team_ids || []
         },
         success: true
       }
     });
 
+    // Fetch the user with team memberships
+    const userWithTeams = await prisma.users.findUnique({
+      where: { id: newUser.id },
+      include: {
+        manager: {
+          select: { first_name: true, last_name: true, email: true }
+        },
+        team_memberships: {
+          where: { is_active: true },
+          include: {
+            team: {
+              select: {
+                id: true,
+                team_name: true
+              }
+            }
+          }
+        }
+      }
+    });
+
     res.status(201).json({
       user: {
-        id: newUser.id,
-        email: newUser.email,
-        first_name: newUser.first_name,
-        last_name: newUser.last_name,
-        role: newUser.role,
-        territory: newUser.territory,
-        manager: newUser.manager,
-        created_at: newUser.created_at
+        id: userWithTeams.id,
+        email: userWithTeams.email,
+        first_name: userWithTeams.first_name,
+        last_name: userWithTeams.last_name,
+        role: userWithTeams.role,
+        is_admin: userWithTeams.is_admin,
+        manager: userWithTeams.manager,
+        team_memberships: userWithTeams.team_memberships,
+        created_at: userWithTeams.created_at
       },
       temp_password: tempPassword,
       message: 'Team member invited successfully'

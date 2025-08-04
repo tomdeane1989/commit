@@ -61,6 +61,7 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
     { name: 'Forecasting', href: '/deals', icon: BarChart3 },
     { name: 'Commissions', href: '/commissions', icon: PoundSterling },
     { name: 'Team', href: '/team', icon: Users, adminOnly: true },
+    { name: 'Teams', href: '/teams-management', icon: Users, adminOnly: true },
     { name: 'Dashboard', href: '/dashboard', icon: Home },
     { name: 'Settings', href: '/settings', icon: Settings },
   ];

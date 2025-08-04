@@ -134,7 +134,7 @@ export const QuotaWizard: React.FC<QuotaWizardProps> = ({
   const [conflictModalOpen, setConflictModalOpen] = useState(false);
   const [conflicts, setConflicts] = useState<any[]>([]);
   const [wizardData, setWizardData] = useState<WizardData>({
-    scope: 'role',
+    scope: 'team',
     year_type: 'calendar',
     fiscal_start_month: 4, // April for UK fiscal year
     start_date: new Date().toISOString().split('T')[0],
@@ -368,7 +368,7 @@ export const QuotaWizard: React.FC<QuotaWizardProps> = ({
     const baseData = {
       target_type: data.scope,
       user_id: data.user_id,
-      role: data.role,
+      team_id: data.team_id,
       period_type: data.distribution === 'one-time' ? 'custom' : 'annual',
       period_start: data.distribution === 'one-time' ? data.one_time_period_start : data.start_date,
       period_end: data.distribution === 'one-time' ? data.one_time_period_end : calculateEndDate(data.start_date, data.year_type, data.fiscal_start_month),
@@ -694,8 +694,8 @@ const Step1ScopeAndTiming: React.FC<{
         <div className="grid grid-cols-3 gap-3">
           {[
             { value: 'individual', label: 'Individual', icon: Users, desc: 'Set targets for specific people' },
-            { value: 'role', label: 'Role-Based', icon: Target, desc: 'Set targets for all people in a role' },
-            { value: 'team', label: 'Entire Team', icon: Users, desc: 'Set targets for everyone' }
+            { value: 'team', label: 'Team', icon: Users, desc: 'Set targets for a specific team' },
+            { value: 'all', label: 'All Teams', icon: Users, desc: 'Set targets for everyone' }
           ].map(({ value, label, icon: Icon, desc }) => (
             <button
               key={value}
@@ -737,22 +737,22 @@ const Step1ScopeAndTiming: React.FC<{
         </div>
       )}
 
-      {/* Role Selection */}
-      {data.scope === 'role' && (
+      {/* Team Selection */}
+      {data.scope === 'team' && (
         <div>
           <label className="block text-sm font-medium text-gray-700 mb-2">
-            Select Role
+            Select Team
           </label>
           <select
-            value={data.role || ''}
-            onChange={(e) => updateData({ role: e.target.value })}
+            value={data.team_id || ''}
+            onChange={(e) => updateData({ team_id: e.target.value })}
             className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:border-transparent"
             style={{ '--tw-ring-color': '#82a365' } as any}
           >
-            <option value="">Choose role...</option>
-            {uniqueRoles.map(role => (
-              <option key={role} value={role}>
-                {role.replace('_', ' ').replace(/\b\w/g, l => l.toUpperCase())}
+            <option value="">Choose team...</option>
+            {teams.map(team => (
+              <option key={team.id} value={team.id}>
+                {team.team_name} ({team._count?.team_members || 0} members)
               </option>
             ))}
           </select>
@@ -1112,8 +1112,8 @@ const Step4ReviewAndConflicts: React.FC<{
             <span className="text-gray-600">Scope:</span>
             <span className="font-medium">
               {data.scope === 'individual' ? 'Individual Target' : 
-               data.scope === 'role' ? `Role-based (${data.role})` : 
-               'Entire Team'}
+               data.scope === 'team' ? `Team: ${teams.find(t => t.id === data.team_id)?.team_name || 'Selected Team'}` : 
+               'All Teams'}
             </span>
           </div>
           <div className="flex justify-between">

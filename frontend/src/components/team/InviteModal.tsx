@@ -1,5 +1,7 @@
 import { useState } from 'react';
-import { X, User, Mail, Building, MapPin, Users } from 'lucide-react';
+import { X, User, Mail, Building, MapPin, Users, Shield, UserCheck } from 'lucide-react';
+import { useQuery } from '@tanstack/react-query';
+import api from '../../lib/api';
 
 interface TeamMember {
   id: string;
@@ -18,6 +20,16 @@ interface InviteModalProps {
   loading: boolean;
 }
 
+interface Team {
+  id: string;
+  team_name: string;
+  description?: string;
+  team_lead?: {
+    first_name: string;
+    last_name: string;
+  };
+}
+
 export const InviteModal: React.FC<InviteModalProps> = ({
   isOpen,
   onClose,
@@ -30,10 +42,23 @@ export const InviteModal: React.FC<InviteModalProps> = ({
     first_name: '',
     last_name: '',
     role: 'sales_rep',
-    territory: '',
+    is_admin: false,
+    is_manager: false,
     manager_id: '',
-    is_admin: false
+    team_ids: [] as string[]
   });
+
+  // Fetch available teams
+  const { data: teamsData } = useQuery({
+    queryKey: ['teams-for-invite'],
+    queryFn: async () => {
+      const response = await api.get('/teams');
+      return response.data;
+    },
+    enabled: isOpen
+  });
+
+  const teams = teamsData?.teams || [];
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -45,9 +70,10 @@ export const InviteModal: React.FC<InviteModalProps> = ({
       first_name: '',
       last_name: '',
       role: 'sales_rep',
-      territory: '',
+      is_admin: false,
+      is_manager: false,
       manager_id: '',
-      is_admin: false
+      team_ids: []
     });
   };
 
@@ -57,9 +83,10 @@ export const InviteModal: React.FC<InviteModalProps> = ({
       first_name: '',
       last_name: '',
       role: 'sales_rep',
-      territory: '',
+      is_admin: false,
+      is_manager: false,
       manager_id: '',
-      is_admin: false
+      team_ids: []
     });
     onClose();
   };
@@ -143,63 +170,81 @@ export const InviteModal: React.FC<InviteModalProps> = ({
             </div>
           </div>
 
-          {/* Permission Level */}
+          {/* Permissions */}
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">
-              Permission Level *
+            <label className="block text-sm font-medium text-gray-700 mb-2">
+              Permissions
             </label>
-            <div className="relative">
-              <Building className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-4 h-4" />
-              <select
-                required
-                value={formData.role}
-                onChange={(e) => setFormData({ ...formData, role: e.target.value })}
-                className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:border-transparent"
-                style={{ '--tw-ring-color': '#82a365' } as any}
-                disabled={loading}
-              >
-                <option value="sales_rep">Sales User</option>
-                <option value="manager">Manager</option>
-                <option value="manager">Administrator (Manager with Admin rights)</option>
-              </select>
-            </div>
-          </div>
-
-          {/* Territory */}
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">
-              Territory
-            </label>
-            <div className="relative">
-              <MapPin className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-4 h-4" />
-              <input
-                type="text"
-                value={formData.territory}
-                onChange={(e) => setFormData({ ...formData, territory: e.target.value })}
-                className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:border-transparent"
-                style={{ '--tw-ring-color': '#82a365' } as any}
-                placeholder="UK North, London, etc."
-                disabled={loading}
-              />
-            </div>
-          </div>
-
-          {/* Admin Permission - only for managers */}
-          {formData.role === 'manager' && (
-            <div>
+            <div className="space-y-3">
               <label className="flex items-center">
                 <input
                   type="checkbox"
-                  checked={formData.is_admin || false}
-                  onChange={(e) => setFormData({ ...formData, is_admin: e.target.checked })}
-                  className="rounded border-gray-300 text-indigo-600 focus:ring-indigo-500"
+                  checked={formData.is_manager}
+                  onChange={(e) => {
+                    const isManager = e.target.checked;
+                    setFormData({ 
+                      ...formData, 
+                      is_manager: isManager,
+                      role: isManager ? 'manager' : 'sales_rep',
+                      is_admin: isManager ? formData.is_admin : false
+                    });
+                  }}
+                  className="mr-3 h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
                   disabled={loading}
                 />
-                <span className="ml-2 text-sm text-gray-700">Grant admin permissions</span>
+                <span className="flex items-center text-sm text-gray-700">
+                  <UserCheck className="w-4 h-4 mr-2 text-gray-400" />
+                  Manager (can view team data)
+                </span>
               </label>
-              <p className="text-xs text-gray-500 mt-1">Admin managers can invite team members and modify user accounts</p>
+              {formData.is_manager && (
+                <label className="flex items-center ml-6">
+                  <input
+                    type="checkbox"
+                    checked={formData.is_admin}
+                    onChange={(e) => setFormData({ ...formData, is_admin: e.target.checked })}
+                    className="mr-3 h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
+                    disabled={loading}
+                  />
+                  <span className="flex items-center text-sm text-gray-700">
+                    <Shield className="w-4 h-4 mr-2 text-gray-400" />
+                    Administrator (can manage users and settings)
+                  </span>
+                </label>
+              )}
             </div>
-          )}
+          </div>
+
+          {/* Team Assignment */}
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">
+              Team Assignment
+            </label>
+            <div className="relative">
+              <Users className="absolute left-3 top-2 text-gray-400 w-4 h-4" />
+              <select
+                multiple
+                value={formData.team_ids}
+                onChange={(e) => {
+                  const selectedOptions = Array.from(e.target.selectedOptions, option => option.value);
+                  setFormData({ ...formData, team_ids: selectedOptions });
+                }}
+                className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:border-transparent min-h-[100px]"
+                style={{ '--tw-ring-color': '#82a365' } as any}
+                disabled={loading}
+              >
+                {teams.map((team: Team) => (
+                  <option key={team.id} value={team.id}>
+                    {team.team_name} {team.team_lead && `(Lead: ${team.team_lead.first_name} ${team.team_lead.last_name})`}
+                  </option>
+                ))}
+              </select>
+            </div>
+            <p className="text-xs text-gray-500 mt-1">
+              Hold Ctrl/Cmd to select multiple teams
+            </p>
+          </div>
+
 
           {/* Manager */}
           {managers.length > 0 && (

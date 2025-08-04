@@ -1,10 +1,17 @@
 # Sales Commission SaaS - Claude Code Development Context
 
+## ⚠️ **CRITICAL INSTRUCTIONS FOR CLAUDE**
+1. **NEVER run `prisma migrate reset` or any command that deletes data without explicit permission**
+2. **ALWAYS check for existing data before seeding**
+3. **NEVER use `seed-data.js` directly - use `seed-data-safe.js`**
+4. **ALWAYS create backups before migrations**
+5. **NEVER delete user data without explicit confirmation**
+
 ## 🏢 **Project Overview**
 **Name**: Sales Commission SaaS  
-**Purpose**: Lightweight commission tracking solution for UK-based small to medium B2B companies  
+**Purpose**: Sales pipeline and commission tracking solution for small to medium b2b companies
 **Core Value**: Simple pipeline clarity for sales reps, outcome forecasting for management  
-**Key Principle**: NOT a CRM - focuses purely on commission tracking and deal categorization
+**Key Principle**: NOT a CRM - focuses purely on commission tracking and pipeline commitment. Integration for CRM data is fundamental.
 
 **Target Users**: UK SMBs with 5-50 sales reps using Salesforce, HubSpot, or Pipedrive
 
@@ -13,7 +20,7 @@
 ### **✅ What's Working Right Now**
 - **Authentication**: JWT-based login with localStorage (test@company.com / password123)
 - **Dashboard**: Live data from PostgreSQL with modern gradient UI
-- **Deal Management**: 5-column drag-and-drop categorization (Pipeline → Commit → Best Case → Closed Won)
+- **Deal Management**: 5-column drag-and-drop categorization (Pipeline → Commit → Best Case → Closed Won (managed by CRM))
 - **Team Management**: Role-based access with admin permissions
 - **Target Management**: Quota planning wizard with UK fiscal year support
 - **Database**: PostgreSQL with Prisma ORM, fully seeded with test data
@@ -196,25 +203,17 @@ cd backend && npx prisma studio  # Visual database browser
 
 ## 🎯 **Current Development Priorities**
 
-### **1. Database Migration System (IMPLEMENTED)**
-- **✅ Prisma Migration Workflow**: Production-safe database updates
-- **✅ Automated Backup System**: Pre-migration database backups  
-- **✅ Health Check Endpoints**: Production monitoring and verification
-- **✅ Rollback Procedures**: Safe recovery from failed migrations
-- **📄 Documentation**: Complete migration strategy in DATABASE_MIGRATION_STRATEGY.md
+### **1. System consistency
+- ** ensure that all endpoints work effectively
+- ** ensure that the system is flexible, limiting hardcoded gates to visibility and functionality
+- ** Configure system to work better at scale
 
-### **2. CRM Integration (Next Phase)**
-- **Salesforce OAuth**: Real-time deal sync
-- **HubSpot Integration**: Webhook-based updates  
-- **Pipedrive Support**: API integration
-- **Google Sheets**: Enhanced import/export (basic version working)
-
-### **3. Commission System Enhancement**
+### **2. Commission System Enhancement**
 - **Approval Workflows**: Multi-user commission approval
 - **Complex Commission Rules**: Tiered rates, bonuses, overrides
-- **Commission History**: Detailed payment tracking
+- **Commission History**: historic commissions stored for analysis
 
-### **4. Advanced Analytics**
+### **3. Advanced Analytics**
 - **AI-Powered Predictions**: Deal probability scoring using collected ML data
 - **Performance Analytics**: Team performance insights
 - **Forecast Accuracy**: Track prediction vs actual outcomes
@@ -293,7 +292,59 @@ docker-compose up -d        # Start all services
 
 ---
 
-**Last Updated**: 2025-07-28  
+**Last Updated**: 2025-08-04  
 **Production Status**: ✅ Fully deployed and operational  
 **Development Status**: ✅ Local environment fully functional  
 **Next Session Priority**: CRM integrations (Salesforce, HubSpot, Pipedrive)
+
+## 🚨 DATABASE PROTECTION RULES (CRITICAL)
+
+**NEVER EVER perform these operations without explicit user permission:**
+1. `prisma migrate reset` - This DELETES ALL DATA
+2. `DROP TABLE` or `TRUNCATE` commands
+3. `deleteMany()` without specific conditions
+4. Any operation that removes production data
+5. Running `seed-data.js` directly
+
+**ALWAYS use these safe alternatives:**
+- Use `npm run migrate:safe` instead of direct migrate commands
+- Use `npm run seed:safe` instead of `seed-data.js`
+- Use `npm run backup` before any migrations
+- Check for existing data before seeding
+
+**Database Protection System:**
+- All destructive operations require environment variables:
+  - `ALLOW_DESTRUCTIVE_DATABASE_OPERATIONS=true` for general permission
+  - `ALLOW_DATABASE_RESET=true` for migration resets
+- Interactive confirmations for dangerous operations
+- Automatic database statistics display before operations
+- Backup reminders and scripts
+
+**Safe Commands:**
+```bash
+# Safe migration
+npm run migrate
+
+# Safe seeding (checks for existing data)
+npm run seed:safe
+
+# Create backup
+npm run backup
+
+# Backup then migrate
+npm run backup:before:migrate
+```
+
+**NEVER use these commands without explicit permission:**
+```bash
+# DANGEROUS - Requires explicit permission
+npx prisma migrate reset
+npm run migrate:reset:force
+npm run seed:unsafe
+```
+
+**Protection Files:**
+- `/backend/database-protection.js` - Core protection utilities
+- `/backend/seed-data-safe.js` - Safe seeding with checks
+- `/backend/migrate-safe.js` - Protected migration wrapper
+- `/backend/backup-database.js` - Automated backup creation

@@ -8,8 +8,15 @@
     "postinstall": "npx prisma generate",
     "dev": "nodemon server-working.js",
     "migrate": "prisma migrate dev",
+    "migrate:safe": "node migrate-safe.js",
+    "migrate:reset": "echo 'Use npm run migrate:reset:force with ALLOW_DATABASE_RESET=true' && exit 1",
+    "migrate:reset:force": "node migrate-safe.js reset",
     "generate": "prisma generate",
-    "seed": "node seed-data.js"
+    "seed": "echo 'Use npm run seed:safe instead' && exit 1",
+    "seed:safe": "node seed-data-safe.js",
+    "seed:unsafe": "node seed-data.js",
+    "backup": "node backup-database.js",
+    "backup:before:migrate": "node backup-database.js && npm run migrate"
   },
   "dependencies": {
     "@prisma/client": "^5.7.0",
@@ -26,6 +33,7 @@
     "joi": "^17.11.0",
     "jsonwebtoken": "^9.0.2",
     "node-cron": "^3.0.3",
+    "node-fetch": "^3.3.2",
     "prisma": "^5.7.0",
     "redis": "^4.6.10"
   },

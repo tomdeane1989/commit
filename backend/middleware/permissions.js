@@ -232,6 +232,51 @@ export const requirePermissionLevel = (allowedLevels) => {
 };
 
 /**
+ * Middleware to check if user can access a specific team
+ * Allows access if user is admin, team lead, or team member
+ */
+export const requireTeamAccess = (teamIdParam = 'teamId') => {
+  return async (req, res, next) => {
+    if (!req.user) {
+      return res.status(401).json({ 
+        error: 'Authentication required',
+        code: 'AUTH_REQUIRED' 
+      });
+    }
+
+    const teamId = req.params[teamIdParam];
+    if (!teamId) {
+      return res.status(400).json({ 
+        error: 'Team ID required',
+        code: 'TEAM_ID_REQUIRED' 
+      });
+    }
+
+    // Import PrismaClient here to avoid circular dependencies
+    const { PrismaClient } = await import('@prisma/client');
+    const prisma = new PrismaClient();
+
+    try {
+      // Check if user has access to this specific team
+      const { canAccessTeam } = await import('./roleHelpers.js');
+      const hasAccess = await canAccessTeam(req.user, teamId, prisma);
+
+      if (!hasAccess) {
+        return res.status(403).json({ 
+          error: 'Access denied - you do not have access to this team',
+          code: 'TEAM_ACCESS_DENIED',
+          userLevel: getUserPermissionLevel(req.user)
+        });
+      }
+
+      next();
+    } finally {
+      await prisma.$disconnect();
+    }
+  };
+};
+
+/**
  * Middleware to add permission info to request
  * Useful for logging and conditional logic in routes
  */
@@ -266,6 +311,7 @@ export default {
   requireOwnerOrManager,
   requireTeamManagement,
   requireTeamView,
+  requireTeamAccess,
   requireTargetManagement,
   requireCommissionApproval,
   requireIntegrationManagement,
