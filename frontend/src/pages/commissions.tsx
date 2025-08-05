@@ -36,6 +36,7 @@ interface Commission {
   status: string;
   calculated_at: string;
   approved_at?: string;
+  commission_type?: string;
   user: {
     id: string;
     first_name: string;
@@ -126,6 +127,19 @@ const CommissionsPage = () => {
   const teamSummary: TeamSummary[] = commissionsResponse?.team_summary || [];
   const viewContext = commissionsResponse?.view_context;
   const teamMembers: TeamMember[] = teamMembersResponse?.team_members || [];
+  
+  // Debug log to check what we're getting
+  console.log('Commission data:', {
+    view: managerView,
+    commissionsCount: commissions.length,
+    missingPeriodsCount: missingPeriods.length,
+    missingPeriods: missingPeriods,
+    actualPeriods: commissions.map(c => ({
+      start: c.period_start,
+      end: c.period_end,
+      user: c.user?.first_name
+    }))
+  });
 
   // Fetch user's target to determine payment schedule
   const { data: targetsResponse } = useQuery({
@@ -210,7 +224,8 @@ const CommissionsPage = () => {
       missingPeriods && 
       missingPeriods.length > 0 && 
       !hasAutoCalculated &&
-      !calculateHistoricalCommissionsMutation.isPending
+      !calculateHistoricalCommissionsMutation.isPending &&
+      isManager && managerView === 'team' // Only auto-calculate for team views
     ) {
       // Filter periods that can be calculated (have targets)
       const calculablePeriods = missingPeriods.filter((period: any) => 
@@ -218,17 +233,21 @@ const CommissionsPage = () => {
       );
       
       if (calculablePeriods.length > 0) {
-        console.log(`🔄 Auto-calculating ${calculablePeriods.length} historical commission periods`);
-        setHasAutoCalculated(true);
-        calculateHistoricalCommissionsMutation.mutate(
-          calculablePeriods.map((p: any) => ({
-            period_start: p.period_start,
-            period_end: p.period_end
-          }))
-        );
+        console.log(`🔄 Auto-calculating ${calculablePeriods.length} historical commission periods for team view`);
+        console.log('Calculable periods:', calculablePeriods);
+        
+        // Don't auto-calculate - let users manually trigger if needed
+        // This avoids 400 errors for periods without targets
+        // setHasAutoCalculated(true);
+        // calculateHistoricalCommissionsMutation.mutate(
+        //   calculablePeriods.map((p: any) => ({
+        //     period_start: p.period_start,
+        //     period_end: p.period_end
+        //   }))
+        // );
       }
     }
-  }, [missingPeriods, hasAutoCalculated, calculateHistoricalCommissionsMutation.isPending]);
+  }, [missingPeriods, hasAutoCalculated, calculateHistoricalCommissionsMutation.isPending, isManager, managerView]);
   
   // Calculate current period based on payment schedule
   const getCurrentPeriod = () => {
@@ -266,27 +285,31 @@ const CommissionsPage = () => {
     const periods = [];
     
     if (paymentSchedule === 'quarterly') {
-      // Last 4 quarters
+      // Last 4 quarters including current
+      const currentYear = now.getUTCFullYear();
+      const currentMonth = now.getUTCMonth();
+      
+      // Calculate current quarter
+      const currentQuarter = Math.floor(currentMonth / 3);
+      
       for (let i = 0; i < 4; i++) {
-        const currentYear = now.getUTCFullYear();
-        const currentMonth = now.getUTCMonth();
-        
+        // Calculate the target quarter (going backwards from current quarter)
         let targetYear = currentYear;
-        let targetMonth = currentMonth - (i * 3);
+        let targetQuarter = currentQuarter - i;
         
-        while (targetMonth < 0) {
-          targetMonth += 12;
+        // Handle year boundary
+        while (targetQuarter < 0) {
+          targetQuarter += 4;
           targetYear -= 1;
         }
         
-        const quarter = Math.floor(targetMonth / 3);
-        const quarterStartMonth = quarter * 3;
+        const quarterStartMonth = targetQuarter * 3;
         
         periods.push({
           start: new Date(Date.UTC(targetYear, quarterStartMonth, 1)).toISOString().split('T')[0],
           end: new Date(Date.UTC(targetYear, quarterStartMonth + 3, 0, 23, 59, 59, 999)).toISOString().split('T')[0],
-          label: `Q${quarter + 1} ${targetYear}`,
-          period: `${targetYear}-Q${quarter + 1}`
+          label: `Q${targetQuarter + 1} ${targetYear}`,
+          period: `${targetYear}-Q${targetQuarter + 1}`
         });
       }
     } else {

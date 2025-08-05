@@ -95,23 +95,58 @@ const CommissionChart: React.FC<CommissionChartProps> = ({
   // Group commissions by period for team views
   const groupedCommissions = React.useMemo(() => {
     if (!isManager || managerView === 'personal') {
+      // For personal view, just show what we have
       return commissions.map(c => ({ period: c.period_start, commissions: [c] }));
     }
     
     const groups = commissions.reduce((acc, commission) => {
-      const period = commission.period_start;
-      if (!acc[period]) {
-        acc[period] = [];
+      // Normalize period to start of day to handle time differences
+      const periodDate = new Date(commission.period_start);
+      periodDate.setHours(0, 0, 0, 0);
+      const periodKey = periodDate.toISOString().split('T')[0];
+      
+      if (!acc[periodKey]) {
+        acc[periodKey] = [];
       }
-      acc[period].push(commission);
+      acc[periodKey].push(commission);
       return acc;
     }, {} as Record<string, Commission[]>);
+    
+    // For team view, generate the last 4 quarters including current
+    if (isManager && (managerView === 'team' || managerView === 'all')) {
+      const now = new Date();
+      const currentYear = now.getFullYear();
+      const currentMonth = now.getMonth();
+      const currentQuarter = Math.floor(currentMonth / 3);
+      
+      // Generate last 4 quarters including current
+      for (let i = 0; i < 4; i++) {
+        let targetYear = currentYear;
+        let targetQuarter = currentQuarter - i;
+        
+        while (targetQuarter < 0) {
+          targetQuarter += 4;
+          targetYear -= 1;
+        }
+        
+        const quarterStartMonth = targetQuarter * 3;
+        const periodStart = new Date(targetYear, quarterStartMonth, 1);
+        const periodKey = periodStart.toISOString().split('T')[0];
+        
+        // Only add if we don't already have this period
+        if (!groups[periodKey]) {
+          groups[periodKey] = [];
+        }
+      }
+    }
     
     return Object.entries(groups)
       .map(([period, comms]) => ({ 
         period, 
         commissions: comms,
-        completeTeamData: generateCompleteTeamData(comms, period)
+        completeTeamData: comms.length > 0 ? generateCompleteTeamData(comms, period) : [],
+        hasNoData: comms.length === 0,
+        periodLabel: null // Will be generated in render
       }))
       .sort((a, b) => new Date(a.period).getTime() - new Date(b.period).getTime());
   }, [commissions, isManager, managerView]);
@@ -176,41 +211,73 @@ const CommissionChart: React.FC<CommissionChartProps> = ({
       <div className="relative">
         <div className="space-y-3">
           {groupedCommissions.map((group, groupIndex) => {
-            const periodLabel = new Date(group.period).toLocaleDateString('en-GB', {
-              month: 'short',
-              year: '2-digit'
-            });
+            // Determine if this is a quarterly period based on the commission data
+            let periodLabel;
+            
+            if (group.commissions.length > 0) {
+              const firstCommission = group.commissions[0];
+              const periodStart = new Date(firstCommission.period_start);
+              const periodEnd = new Date(firstCommission.period_end);
+              const periodLengthDays = (periodEnd.getTime() - periodStart.getTime()) / (1000 * 60 * 60 * 24);
+              const isQuarterly = periodLengthDays > 60; // More than 60 days = quarterly
+              
+              // Format period label based on period type
+              if (isQuarterly) {
+                const quarter = Math.floor(periodStart.getMonth() / 3) + 1;
+                periodLabel = `Q${quarter} ${periodStart.getFullYear().toString().slice(-2)}`;
+              } else {
+                periodLabel = periodStart.toLocaleDateString('en-GB', {
+                  month: 'short',
+                  year: '2-digit'
+                });
+              }
+            } else {
+              // Generate label from the period date for empty periods
+              const periodDate = new Date(group.period);
+              const quarter = Math.floor(periodDate.getMonth() / 3) + 1;
+              periodLabel = `Q${quarter} ${periodDate.getFullYear().toString().slice(-2)}`;
+            }
+            
             const totalCommission = group.commissions.reduce((sum, c) => sum + Number(c.commission_earned), 0);
             const isTeamView = isManager && managerView !== 'personal';
             
             if (isTeamView) {
               // Team view: Show team aggregated bar + grouped individual bars
+              const hasData = group.commissions.length > 0;
               const totalQuota = group.commissions.reduce((sum, c) => sum + Number(c.quota_amount), 0);
               const totalActual = group.commissions.reduce((sum, c) => sum + Number(c.actual_amount), 0);
               
               // Calculate true team attainment including members with 0% (no commission records)
               let teamAttainment;
-              if (teamMemberCount && teamMemberCount > 0) {
+              if (hasData && teamMemberCount && teamMemberCount > 0) {
                 // If we have team member count, include those with 0% attainment
                 const membersWithCommissions = group.commissions.length;
                 const membersWithoutCommissions = teamMemberCount - membersWithCommissions;
                 const totalAttainmentPoints = group.commissions.reduce((sum, c) => sum + Number(c.attainment_pct), 0);
                 // Members without commissions contribute 0% attainment
                 teamAttainment = totalAttainmentPoints / teamMemberCount;
-              } else {
+              } else if (hasData) {
                 // Fallback to quota-based calculation if team member count unavailable
                 teamAttainment = totalQuota > 0 ? (totalActual / totalQuota) * 100 : 0;
+              } else {
+                teamAttainment = 0;
               }
               
               const teamBarWidth = Math.min(teamAttainment, 100); // Cap at 100% for visual consistency
               
+              // Use the generated periodLabel
+              const displayLabel = periodLabel;
+              
               return (
                 <div key={`group-${group.period}`} className="mb-6">
                   {/* Period Header */}
-                  <div className="flex items-center justify-between mb-3 pb-2 border-b border-gray-200">
-                    <h4 className="text-sm font-semibold text-gray-800">{periodLabel}</h4>
+                  <div className={`flex items-center justify-between mb-3 pb-2 border-b border-gray-200 ${!hasData ? 'opacity-50' : ''}`}>
+                    <h4 className="text-sm font-semibold text-gray-800">{displayLabel}</h4>
                     <div className="text-sm text-gray-600">
-                      Total: £{totalCommission.toLocaleString()} ({group.commissions.length}{teamMemberCount ? ` of ${teamMemberCount}` : ''} members)
+                      {hasData ? 
+                        `Total: £${totalCommission.toLocaleString()} (${group.commissions.length}${teamMemberCount ? ` of ${teamMemberCount}` : ''} members)` :
+                        'No targets defined for this period'
+                      }
                     </div>
                   </div>
                   
@@ -224,9 +291,9 @@ const CommissionChart: React.FC<CommissionChartProps> = ({
                       
                       {/* Team Bar Container */}
                       <div 
-                        className="flex-1 relative h-8 bg-gray-100 rounded-lg overflow-hidden cursor-pointer hover:bg-gray-200 transition-colors"
-                        onClick={() => setModalData({
-                          period: periodLabel,
+                        className={`flex-1 relative h-8 bg-gray-100 rounded-lg overflow-hidden ${hasData ? 'cursor-pointer hover:bg-gray-200' : ''} transition-colors`}
+                        onClick={() => hasData && setModalData({
+                          period: displayLabel,
                           isVisible: true,
                           isTeamView: true,
                           teamCommissions: group.commissions,
@@ -238,33 +305,44 @@ const CommissionChart: React.FC<CommissionChartProps> = ({
                           }
                         })}
                       >
-                        {/* Team Commission Bar (with performance-based opacity) */}
-                        <div 
-                          className="h-full rounded-lg"
-                          style={{ 
-                            width: `${Math.min(teamBarWidth, 100)}%`,
-                            ...getTeamColor(teamAttainment)
-                          }}
-                        />
-                        
-                        {/* Team Attainment Indicator */}
-                        <div className="absolute inset-0 flex items-center justify-start pl-3">
-                          <span className="text-sm font-bold text-white drop-shadow">
-                            {teamAttainment.toFixed(0)}%
-                          </span>
-                        </div>
+                        {hasData ? (
+                          <>
+                            {/* Team Commission Bar (with performance-based opacity) */}
+                            <div 
+                              className="h-full rounded-lg"
+                              style={{ 
+                                width: `${Math.min(teamBarWidth, 100)}%`,
+                                ...getTeamColor(teamAttainment)
+                              }}
+                            />
+                            
+                            {/* Team Attainment Indicator */}
+                            <div className="absolute inset-0 flex items-center justify-start pl-3">
+                              <span className="text-sm font-bold text-white drop-shadow">
+                                {teamAttainment.toFixed(0)}%
+                              </span>
+                            </div>
+                          </>
+                        ) : (
+                          <div className="absolute inset-0 flex items-center justify-center bg-gray-200">
+                            <span className="text-xs font-medium text-gray-500">
+                              No targets defined
+                            </span>
+                          </div>
+                        )}
                       </div>
                       
                       {/* Team Total Amount */}
                       <div className="w-20 text-xs font-bold text-gray-900 text-right">
-                        £{totalCommission.toLocaleString()}
+                        {hasData ? `£${totalCommission.toLocaleString()}` : '-'}
                       </div>
                     </div>
                   </div>
                   
                   {/* Individual Member Bars */}
-                  <div className="space-y-2 ml-4">
-                    {(group.completeTeamData || group.commissions).map((memberData, index) => {
+                  {hasData && (
+                    <div className="space-y-2 ml-4">
+                      {(group.completeTeamData || group.commissions).map((memberData, index) => {
                       // Handle both commission records and zero-attainment members
                       const isZeroAttainment = 'isZeroAttainment' in memberData;
                       const commission = isZeroAttainment ? null : memberData as Commission;
@@ -332,62 +410,79 @@ const CommissionChart: React.FC<CommissionChartProps> = ({
                         </div>
                       );
                     })}
-                  </div>
+                    </div>
+                  )}
                 </div>
               );
             } else {
               // Personal view or single commission: Show individual bar
-              const commission = group.commissions[0];
-              const commissionAmount = Number(commission.commission_earned);
-              const quotaAmount = Number(commission.quota_amount);
-              const actualAmount = Number(commission.actual_amount);
-              const attainment = Number(commission.attainment_pct);
+              const hasData = group.commissions.length > 0;
+              const commission = hasData ? group.commissions[0] : null;
+              const commissionAmount = commission ? Number(commission.commission_earned) : 0;
+              const quotaAmount = commission ? Number(commission.quota_amount) : 0;
+              const actualAmount = commission ? Number(commission.actual_amount) : 0;
+              const attainment = commission ? Number(commission.attainment_pct) : 0;
               
               // Calculate bar width based on quota attainment percentage
               const barWidth = Math.min(attainment, 100); // Cap at 100% for visual consistency
               
+              // Use provided periodLabel or fallback to calculated one
+              const displayLabel = group.periodLabel || periodLabel;
+              
               return (
-                <div key={commission.id}>
+                <div key={commission?.id || `no-data-${group.period}`}>
                   <div 
-                    className="flex items-center space-x-4 cursor-pointer hover:bg-gray-50 p-2 rounded-lg transition-colors"
-                    onClick={() => setModalData({
+                    className={`flex items-center space-x-4 p-2 rounded-lg transition-colors ${
+                      hasData ? 'cursor-pointer hover:bg-gray-50' : 'opacity-50'
+                    }`}
+                    onClick={() => hasData && setModalData({
                       commission,
-                      period: periodLabel,
+                      period: displayLabel,
                       isVisible: true,
                       isTeamView: false
                     })}
                   >
                     {/* Period Label */}
                     <div className="w-16 text-sm font-medium text-gray-700 text-right">
-                      {periodLabel}
+                      {displayLabel}
                     </div>
                     
                     {/* Bar Container */}
                     <div className="flex-1 relative h-8 bg-gray-100 rounded-lg overflow-hidden">
-                      {/* 100% Quota Reference Line */}
-                      <div 
-                        className="absolute top-0 bottom-0 w-0.5 bg-gray-400 opacity-75"
-                        style={{ left: '100%' }}
-                        title="100% Quota Target"
-                      />
-                      
-                      {/* Commission Bar (based on attainment %) */}
-                      <div 
-                        className="h-full rounded-lg"
-                        style={{ width: `${barWidth}%`, ...getColorForMember(attainment) }}
-                      />
-                      
-                      {/* Attainment Indicator */}
-                      <div className="absolute inset-0 flex items-center justify-start pl-2">
-                        <span className="text-xs font-semibold text-white drop-shadow">
-                          {attainment.toFixed(0)}%
-                        </span>
-                      </div>
+                      {hasData ? (
+                        <>
+                          {/* 100% Quota Reference Line */}
+                          <div 
+                            className="absolute top-0 bottom-0 w-0.5 bg-gray-400 opacity-75"
+                            style={{ left: '100%' }}
+                            title="100% Quota Target"
+                          />
+                          
+                          {/* Commission Bar (based on attainment %) */}
+                          <div 
+                            className="h-full rounded-lg"
+                            style={{ width: `${barWidth}%`, ...getColorForMember(attainment) }}
+                          />
+                          
+                          {/* Attainment Indicator */}
+                          <div className="absolute inset-0 flex items-center justify-start pl-2">
+                            <span className="text-xs font-semibold text-white drop-shadow">
+                              {attainment.toFixed(0)}%
+                            </span>
+                          </div>
+                        </>
+                      ) : (
+                        <div className="absolute inset-0 flex items-center justify-center bg-gray-200">
+                          <span className="text-xs font-medium text-gray-500">
+                            No targets defined
+                          </span>
+                        </div>
+                      )}
                     </div>
                     
                     {/* Commission Amount */}
                     <div className="w-24 text-sm font-bold text-gray-900 text-right">
-                      £{commissionAmount.toLocaleString()}
+                      {hasData ? `£${commissionAmount.toLocaleString()}` : '-'}
                     </div>
                     
                     {/* User badge for manager views */}
