@@ -953,6 +953,14 @@ router.patch('/:id/deactivate', async (req, res) => {
       return res.status(403).json({ error: 'Access denied' });
     }
 
+    // Find all child targets that were created from this parent target
+    const childTargets = await prisma.targets.findMany({
+      where: {
+        parent_target_id: id,
+        is_active: true
+      }
+    });
+    
     // Check if this is part of a batch of targets created together (same role, period, quota)
     const relatedTargets = await prisma.targets.findMany({
       where: {
@@ -971,6 +979,19 @@ router.patch('/:id/deactivate', async (req, res) => {
       where: { id },
       data: { is_active: false }
     });
+    
+    // Deactivate all child targets
+    let childDeactivated = 0;
+    if (childTargets.length > 0) {
+      const childUpdate = await prisma.targets.updateMany({
+        where: {
+          id: { in: childTargets.map(t => t.id) }
+        },
+        data: { is_active: false }
+      });
+      childDeactivated = childUpdate.count;
+      console.log(`Deactivated ${childDeactivated} child targets for parent ${id}`);
+    }
 
     // If there are related targets from the same role-based creation, deactivate them too
     let batchDeactivated = 0;
@@ -994,17 +1015,25 @@ router.patch('/:id/deactivate', async (req, res) => {
         entity_id: target.id,
         context: { 
           batch_deactivated: batchDeactivated,
-          ...(batchDeactivated > 0 && { message: `Deactivated ${batchDeactivated + 1} related targets` })
+          child_deactivated: childDeactivated,
+          ...(batchDeactivated > 0 && { message: `Deactivated ${batchDeactivated + 1} related targets` }),
+          ...(childDeactivated > 0 && { child_message: `Deactivated ${childDeactivated} child targets` })
         },
         success: true
       }
     });
 
+    const totalDeactivated = 1 + batchDeactivated + childDeactivated;
     res.json({
       ...target,
-      batch_info: batchDeactivated > 0 ? {
-        total_deactivated: batchDeactivated + 1,
-        message: `Deactivated ${batchDeactivated + 1} related role-based targets`
+      batch_info: (batchDeactivated > 0 || childDeactivated > 0) ? {
+        total_deactivated: totalDeactivated,
+        message: `Deactivated ${totalDeactivated} targets total`,
+        details: {
+          main: 1,
+          related: batchDeactivated,
+          children: childDeactivated
+        }
       } : null
     });
   } catch (error) {
