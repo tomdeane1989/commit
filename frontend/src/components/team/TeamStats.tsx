@@ -25,10 +25,10 @@ interface TeamMember {
 }
 
 interface TeamStatsProps {
-  members: TeamMember[];
+  members?: TeamMember[];
 }
 
-export const TeamStats: React.FC<TeamStatsProps> = ({ members }) => {
+export const TeamStats: React.FC<TeamStatsProps> = ({ members = [] }) => {
   const activeMembers = members.filter(m => m.is_active);
   const totalOpenDeals = activeMembers.reduce((sum, m) => sum + m.performance.open_deals_amount, 0);
   const totalQuota = activeMembers.reduce((sum, m) => sum + m.performance.current_quota, 0);
@@ -39,7 +39,7 @@ export const TeamStats: React.FC<TeamStatsProps> = ({ members }) => {
     {
       label: 'Active Team Members',
       value: activeMembers.length,
-      total: members.length,
+      total: members?.length || 0,
       icon: Users,
       color: 'indigo'
     },

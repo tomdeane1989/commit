@@ -5,6 +5,7 @@ export interface User {
   last_name: string;
   role: 'sales_rep' | 'manager';
   is_admin?: boolean;
+  is_manager?: boolean;
   is_active?: boolean;
   company_id: string;
   territory?: string;

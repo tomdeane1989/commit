@@ -18,6 +18,16 @@ import {
 const router = express.Router();
 const prisma = new PrismaClient();
 
+// Utility function to capitalize names properly
+const capitalizeName = (name) => {
+  if (!name) return name;
+  return name
+    .toLowerCase()
+    .split(' ')
+    .map(word => word.charAt(0).toUpperCase() + word.slice(1))
+    .join(' ');
+};
+
 // Validation schemas
 const registerSchema = Joi.object({
   email: Joi.string().email().required(),
@@ -71,11 +81,12 @@ router.post('/register', async (req, res) => {
       data: {
         email: email.toLowerCase(), // Normalize email to lowercase
         password: passwordHash,
-        first_name,
-        last_name,
+        first_name: capitalizeName(first_name),
+        last_name: capitalizeName(last_name),
         company_id: company.id,
         role: 'manager',  // Manager role for team/integrations access
         is_admin: true,   // Admin privileges for full control
+        is_manager: true, // Manager privileges for team management
         is_active: true
       }
     });
@@ -87,6 +98,7 @@ router.post('/register', async (req, res) => {
         email: user.email,
         role: user.role,
         is_admin: user.is_admin,
+        is_manager: user.is_manager,
         company_id: user.company_id
       }, 
       process.env.JWT_SECRET, 
@@ -104,6 +116,7 @@ router.post('/register', async (req, res) => {
         last_name: user.last_name,
         role: user.role,
         is_admin: user.is_admin,
+        is_manager: user.is_manager,
         company_id: user.company_id
       }
     });
@@ -149,6 +162,7 @@ router.post('/login', async (req, res) => {
         email: user.email,
         role: user.role,
         is_admin: user.is_admin,
+        is_manager: user.is_manager,
         company_id: user.company_id
       }, 
       process.env.JWT_SECRET, 
@@ -166,6 +180,7 @@ router.post('/login', async (req, res) => {
         last_name: user.last_name,
         role: user.role,
         is_admin: user.is_admin,
+        is_manager: user.is_manager,
         company_id: user.company_id,
         company_name: user.company.name
       }
@@ -205,6 +220,7 @@ router.get('/me', async (req, res) => {
         last_name: user.last_name,
         role: user.role,
         is_admin: user.is_admin,
+        is_manager: user.is_manager,
         company_id: user.company_id,
         company_name: user.company.name
       }

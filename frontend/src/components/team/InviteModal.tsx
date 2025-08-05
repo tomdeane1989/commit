@@ -41,7 +41,6 @@ export const InviteModal: React.FC<InviteModalProps> = ({
     email: '',
     first_name: '',
     last_name: '',
-    role: 'sales_rep',
     is_admin: false,
     is_manager: false,
     manager_id: '',
@@ -69,7 +68,6 @@ export const InviteModal: React.FC<InviteModalProps> = ({
       email: '',
       first_name: '',
       last_name: '',
-      role: 'sales_rep',
       is_admin: false,
       is_manager: false,
       manager_id: '',
@@ -185,7 +183,6 @@ export const InviteModal: React.FC<InviteModalProps> = ({
                     setFormData({ 
                       ...formData, 
                       is_manager: isManager,
-                      role: isManager ? 'manager' : 'sales_rep',
                       is_admin: isManager ? formData.is_admin : false
                     });
                   }}

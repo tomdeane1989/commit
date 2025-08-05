@@ -243,6 +243,17 @@ router.post('/', requireTeamManagement, async (req, res) => {
       }
     }
 
+    // If team lead is set, ensure they have manager permissions
+    if (team_lead_id) {
+      await prisma.users.update({
+        where: { id: team_lead_id },
+        data: { 
+          is_manager: true,
+          role: 'manager' // Ensure role is also set to manager
+        }
+      });
+    }
+
     // Create the team
     const newTeam = await prisma.teams.create({
       data: {
@@ -342,6 +353,15 @@ router.put('/:teamId', requireTeamManagement, async (req, res) => {
       if (!teamLead) {
         return res.status(400).json({ error: 'Invalid team lead. Must be a manager in the company.' });
       }
+      
+      // Ensure the new team lead has manager permissions
+      await prisma.users.update({
+        where: { id: team_lead_id },
+        data: { 
+          is_manager: true,
+          role: 'manager' // Ensure role is also set to manager
+        }
+      });
     }
 
     // Update the team
@@ -456,6 +476,19 @@ router.post('/:teamId/members', requireTeamManagement, async (req, res) => {
         added_by_admin_id: req.user.id
       }))
     });
+
+    // Set team lead as manager for new members (if team has a lead and user doesn't have a manager)
+    if (team.team_lead_id) {
+      for (const userId of newUserIds) {
+        const user = users.find(u => u.id === userId);
+        if (user && !user.manager_id) {
+          await prisma.users.update({
+            where: { id: userId },
+            data: { manager_id: team.team_lead_id }
+          });
+        }
+      }
+    }
 
     // Log the additions
     await prisma.activity_log.create({
