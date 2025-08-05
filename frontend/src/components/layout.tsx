@@ -59,9 +59,9 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
 
   const navigation = [
     { name: 'Forecasting', href: '/deals', icon: BarChart3 },
-    { name: 'Commissions', href: '/commissions', icon: PoundSterling },
+    { name: 'Performance', href: '/commissions', icon: PoundSterling },
+    { name: 'Targets & Quotas', href: '/targets', icon: BarChart3, adminOnly: true },
     { name: 'Team', href: '/team', icon: Users, adminOnly: true },
-    { name: 'Teams', href: '/teams-management', icon: Users, adminOnly: true },
     { name: 'Dashboard', href: '/dashboard', icon: Home },
     { name: 'Settings', href: '/settings', icon: Settings },
   ];
@@ -182,7 +182,9 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
                   <p className="text-sm font-semibold text-gray-900 truncate">
                     {user?.first_name} {user?.last_name}
                   </p>
-                  <p className="text-xs text-gray-500 capitalize font-medium">{user?.role}</p>
+                  <p className="text-xs text-gray-500 capitalize font-medium">
+                    {(user?.is_admin || user?.is_manager) ? 'Manager' : 'Sales User'}
+                  </p>
                 </div>
               </div>
               <button

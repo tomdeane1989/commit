@@ -728,6 +728,8 @@ const CommissionsPage = () => {
               isManager={isManager}
               managerView={managerView}
               isCalculating={calculateHistoricalCommissionsMutation.isPending}
+              teamMemberCount={teamMembers.length > 0 ? teamMembers.length : undefined}
+              teamMembers={isManager && (managerView === 'team' || managerView === 'all') ? teamMembers : undefined}
             />
           </div>
         </div>
