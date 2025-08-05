@@ -336,17 +336,20 @@ const CommissionsPage = () => {
     return targetStart <= currentEnd && targetEnd >= currentStart;
   }) || false;
   
-  // Find current period commission
-  const currentCommission = commissions?.find(c => {
-    const commissionStart = new Date(c.period_start).toISOString().split('T')[0];
-    return commissionStart === currentPeriod.start;
-  });
+  // Find current period commission (only for personal view)
+  const currentCommission = !isManager || managerView === 'personal' ? 
+    commissions?.find(c => {
+      const commissionStart = new Date(c.period_start).toISOString().split('T')[0];
+      return commissionStart === currentPeriod.start && c.user_id === user?.id;
+    }) : null;
 
-  // Filter historical commissions
-  const historicalCommissions = commissions?.filter(c => {
-    const commissionStart = new Date(c.period_start).toISOString().split('T')[0];
-    return commissionStart !== currentPeriod.start;
-  }) || [];
+  // Filter historical commissions (for personal view, exclude current period; for team views, show all)
+  const historicalCommissions = !isManager || managerView === 'personal' ?
+    commissions?.filter(c => {
+      const commissionStart = new Date(c.period_start).toISOString().split('T')[0];
+      return commissionStart !== currentPeriod.start;
+    }) || [] :
+    commissions || [];
 
   // Calculate totals
   const totalEarned = commissions?.reduce((sum, c) => sum + Number(c.commission_earned), 0) || 0;
@@ -520,13 +523,14 @@ const CommissionsPage = () => {
           </div>
         </div>
 
-        {/* Current Period */}
-        <div className="bg-white rounded-lg shadow">
-          <div className="px-6 py-4 border-b border-gray-200">
-            <h3 className="text-lg font-semibold text-gray-900">
-              {isManager && managerView !== 'personal' ? 'Team Current Period' : 'Current Period'} - {currentPeriod.label}
-            </h3>
-          </div>
+        {/* Current Period - Only show for personal view */}
+        {(!isManager || managerView === 'personal') && (
+          <div className="bg-white rounded-lg shadow">
+            <div className="px-6 py-4 border-b border-gray-200">
+              <h3 className="text-lg font-semibold text-gray-900">
+                Current Period - {currentPeriod.label}
+              </h3>
+            </div>
           <div className="p-6">
             {currentCommission ? (
               <div className="space-y-4">
@@ -657,6 +661,7 @@ const CommissionsPage = () => {
             )}
           </div>
         </div>
+        )}
 
         {/* Team Summary for Manager Views */}
         {isManager && (managerView === 'team' || managerView === 'all') && teamSummary && teamSummary.length > 0 && (
@@ -705,9 +710,15 @@ const CommissionsPage = () => {
         <div className="bg-white rounded-lg shadow">
           <div className="px-6 py-4 border-b border-gray-200">
             <h3 className="text-lg font-semibold text-gray-900">
-              {isManager && managerView !== 'personal' ? 'Team Commission History' : 'Historical Commissions'}
+              {isManager && managerView === 'team' ? 'Team Commission Data' : 
+               isManager && managerView === 'all' ? 'All Commission Data' :
+               isManager && managerView === 'member' ? 'Member Commission History' : 
+               'Historical Commissions'}
               <span className="text-sm font-normal text-gray-600 ml-2">
-                (Last {paymentSchedule === 'quarterly' ? '4 quarters' : '12 months'})
+                {isManager && managerView !== 'personal' ? 
+                  `(${commissions?.length || 0} total records)` :
+                  `(Last ${paymentSchedule === 'quarterly' ? '4 quarters' : '12 months'})`
+                }
               </span>
             </h3>
           </div>
