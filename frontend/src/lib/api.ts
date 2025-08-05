@@ -211,6 +211,26 @@ export const commissionsApi = {
     const response = await api.patch(`/commissions/${commissionId}/approve`);
     return response.data;
   },
+  exportCommissions: async (filters?: { start_date?: string; end_date?: string; status?: string }) => {
+    const params = new URLSearchParams();
+    if (filters?.start_date) params.append('start_date', filters.start_date);
+    if (filters?.end_date) params.append('end_date', filters.end_date);
+    if (filters?.status) params.append('status', filters.status);
+    
+    const response = await api.get(`/commissions/export?${params.toString()}`, {
+      responseType: 'blob'
+    });
+    
+    // Create download link
+    const url = window.URL.createObjectURL(new Blob([response.data]));
+    const link = document.createElement('a');
+    link.href = url;
+    link.setAttribute('download', `commissions_export_${new Date().toISOString().split('T')[0]}.csv`);
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    window.URL.revokeObjectURL(url);
+  },
 };
 
 // CRM API
@@ -241,7 +261,10 @@ export const teamApi = {
     console.log('🔍 TeamAPI - Full URL will be:', `${API_BASE_URL}/api/team`);
     console.log('🔍 TeamAPI - Auth token being used (full):', localStorage.getItem('token'));
     const response = await api.get('/team', { params });
-    console.log('🔍 TeamAPI - Response received:', response.data);
+    console.log('🔍 TeamAPI - Raw axios response:', response);
+    console.log('🔍 TeamAPI - Response.data:', response.data);
+    console.log('🔍 TeamAPI - Team members in response:', response.data.team_members);
+    console.log('🔍 TeamAPI - First member details:', response.data.team_members?.[0]);
     return response.data;
   },
 
@@ -249,12 +272,20 @@ export const teamApi = {
     email: string;
     first_name: string;
     last_name: string;
-    role: string;
+    is_admin?: boolean;
+    is_manager?: boolean;
     territory?: string;
     manager_id?: string;
+    team_ids?: string[];
   }): Promise<any> => {
-    const response = await api.post('/team/invite', memberData);
-    return response.data;
+    console.log('🔍 TeamAPI - Sending invite data:', memberData);
+    try {
+      const response = await api.post('/team/invite', memberData);
+      return response.data;
+    } catch (error: any) {
+      console.error('🔍 TeamAPI - Invite error:', error.response?.data);
+      throw error;
+    }
   },
 
   updateTeamMember: async (userId: string, memberData: {

@@ -294,7 +294,7 @@ router.get('/', async (req, res) => {
       }
     });
 
-    const commissions = await prisma.commissions.findMany({
+    let commissions = await prisma.commissions.findMany({
       where,
       include: {
         user: {
@@ -332,10 +332,44 @@ router.get('/', async (req, res) => {
       orderBy: { period_start: 'desc' }
     });
 
+    // Deduplicate overlapping periods - prefer shorter periods (monthly over quarterly)
+    const uniqueCommissions = [];
+    const coveredMonths = new Set();
+    
+    // Sort by period length (shorter first) then by date
+    commissions.sort((a, b) => {
+      const aLength = new Date(a.period_end).getTime() - new Date(a.period_start).getTime();
+      const bLength = new Date(b.period_end).getTime() - new Date(b.period_start).getTime();
+      if (aLength !== bLength) return aLength - bLength;
+      return new Date(b.period_start).getTime() - new Date(a.period_start).getTime();
+    });
+    
+    for (const commission of commissions) {
+      const startMonth = new Date(commission.period_start).toISOString().substring(0, 7);
+      if (!coveredMonths.has(startMonth)) {
+        uniqueCommissions.push(commission);
+        // Mark all months in this period as covered
+        const start = new Date(commission.period_start);
+        const end = new Date(commission.period_end);
+        while (start <= end) {
+          coveredMonths.add(start.toISOString().substring(0, 7));
+          start.setMonth(start.getMonth() + 1);
+        }
+      }
+    }
+    
+    // Sort back by date descending
+    commissions = uniqueCommissions.sort((a, b) => 
+      new Date(b.period_start).getTime() - new Date(a.period_start).getTime()
+    );
+
+    // Initialize variables for response
+    let paymentSchedule = 'monthly';
+    let suggestions = [];
+
     // If historical data is requested, calculate missing periods
     // Look for ANY targets (not just active ones) to determine payment schedule
     if (include_historical === 'true') {
-      let paymentSchedule = 'monthly';
       
       // Try to find any target to determine payment schedule
       const anyTarget = activeTarget || await prisma.targets.findFirst({
@@ -351,9 +385,6 @@ router.get('/', async (req, res) => {
       }
       
       const periodsToGenerate = paymentSchedule === 'quarterly' ? 4 : 12;
-      
-      // Generate period suggestions for periods without commissions
-      const suggestions = [];
       const now = new Date();
       
       for (let i = 0; i < periodsToGenerate; i++) {
@@ -521,10 +552,12 @@ router.get('/', async (req, res) => {
 
     res.json({
       commissions,
+      payment_schedule: paymentSchedule,
+      missing_periods: include_historical === 'true' ? suggestions : [],
       team_summary: teamSummary,
       view_context: {
         current_view: view || 'personal',
-        is_manager: req.user.role === 'manager',
+        is_manager: req.permissions.canManageTeam,
         selected_user_id: user_id || null
       }
     });
@@ -605,6 +638,112 @@ router.get('/team-members', async (req, res) => {
 
   } catch (error) {
     console.error('Get commission team members error:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// Export commissions to CSV
+router.get('/export', async (req, res) => {
+  try {
+    const { start_date, end_date, status } = req.query;
+    
+    let where = {
+      company_id: req.user.company_id
+    };
+
+    // Add filters if provided
+    if (start_date) {
+      where.period_start = { gte: new Date(start_date) };
+    }
+    if (end_date) {
+      where.period_end = { lte: new Date(end_date) };
+    }
+    if (status) {
+      where.status = status;
+    }
+
+    // Permission check - admins see all, others see their own
+    if (!req.permissions.isAdmin) {
+      where.user_id = req.user.id;
+    }
+
+    const commissions = await prisma.commissions.findMany({
+      where,
+      include: {
+        user: {
+          select: {
+            first_name: true,
+            last_name: true,
+            email: true
+          }
+        },
+        target: {
+          select: {
+            commission_payment_schedule: true
+          }
+        }
+      },
+      orderBy: [
+        { period_start: 'desc' },
+        { user_id: 'asc' }
+      ]
+    });
+
+    // Generate CSV headers
+    const headers = [
+      'Employee Name',
+      'Employee Email',
+      'Period Start',
+      'Period End',
+      'Payment Schedule',
+      'Quota Amount',
+      'Actual Sales',
+      'Attainment %',
+      'Commission Rate',
+      'Base Commission',
+      'Bonus Commission',
+      'Total Commission',
+      'Status',
+      'Calculated Date',
+      'Approved Date',
+      'Approved By'
+    ];
+
+    // Generate CSV rows
+    const rows = commissions.map(commission => [
+      `${commission.user.first_name} ${commission.user.last_name}`,
+      commission.user.email,
+      new Date(commission.period_start).toLocaleDateString('en-GB'),
+      new Date(commission.period_end).toLocaleDateString('en-GB'),
+      commission.target.commission_payment_schedule,
+      commission.quota_amount,
+      commission.actual_amount,
+      `${commission.attainment_pct}%`,
+      `${(Number(commission.commission_rate) * 100).toFixed(2)}%`,
+      commission.base_commission,
+      commission.bonus_commission,
+      commission.commission_earned,
+      commission.status,
+      new Date(commission.calculated_at).toLocaleDateString('en-GB'),
+      commission.approved_at ? new Date(commission.approved_at).toLocaleDateString('en-GB') : '',
+      commission.approved_by || ''
+    ]);
+
+    // Generate CSV content
+    const csvContent = [
+      headers.join(','),
+      ...rows.map(row => row.map(cell => `"${cell}"`).join(','))
+    ].join('\n');
+
+    // Set response headers for CSV download
+    const filename = `commissions_export_${new Date().toISOString().split('T')[0]}.csv`;
+    res.setHeader('Content-Type', 'text/csv');
+    res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+    
+    res.send(csvContent);
+
+  } catch (error) {
+    console.error('Export commissions error:', error);
     res.status(500).json({ error: 'Internal server error' });
   }
 });
