@@ -94,9 +94,16 @@ const DealsPage = () => {
     }
   };
 
-  // Helper function to calculate commission (using 10% for demo)
-  const calculateCommission = (amount: number) => {
-    return amount * 0.10;
+  // Helper function to get commission value from deal
+  const getDealCommission = (deal: Deal) => {
+    // Use actual_commission for closed deals, projected_commission for open deals
+    if (deal.status === 'closed_won' && deal.actual_commission !== undefined) {
+      return Number(deal.actual_commission);
+    } else if (deal.status === 'open' && deal.projected_commission !== undefined) {
+      return Number(deal.projected_commission);
+    }
+    // Fallback to calculated value if commission fields not available
+    return Number(deal.amount) * 0.10;
   };
 
   // Calculate quota amount based on selected period
@@ -524,7 +531,7 @@ const DealsPage = () => {
   };
 
   const DealCard = ({ deal }: { deal: Deal }) => {
-    const commission = calculateCommission(Number(deal.amount));
+    const commission = getDealCommission(deal);
     const daysToCloseRaw = deal.close_date ? 
       Math.ceil((new Date(deal.close_date).getTime() - new Date().getTime()) / (1000 * 60 * 60 * 24)) : 
       null;
@@ -662,7 +669,7 @@ const DealsPage = () => {
 
   const DealsSection = ({ title, icon: Icon, deals, bgColor, borderColor, iconColor, textColor, category, badge, description, tooltipContent }: any) => {
     const totalValue = deals.reduce((sum: number, deal: Deal) => sum + Number(deal.amount), 0);
-    const totalCommission = calculateCommission(totalValue);
+    const totalCommission = deals.reduce((sum: number, deal: Deal) => sum + getDealCommission(deal), 0);
     
     return (
       <div className={`bg-white rounded-xl border-2 shadow-lg overflow-hidden transition-all duration-300 ${
@@ -778,9 +785,9 @@ const DealsPage = () => {
     const actualProgress = (actualAttainment / ringScale) * 100; // Inner ring: actual scaled to ring
     const projectedProgress = (totalProjectedAttainment / ringScale) * 100; // Outer ring: total projected scaled to ring
     
-    // Commission calculations
-    const actualCommission = calculateCommission(closedAmount);
-    const projectedCommission = calculateCommission(projectedAmount);
+    // Commission calculations - sum actual commissions from deals
+    const actualCommission = dealsByCategory.closed.reduce((sum: number, deal: Deal) => sum + getDealCommission(deal), 0);
+    const projectedCommission = [...dealsByCategory.commit, ...dealsByCategory.best_case].reduce((sum: number, deal: Deal) => sum + getDealCommission(deal), 0);
     const totalCommission = actualCommission + projectedCommission;
 
     const [hoveredSegment, setHoveredSegment] = useState<string | null>(null);
@@ -1038,7 +1045,7 @@ const DealsPage = () => {
                     £{commitAmount.toLocaleString()}
                   </div>
                   <div className="text-xs text-amber-600 font-semibold">
-                    Potential: £{(commitAmount * 0.10).toLocaleString()}
+                    Potential: £{dealsByCategory.commit.reduce((sum: number, deal: Deal) => sum + getDealCommission(deal), 0).toLocaleString()}
                   </div>
                 </div>
               ) : hoveredSegment === 'bestcase-outer' ? (
@@ -1053,7 +1060,7 @@ const DealsPage = () => {
                     £{bestCaseAmount.toLocaleString()}
                   </div>
                   <div className="text-xs text-purple-600 font-semibold">
-                    Potential: £{(bestCaseAmount * 0.10).toLocaleString()}
+                    Potential: £{dealsByCategory.best_case.reduce((sum: number, deal: Deal) => sum + getDealCommission(deal), 0).toLocaleString()}
                   </div>
                 </div>
               ) : hoveredSegment === 'projected' ? (
@@ -1377,7 +1384,7 @@ const DealsPage = () => {
                 £{closedAmount.toLocaleString()}
               </div>
               <div className="text-sm text-green-100">
-                Commission: £{calculateCommission(closedAmount).toLocaleString()}
+                Commission: £{dealsByCategory.closed.reduce((sum: number, deal: Deal) => sum + getDealCommission(deal), 0).toLocaleString()}
               </div>
             </div>
 
@@ -1391,7 +1398,7 @@ const DealsPage = () => {
                 £{(commitAmount + bestCaseAmount).toLocaleString()}
               </div>
               <div className="text-sm text-green-100">
-                Commission: £{calculateCommission(commitAmount + bestCaseAmount).toLocaleString()}
+                Commission: £{[...dealsByCategory.commit, ...dealsByCategory.best_case].reduce((sum: number, deal: Deal) => sum + getDealCommission(deal), 0).toLocaleString()}
               </div>
             </div>
 

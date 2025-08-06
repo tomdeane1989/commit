@@ -187,6 +187,26 @@ cd backend && npx prisma migrate deploy && node seed-data.js
 cd backend && npx prisma studio  # Visual database browser
 ```
 
+### **Schema Change Protocol (IMPORTANT)**
+When making changes to the Prisma schema, ALWAYS create a migration:
+```bash
+# 1. Make changes to schema.prisma
+# 2. Create migration (NEVER skip this step)
+cd backend
+npx prisma migrate dev --name descriptive_name_here
+
+# 3. Commit BOTH the schema.prisma AND the new migration file
+git add prisma/schema.prisma prisma/migrations/
+git commit -m "Add migration: descriptive_name_here"
+
+# NEVER use these commands for schema changes:
+# ❌ npx prisma db push (only for initial setup)
+# ❌ Manual SQL changes without migration files
+# ❌ Editing schema.prisma without creating migrations
+```
+
+**Why this matters**: Schema changes must be tracked in migration files to ensure consistency across all development environments and production deployments.
+
 ## 🧪 **Test Data & Accounts**
 
 ### **Test Account**

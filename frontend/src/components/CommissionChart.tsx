@@ -32,6 +32,7 @@ interface CommissionChartProps {
   isCalculating?: boolean;
   teamMemberCount?: number; // Total team size for accurate team attainment calculation
   teamMembers?: TeamMember[]; // Full team member list for showing 0% attainment members
+  periodView?: 'monthly' | 'quarterly' | 'yearly';
 }
 
 interface ModalData {
@@ -54,7 +55,8 @@ const CommissionChart: React.FC<CommissionChartProps> = ({
   managerView,
   isCalculating = false,
   teamMemberCount,
-  teamMembers = []
+  teamMembers = [],
+  periodView = 'quarterly'
 }) => {
   const [modalData, setModalData] = React.useState<ModalData | null>(null);
   
@@ -112,8 +114,9 @@ const CommissionChart: React.FC<CommissionChartProps> = ({
       return acc;
     }, {} as Record<string, Commission[]>);
     
-    // For team view, generate the last 4 quarters including current
-    if (isManager && (managerView === 'team' || managerView === 'all')) {
+    // For team view, only generate expected periods for quarterly view
+    // Monthly and yearly views should rely on backend aggregation
+    if (isManager && (managerView === 'team' || managerView === 'all') && periodView === 'quarterly') {
       const now = new Date();
       const currentYear = now.getFullYear();
       const currentMonth = now.getMonth();
@@ -148,8 +151,8 @@ const CommissionChart: React.FC<CommissionChartProps> = ({
         hasNoData: comms.length === 0,
         periodLabel: null // Will be generated in render
       }))
-      .sort((a, b) => new Date(a.period).getTime() - new Date(b.period).getTime());
-  }, [commissions, isManager, managerView]);
+      .sort((a, b) => new Date(b.period).getTime() - new Date(a.period).getTime());
+  }, [commissions, isManager, managerView, periodView]);
 
   // Generate company green with opacity based on attainment percentage
   const getColorForMember = (attainmentPct: number) => {
@@ -211,7 +214,7 @@ const CommissionChart: React.FC<CommissionChartProps> = ({
       <div className="relative">
         <div className="space-y-3">
           {groupedCommissions.map((group, groupIndex) => {
-            // Determine if this is a quarterly period based on the commission data
+            // Determine period type and format label accordingly
             let periodLabel;
             
             if (group.commissions.length > 0) {
@@ -219,23 +222,38 @@ const CommissionChart: React.FC<CommissionChartProps> = ({
               const periodStart = new Date(firstCommission.period_start);
               const periodEnd = new Date(firstCommission.period_end);
               const periodLengthDays = (periodEnd.getTime() - periodStart.getTime()) / (1000 * 60 * 60 * 24);
-              const isQuarterly = periodLengthDays > 60; // More than 60 days = quarterly
               
-              // Format period label based on period type
-              if (isQuarterly) {
+              // Detect period type based on length
+              if (periodLengthDays > 300) {
+                // Yearly period (more than 300 days)
+                periodLabel = periodStart.getFullYear().toString();
+              } else if (periodLengthDays > 60) {
+                // Quarterly period (60-300 days)
                 const quarter = Math.floor(periodStart.getMonth() / 3) + 1;
                 periodLabel = `Q${quarter} ${periodStart.getFullYear().toString().slice(-2)}`;
               } else {
+                // Monthly period (60 days or less)
                 periodLabel = periodStart.toLocaleDateString('en-GB', {
                   month: 'short',
                   year: '2-digit'
                 });
               }
             } else {
-              // Generate label from the period date for empty periods
+              // Generate label from the period date for empty periods based on periodView
               const periodDate = new Date(group.period);
-              const quarter = Math.floor(periodDate.getMonth() / 3) + 1;
-              periodLabel = `Q${quarter} ${periodDate.getFullYear().toString().slice(-2)}`;
+              
+              if (periodView === 'yearly') {
+                periodLabel = periodDate.getFullYear().toString();
+              } else if (periodView === 'monthly') {
+                periodLabel = periodDate.toLocaleDateString('en-GB', {
+                  month: 'short',
+                  year: '2-digit'
+                });
+              } else {
+                // Default to quarterly
+                const quarter = Math.floor(periodDate.getMonth() / 3) + 1;
+                periodLabel = `Q${quarter} ${periodDate.getFullYear().toString().slice(-2)}`;
+              }
             }
             
             const totalCommission = group.commissions.reduce((sum, c) => sum + Number(c.commission_earned), 0);

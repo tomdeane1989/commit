@@ -88,13 +88,17 @@ const CommissionsPage = () => {
   const [managerView, setManagerView] = useState<'personal' | 'team' | 'member' | 'all'>('personal');
   const [selectedMemberId, setSelectedMemberId] = useState<string>('');
   const isManager = user?.is_manager === true || user?.is_admin === true;
+  
+  // Period view state - default to quarterly
+  const [periodView, setPeriodView] = useState<'monthly' | 'quarterly' | 'yearly'>('quarterly');
 
   // Fetch commissions data with manager filtering support
   const { data: commissionsResponse, isLoading, error } = useQuery({
-    queryKey: ['commissions', user?.id, managerView, selectedMemberId],
+    queryKey: ['commissions', user?.id, managerView, selectedMemberId, periodView],
     queryFn: async () => {
       const params = new URLSearchParams();
       params.append('include_historical', 'true');
+      params.append('period_view', periodView);
       
       if (isManager && managerView) {
         params.append('view', managerView);
@@ -249,13 +253,19 @@ const CommissionsPage = () => {
     }
   }, [missingPeriods, hasAutoCalculated, calculateHistoricalCommissionsMutation.isPending, isManager, managerView]);
   
-  // Calculate current period based on payment schedule
+  // Calculate current period based on period view
   const getCurrentPeriod = () => {
     const now = new Date();
     const currentYear = now.getUTCFullYear();
     const currentMonth = now.getUTCMonth(); // 0-based
     
-    if (paymentSchedule === 'quarterly') {
+    if (periodView === 'yearly') {
+      return {
+        start: new Date(Date.UTC(currentYear, 0, 1)).toISOString().split('T')[0],
+        end: new Date(Date.UTC(currentYear, 11, 31, 23, 59, 59, 999)).toISOString().split('T')[0],
+        label: currentYear.toString()
+      };
+    } else if (periodView === 'quarterly') {
       // Determine current quarter
       const currentQuarter = Math.floor(currentMonth / 3);
       const quarterStartMonth = currentQuarter * 3;
@@ -284,7 +294,18 @@ const CommissionsPage = () => {
     const now = new Date();
     const periods = [];
     
-    if (paymentSchedule === 'quarterly') {
+    if (periodView === 'yearly') {
+      // Last 3 years
+      for (let i = 0; i < 3; i++) {
+        const targetYear = now.getUTCFullYear() - i;
+        periods.push({
+          start: new Date(Date.UTC(targetYear, 0, 1)).toISOString().split('T')[0],
+          end: new Date(Date.UTC(targetYear, 11, 31, 23, 59, 59, 999)).toISOString().split('T')[0],
+          label: targetYear.toString(),
+          period: targetYear.toString()
+        });
+      }
+    } else if (periodView === 'quarterly') {
       // Last 4 quarters including current
       const currentYear = now.getUTCFullYear();
       const currentMonth = now.getUTCMonth();
@@ -486,6 +507,42 @@ const CommissionsPage = () => {
             </div>
           </div>
         )}
+
+        {/* Period View Selector */}
+        <div className="bg-white rounded-xl border border-gray-200 p-4 shadow-sm">
+          <div className="flex items-center justify-between">
+            <label className="text-sm font-medium text-gray-700 mr-4">View by:</label>
+            <div className="flex bg-gray-100 rounded-lg p-1">
+              <button 
+                onClick={() => setPeriodView('monthly')}
+                className={`px-4 py-2 rounded-md text-sm font-medium transition-colors ${
+                  periodView === 'monthly' ? 'bg-white text-blue-600 shadow-sm' : 'text-gray-600 hover:text-gray-900'
+                }`}
+              >
+                <Calendar className="w-4 h-4 inline mr-2" />
+                Monthly
+              </button>
+              <button 
+                onClick={() => setPeriodView('quarterly')}
+                className={`px-4 py-2 rounded-md text-sm font-medium transition-colors ${
+                  periodView === 'quarterly' ? 'bg-white text-blue-600 shadow-sm' : 'text-gray-600 hover:text-gray-900'
+                }`}
+              >
+                <Calendar className="w-4 h-4 inline mr-2" />
+                Quarterly
+              </button>
+              <button 
+                onClick={() => setPeriodView('yearly')}
+                className={`px-4 py-2 rounded-md text-sm font-medium transition-colors ${
+                  periodView === 'yearly' ? 'bg-white text-blue-600 shadow-sm' : 'text-gray-600 hover:text-gray-900'
+                }`}
+              >
+                <Calendar className="w-4 h-4 inline mr-2" />
+                Yearly
+              </button>
+            </div>
+          </div>
+        </div>
 
         {/* Summary Cards */}
         <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
@@ -740,7 +797,9 @@ const CommissionsPage = () => {
               <span className="text-sm font-normal text-gray-600 ml-2">
                 {isManager && managerView !== 'personal' ? 
                   `(${commissions?.length || 0} total records)` :
-                  `(Last ${paymentSchedule === 'quarterly' ? '4 quarters' : '12 months'})`
+                  periodView === 'yearly' ? '(Last 3 years)' :
+                  periodView === 'quarterly' ? '(Last 4 quarters)' :
+                  '(Last 12 months)'
                 }
               </span>
             </h3>
@@ -753,6 +812,7 @@ const CommissionsPage = () => {
               isCalculating={calculateHistoricalCommissionsMutation.isPending}
               teamMemberCount={teamMembers.length > 0 ? teamMembers.length : undefined}
               teamMembers={isManager && (managerView === 'team' || managerView === 'all') ? teamMembers : undefined}
+              periodView={periodView}
             />
           </div>
         </div>

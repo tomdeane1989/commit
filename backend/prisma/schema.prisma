@@ -87,6 +87,8 @@ model deals {
   deal_age_days        Int?
   stage_history        Json?
   amount_changes       Json?
+  projected_commission Decimal?               @default(0) @db.Decimal(12, 2)
+  actual_commission    Decimal?               @default(0) @db.Decimal(12, 2)
   created_at           DateTime               @default(now())
   updated_at           DateTime               @updatedAt
   user_id              String
@@ -104,6 +106,8 @@ model deals {
   @@index([crm_id])
   @@index([amount])
   @@index([probability])
+  @@index([projected_commission])
+  @@index([actual_commission])
   @@index([user_id, status, close_date])
   @@index([company_id, created_at])
   @@index([user_id, crm_type])
@@ -181,6 +185,9 @@ model commissions {
   approved_by        String?
   paid_at            DateTime?
   ai_insights        Json?
+  commission_type    String               @default("actual")
+  last_calculated_at DateTime             @default(now())
+  calculation_trigger String?
   created_at         DateTime             @default(now())
   updated_at         DateTime             @updatedAt
   user_id            String
@@ -191,9 +198,12 @@ model commissions {
   target             targets              @relation(fields: [target_id], references: [id])
   user               users                @relation(fields: [user_id], references: [id])
 
+  @@unique([user_id, period_start, period_end, commission_type])
   @@index([user_id])
   @@index([period_start, period_end])
   @@index([status])
+  @@index([commission_type])
+  @@index([last_calculated_at])
 }
 
 model commission_details {

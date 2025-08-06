@@ -61,6 +61,11 @@ export const InviteModal: React.FC<InviteModalProps> = ({
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
+    console.log('InviteModal - Submitting form data:', formData);
+    console.log('InviteModal - Form data keys:', Object.keys(formData));
+    console.log('InviteModal - Email value:', formData.email);
+    console.log('InviteModal - First name value:', formData.first_name);
+    console.log('InviteModal - Last name value:', formData.last_name);
     onSubmit(formData);
     
     // Reset form
@@ -80,7 +85,6 @@ export const InviteModal: React.FC<InviteModalProps> = ({
       email: '',
       first_name: '',
       last_name: '',
-      role: 'sales_rep',
       is_admin: false,
       is_manager: false,
       manager_id: '',

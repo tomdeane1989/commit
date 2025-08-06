@@ -627,6 +627,9 @@ router.post('/invite', requireTeamManagement, async (req, res) => {
   try {
     // Permission already checked by middleware
     console.log('🔍 BACKEND - Invite request body:', req.body);
+    console.log('🔍 BACKEND - Request headers:', req.headers);
+    console.log('🔍 BACKEND - Body type:', typeof req.body);
+    console.log('🔍 BACKEND - Body keys:', Object.keys(req.body || {}));
 
     const { email, first_name, last_name, is_admin, is_manager, manager_id, team_ids } = req.body;
 

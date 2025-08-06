@@ -4,6 +4,7 @@ import { PrismaClient } from '@prisma/client';
 import Joi from 'joi';
 import { attachPermissions, requireOwnerOrManager } from '../middleware/permissions.js';
 import { canManageTeam } from '../middleware/roleHelpers.js';
+import commissionCalculator from '../services/commissionCalculator.js';
 
 const router = express.Router();
 const prisma = new PrismaClient();
@@ -328,6 +329,9 @@ router.post('/', async (req, res) => {
       }
     });
 
+    // Trigger automatic commission calculation
+    await commissionCalculator.handleDealChange(deal, null, 'deal_created');
+
     res.status(201).json(deal);
   } catch (error) {
     console.error('Create deal error:', error);
@@ -373,6 +377,9 @@ router.put('/:id', async (req, res) => {
         success: true
       }
     });
+
+    // Trigger automatic commission calculation
+    await commissionCalculator.handleDealChange(deal, existingDeal, 'deal_updated');
 
     res.json(deal);
   } catch (error) {
@@ -514,6 +521,13 @@ router.patch('/:dealId/categorize', async (req, res) => {
         success: true
       }
     });
+
+    // Trigger commission recalculation since category affects projections
+    await commissionCalculator.handleDealChange(
+      { ...deal, category: deal_type },
+      { ...deal, category: previous_category },
+      'deal_categorized'
+    );
 
     // Check if this is a manager categorizing someone else's deal
     const isManagerAction = req.user.id !== dealOwnerId;

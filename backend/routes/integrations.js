@@ -4,6 +4,7 @@ import { PrismaClient } from '@prisma/client';
 import GoogleSheetsService from '../services/googleSheets.js';
 import Joi from 'joi';
 import { requireIntegrationManagement, attachPermissions } from '../middleware/permissions.js';
+import commissionCalculator from '../services/commissionCalculator.js';
 
 const router = express.Router();
 const prisma = new PrismaClient();
@@ -378,6 +379,7 @@ async function syncGoogleSheets(integration, user) {
     let createdCount = 0;
     let updatedCount = 0;
     const dealErrors = [];
+    const syncedDeals = [];
 
     for (const deal of deals) {
       try {
@@ -409,6 +411,9 @@ async function syncGoogleSheets(integration, user) {
         } else {
           createdCount++;
         }
+        
+        // Track synced deals for commission calculation
+        syncedDeals.push(result);
       } catch (error) {
         // Handle unique constraint violations gracefully
         if (error.code === 'P2002' && error.meta?.target?.includes('crm_id')) {
@@ -426,6 +431,17 @@ async function syncGoogleSheets(integration, user) {
               }
             });
             updatedCount++;
+            
+            // Get the updated deal for commission calculation
+            const updatedDeal = await prisma.deals.findFirst({
+              where: {
+                crm_id: deal.crm_id,
+                company_id: deal.company_id
+              }
+            });
+            if (updatedDeal) {
+              syncedDeals.push(updatedDeal);
+            }
           } catch (updateError) {
             dealErrors.push({
               deal: deal.deal_name,
@@ -438,6 +454,17 @@ async function syncGoogleSheets(integration, user) {
             error: error.message
           });
         }
+      }
+    }
+
+    // Trigger commission calculations for all synced deals
+    if (syncedDeals.length > 0) {
+      console.log(`🔄 Triggering commission calculations for ${syncedDeals.length} synced deals`);
+      try {
+        await commissionCalculator.batchRecalculate(syncedDeals, 'sync');
+      } catch (calcError) {
+        console.error('Commission calculation error during sync:', calcError);
+        // Don't fail the sync if commission calculation fails
       }
     }
 
@@ -467,7 +494,8 @@ async function syncGoogleSheets(integration, user) {
         context: {
           created: createdCount,
           updated: updatedCount,
-          errors: errors.length + dealErrors.length
+          errors: errors.length + dealErrors.length,
+          commissions_calculated: syncedDeals.length
         },
         success: true
       }
