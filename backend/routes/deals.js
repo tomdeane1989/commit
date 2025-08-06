@@ -4,7 +4,7 @@ import { PrismaClient } from '@prisma/client';
 import Joi from 'joi';
 import { attachPermissions, requireOwnerOrManager } from '../middleware/permissions.js';
 import { canManageTeam } from '../middleware/roleHelpers.js';
-import commissionCalculator from '../services/commissionCalculator.js';
+import dealCommissionCalculator from '../services/dealCommissionCalculator.js';
 
 const router = express.Router();
 const prisma = new PrismaClient();
@@ -329,8 +329,11 @@ router.post('/', async (req, res) => {
       }
     });
 
-    // Trigger automatic commission calculation
-    await commissionCalculator.handleDealChange(deal, null, 'deal_created');
+    // If deal is created as closed_won, calculate commission
+    if (deal.stage === 'closed_won') {
+      await dealCommissionCalculator.calculateDealCommission(deal.id);
+    }
+
 
     res.status(201).json(deal);
   } catch (error) {
@@ -378,8 +381,11 @@ router.put('/:id', async (req, res) => {
       }
     });
 
-    // Trigger automatic commission calculation
-    await commissionCalculator.handleDealChange(deal, existingDeal, 'deal_updated');
+    // Check if stage changed and calculate commission
+    if (existingDeal.stage !== deal.stage) {
+      await dealCommissionCalculator.handleDealUpdate(deal.id, existingDeal.stage, deal.stage);
+    }
+
 
     res.json(deal);
   } catch (error) {
@@ -522,12 +528,6 @@ router.patch('/:dealId/categorize', async (req, res) => {
       }
     });
 
-    // Trigger commission recalculation since category affects projections
-    await commissionCalculator.handleDealChange(
-      { ...deal, category: deal_type },
-      { ...deal, category: previous_category },
-      'deal_categorized'
-    );
 
     // Check if this is a manager categorizing someone else's deal
     const isManagerAction = req.user.id !== dealOwnerId;

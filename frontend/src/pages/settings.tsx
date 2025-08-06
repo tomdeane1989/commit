@@ -257,6 +257,9 @@ const SettingsPage = () => {
   const TargetCard = ({ target }: { target: any }) => {
     const progress = target.current_achievement ? (target.current_achievement / target.quota_amount) * 100 : 0;
     
+    // Check if target is historical (period has ended)
+    const isHistorical = new Date(target.period_end) < new Date();
+    
     // Determine target type for display
     const getTargetType = () => {
       if (target.team_target) return 'Team Aggregated';
@@ -283,8 +286,12 @@ const SettingsPage = () => {
     };
     
     return (
-      <div className={`bg-white rounded-2xl border border-gray-200 p-6 shadow-sm hover:shadow-md transition-shadow ${
-        target.team_target ? 'ring-2 ring-purple-200 border-purple-300' : ''
+      <div className={`bg-white rounded-2xl border p-6 shadow-sm hover:shadow-md transition-shadow ${
+        isHistorical 
+          ? 'border-gray-300 bg-gray-50/50' 
+          : target.team_target 
+            ? 'ring-2 ring-purple-200 border-purple-300' 
+            : 'border-gray-200'
       }`}>
         <div className="flex items-start justify-between mb-4">
           <div className="flex-1">
@@ -309,18 +316,28 @@ const SettingsPage = () => {
             )}
           </div>
           <div className="flex items-center space-x-2">
-            <button
-              onClick={() => startEdit(target)}
-              className="p-2 text-gray-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors"
-            >
-              <Edit className="w-4 h-4" />
-            </button>
-            <button
-              onClick={() => deleteTargetMutation.mutate(target.id)}
-              className="p-2 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors"
-            >
-              <Trash2 className="w-4 h-4" />
-            </button>
+            {isHistorical ? (
+              <div className="flex items-center space-x-2 px-3 py-1 bg-gray-100 rounded-lg">
+                <span className="text-xs text-gray-500">Historical</span>
+              </div>
+            ) : (
+              <>
+                <button
+                  onClick={() => startEdit(target)}
+                  className="p-2 text-gray-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors"
+                  title="Edit target"
+                >
+                  <Edit className="w-4 h-4" />
+                </button>
+                <button
+                  onClick={() => deleteTargetMutation.mutate(target.id)}
+                  className="p-2 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors"
+                  title="Deactivate target"
+                >
+                  <Trash2 className="w-4 h-4" />
+                </button>
+              </>
+            )}
           </div>
         </div>
 

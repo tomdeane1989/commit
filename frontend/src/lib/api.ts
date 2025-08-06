@@ -191,33 +191,31 @@ export const targetsApi = {
 
 // Commissions API
 export const commissionsApi = {
-  getCommissions: async (filters?: { period_start?: string; period_end?: string }): Promise<ApiResponse<Commission[]>> => {
+  getCommissions: async (filters?: { 
+    period_start?: string; 
+    period_end?: string;
+    user_id?: string;
+    period_view?: 'monthly' | 'quarterly' | 'yearly';
+    commission_type?: string;
+  }): Promise<ApiResponse<Commission[]>> => {
     const params = new URLSearchParams();
-    if (filters?.period_start) params.append('period_start', filters.period_start);
-    if (filters?.period_end) params.append('period_end', filters.period_end);
+    if (filters?.period_start) params.append('start_date', filters.period_start);
+    if (filters?.period_end) params.append('end_date', filters.period_end);
+    if (filters?.user_id) params.append('user_id', filters.user_id);
+    if (filters?.period_view) params.append('period_view', filters.period_view);
+    if (filters?.commission_type) params.append('commission_type', filters.commission_type);
     
     const response = await api.get(`/commissions?${params.toString()}`);
     return response.data;
   },
 
-  calculateCommissions: async (data: { period_start: string; period_end: string }): Promise<Commission> => {
-    console.log('🚀 Making API call to:', `${API_BASE_URL}/api/commissions/calculate`);
-    console.log('🚀 Request data:', data);
-    const response = await api.post('/commissions/calculate', data);
-    return response.data;
-  },
-
-  approveCommission: async (commissionId: string): Promise<Commission> => {
-    const response = await api.patch(`/commissions/${commissionId}/approve`);
-    return response.data;
-  },
   exportCommissions: async (filters?: { start_date?: string; end_date?: string; status?: string }) => {
     const params = new URLSearchParams();
     if (filters?.start_date) params.append('start_date', filters.start_date);
     if (filters?.end_date) params.append('end_date', filters.end_date);
     if (filters?.status) params.append('status', filters.status);
     
-    const response = await api.get(`/commissions/export?${params.toString()}`, {
+    const response = await api.get(`/commissions?${params.toString()}&is_export=true`, {
       responseType: 'blob'
     });
     

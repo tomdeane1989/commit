@@ -2,20 +2,28 @@ import React from 'react';
 import { BarChart3, Calendar } from 'lucide-react';
 
 interface Commission {
-  id: string;
+  period_key: string;
   period_start: string;
   period_end: string;
-  quota_amount: number;
-  actual_amount: number;
-  attainment_pct: number;
-  commission_rate: number;
-  commission_earned: number;
+  user_id: string;
   user?: {
     id: string;
     first_name: string;
     last_name: string;
     email: string;
   };
+  quota_amount: number;
+  actual_amount: number;
+  commission_earned: number;
+  commission_rate: number;
+  attainment_pct: number;
+  commission_type?: string;
+  status?: string;
+  target_id?: string;
+  deals_count?: number;
+  deals_with_commission?: number;
+  deals_without_commission?: number;
+  warning?: string;
 }
 
 interface TeamMember {
@@ -114,34 +122,8 @@ const CommissionChart: React.FC<CommissionChartProps> = ({
       return acc;
     }, {} as Record<string, Commission[]>);
     
-    // For team view, only generate expected periods for quarterly view
-    // Monthly and yearly views should rely on backend aggregation
-    if (isManager && (managerView === 'team' || managerView === 'all') && periodView === 'quarterly') {
-      const now = new Date();
-      const currentYear = now.getFullYear();
-      const currentMonth = now.getMonth();
-      const currentQuarter = Math.floor(currentMonth / 3);
-      
-      // Generate last 4 quarters including current
-      for (let i = 0; i < 4; i++) {
-        let targetYear = currentYear;
-        let targetQuarter = currentQuarter - i;
-        
-        while (targetQuarter < 0) {
-          targetQuarter += 4;
-          targetYear -= 1;
-        }
-        
-        const quarterStartMonth = targetQuarter * 3;
-        const periodStart = new Date(targetYear, quarterStartMonth, 1);
-        const periodKey = periodStart.toISOString().split('T')[0];
-        
-        // Only add if we don't already have this period
-        if (!groups[periodKey]) {
-          groups[periodKey] = [];
-        }
-      }
-    }
+    // Don't create empty periods - only work with periods that have actual data
+    // The empty period generation was causing duplicates
     
     return Object.entries(groups)
       .map(([period, comms]) => ({ 

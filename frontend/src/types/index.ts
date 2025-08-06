@@ -43,7 +43,6 @@ export interface Deal {
   company_id: string;
   ai_probability?: number;
   ai_close_date?: string;
-  projected_commission?: number;
   actual_commission?: number;
   created_at: string;
   updated_at: string;

@@ -4,6 +4,7 @@ import { PrismaClient } from '@prisma/client';
 import Joi from 'joi';
 import { isAdmin, isManager, canManageTeam } from '../middleware/roleHelpers.js';
 import { requireTargetManagement, requireOwnerOrManager, attachPermissions } from '../middleware/permissions.js';
+import dealCommissionCalculator from '../services/dealCommissionCalculator.js';
 
 const router = express.Router();
 const prisma = new PrismaClient();
@@ -842,6 +843,34 @@ router.post('/', requireTargetManagement, async (req, res) => {
       });
     }
 
+    // Backfill commission for existing closed_won deals
+    console.log('💰 Starting commission backfill for newly created targets...');
+    const backfillResults = [];
+    
+    for (const target of createdTargets) {
+      // Only backfill for parent targets or single targets (not child targets)
+      if (!target.parent_target_id) {
+        try {
+          const result = await dealCommissionCalculator.recalculateForTarget(target.id);
+          if (result.updated > 0) {
+            backfillResults.push({
+              target_id: target.id,
+              user_id: target.user_id,
+              deals_updated: result.updated
+            });
+            console.log(`✅ Backfilled commission for ${result.updated} deals for target ${target.id}`);
+          }
+        } catch (error) {
+          console.error(`❌ Error backfilling commission for target ${target.id}:`, error);
+        }
+      }
+    }
+
+    if (backfillResults.length > 0) {
+      const totalDealsUpdated = backfillResults.reduce((sum, r) => sum + r.deals_updated, 0);
+      console.log(`💰 Commission backfill complete: ${totalDealsUpdated} deals updated across ${backfillResults.length} targets`);
+    }
+
     // Check if any targets were pro-rated
     const proRatedTargets = createdTargets.filter(target => target.pro_rated_info);
     
@@ -855,6 +884,13 @@ router.post('/', requireTargetManagement, async (req, res) => {
       ...(proRatedTargets.length > 0 && {
         pro_rated_count: proRatedTargets.length,
         pro_rated_info: `${proRatedTargets.length} target${proRatedTargets.length !== 1 ? 's' : ''} pro-rated for mid-year hires`
+      }),
+      ...(backfillResults.length > 0 && {
+        commission_backfill: {
+          targets_processed: backfillResults.length,
+          total_deals_updated: backfillResults.reduce((sum, r) => sum + r.deals_updated, 0),
+          details: backfillResults
+        }
       })
     });
   } catch (error) {

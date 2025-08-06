@@ -298,16 +298,8 @@ router.get('/', requireTeamView, async (req, res) => {
         }
       });
 
-      // Batch query for commissions
-      commissionsData = await prisma.commissions.groupBy({
-        by: ['user_id'],
-        where: {
-          user_id: { in: teamMemberIds }
-        },
-        _sum: {
-          commission_earned: true
-        }
-      });
+      // Commission data now comes from deals table
+      commissionsData = [];
     }
 
     // Create lookup maps for O(1) access

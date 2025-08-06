@@ -4,7 +4,7 @@ import { PrismaClient } from '@prisma/client';
 import GoogleSheetsService from '../services/googleSheets.js';
 import Joi from 'joi';
 import { requireIntegrationManagement, attachPermissions } from '../middleware/permissions.js';
-import commissionCalculator from '../services/commissionCalculator.js';
+import dealCommissionCalculator from '../services/dealCommissionCalculator.js';
 
 const router = express.Router();
 const prisma = new PrismaClient();
@@ -457,11 +457,15 @@ async function syncGoogleSheets(integration, user) {
       }
     }
 
-    // Trigger commission calculations for all synced deals
+    // Trigger commission calculations for closed won deals
     if (syncedDeals.length > 0) {
-      console.log(`🔄 Triggering commission calculations for ${syncedDeals.length} synced deals`);
+      console.log(`🔄 Checking commission calculations for ${syncedDeals.length} synced deals`);
       try {
-        await commissionCalculator.batchRecalculate(syncedDeals, 'sync');
+        for (const deal of syncedDeals) {
+          if (deal.stage?.toLowerCase() === 'closed won' || deal.stage?.toLowerCase() === 'closed_won') {
+            await dealCommissionCalculator.calculateDealCommission(deal.id);
+          }
+        }
       } catch (calcError) {
         console.error('Commission calculation error during sync:', calcError);
         // Don't fail the sync if commission calculation fails

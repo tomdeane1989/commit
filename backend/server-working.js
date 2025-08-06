@@ -201,10 +201,7 @@ app.use('/api/team', authMiddleware, teamsRoutes);
 app.use('/api/teams', authMiddleware, teamManagementRoutes);
 app.use('/api/targets', authMiddleware, targetsRoutes);
 app.use('/api/deals', authMiddleware, dealsRoutes);
-app.use('/api/commissions', (req, res, next) => {
-  console.log('🔍 COMMISSIONS MIDDLEWARE: ', req.method, req.url, req.path);
-  next();
-}, authMiddleware, commissionsRoutes);
+app.use('/api/commissions', authMiddleware, commissionsRoutes);
 app.use('/api/integrations', authMiddleware, integrationsRoutes);
 
 // Dashboard routes

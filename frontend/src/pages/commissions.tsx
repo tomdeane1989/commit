@@ -24,38 +24,36 @@ import {
 } from 'lucide-react';
 
 interface Commission {
-  id: string;
+  period_key: string;
   period_start: string;
   period_end: string;
-  quota_amount: number;
-  actual_amount: number;
-  attainment_pct: number;
-  commission_rate: number;
-  commission_earned: number;
-  base_commission: number;
-  status: string;
-  calculated_at: string;
-  approved_at?: string;
-  commission_type?: string;
+  user_id: string;
   user: {
     id: string;
     first_name: string;
     last_name: string;
     email: string;
   };
-  target: {
-    commission_payment_schedule: string;
-  };
-  commission_details: Array<{
+  quota_amount: number;
+  actual_amount: number;
+  commission_earned: number;
+  commission_rate: number;
+  attainment_pct: number;
+  commission_type: string;
+  status: string;
+  target_id?: string;
+  deals_count: number;
+  deals_with_commission: number;
+  deals_without_commission: number;
+  warning?: string;
+  deals?: Array<{
     id: string;
-    commission_amount: number;
-    deal: {
-      id: string;
-      deal_name: string;
-      account_name: string;
-      amount: number;
-      close_date: string;
-    };
+    deal_name: string;
+    account_name: string;
+    amount: string | number;
+    close_date: string;
+    commission_amount?: string | number;
+    commission_rate?: string | number;
   }>;
 }
 
@@ -96,19 +94,51 @@ const CommissionsPage = () => {
   const { data: commissionsResponse, isLoading, error } = useQuery({
     queryKey: ['commissions', user?.id, managerView, selectedMemberId, periodView],
     queryFn: async () => {
-      const params = new URLSearchParams();
-      params.append('include_historical', 'true');
-      params.append('period_view', periodView);
-      
-      if (isManager && managerView) {
-        params.append('view', managerView);
-        if (managerView === 'member' && selectedMemberId) {
-          params.append('user_id', selectedMemberId);
+      // For team or all views, we need to get data for all team members
+      if (isManager && (managerView === 'team' || managerView === 'all')) {
+        // First get team members
+        const teamResponse = await api.get('/commissions/team-members');
+        const teamMemberIds = teamResponse.data.team_members.map((m: any) => m.id);
+        
+        // Add manager's ID for 'all' view
+        if (managerView === 'all') {
+          teamMemberIds.push(user?.id);
         }
+        
+        // Get commissions for all team members
+        const allCommissions = [];
+        for (const memberId of teamMemberIds) {
+          const memberCommissions = await commissionsApi.getCommissions({
+            period_view: periodView,
+            user_id: memberId
+          });
+          if (memberCommissions.commissions) {
+            allCommissions.push(...memberCommissions.commissions);
+          }
+        }
+        
+        return {
+          commissions: allCommissions,
+          summary: {
+            total_periods: allCommissions.length,
+            total_commission: allCommissions.reduce((sum, c) => sum + c.commission_earned, 0),
+            overall_attainment: allCommissions.length > 0 
+              ? allCommissions.reduce((sum, c) => sum + c.attainment_pct, 0) / allCommissions.length
+              : 0
+          }
+        };
+      } else {
+        // Personal or specific member view
+        const filters: any = {
+          period_view: periodView
+        };
+        
+        if (isManager && managerView === 'member' && selectedMemberId) {
+          filters.user_id = selectedMemberId;
+        }
+        
+        return await commissionsApi.getCommissions(filters);
       }
-      
-      const response = await api.get(`/commissions?${params}`);
-      return response.data;
     },
     enabled: !!user
   });
@@ -123,14 +153,13 @@ const CommissionsPage = () => {
     enabled: isManager
   });
 
-  const commissions = Array.isArray(commissionsResponse) 
-    ? commissionsResponse 
-    : commissionsResponse?.commissions || [];
+  const commissions = commissionsResponse?.commissions || [];
   const paymentScheduleFromAPI = commissionsResponse?.payment_schedule;
   const missingPeriods = commissionsResponse?.missing_periods || [];
   const teamSummary: TeamSummary[] = commissionsResponse?.team_summary || [];
   const viewContext = commissionsResponse?.view_context;
   const teamMembers: TeamMember[] = teamMembersResponse?.team_members || [];
+  const summary = commissionsResponse?.summary || {};
   
   // Debug log to check what we're getting
   console.log('Commission data:', {
@@ -157,101 +186,12 @@ const CommissionsPage = () => {
 
   const targets = targetsResponse?.targets || [];
 
-  // Calculate commission for current period
-  const calculateCurrentPeriodMutation = useMutation({
-    mutationFn: async (period: { start: string; end: string }) => {
-      return await commissionsApi.calculateCommissions({
-        period_start: period.start,
-        period_end: period.end
-      });
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['commissions', user?.id] });
-    },
-    onError: (error: any) => {
-      // Handle the specific case where no target is found
-      if (error?.response?.status === 400 && 
-          error?.response?.data?.error === 'No active target found for this period') {
-        console.log('📅 No active target found for current period - user needs to set up targets');
-      } else {
-        console.error('Commission calculation error:', error?.message || error);
-      }
-    },
-    // CRITICAL: Prevent React Query from throwing this error to error boundaries
-    throwOnError: false
-  });
-
-  // Mutation for calculating historical commissions
-  const calculateHistoricalCommissionsMutation = useMutation({
-    mutationFn: async (periods: Array<{ period_start: string; period_end: string }>) => {
-      const results = [];
-      for (const period of periods) {
-        try {
-          const result = await commissionsApi.calculateCommissions(period);
-          results.push({ success: true, period, result });
-        } catch (error) {
-          results.push({ success: false, period, error });
-        }
-      }
-      return results;
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['commissions', user?.id] });
-    },
-    throwOnError: false
-  });
-
-  // Approve commission mutation
-  const approveCommissionMutation = useMutation({
-    mutationFn: async (commissionId: string) => {
-      return await commissionsApi.approveCommission(commissionId);
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['commissions', user?.id] });
-    },
-    onError: (error: any) => {
-      console.error('Commission approval error:', error?.message || error);
-      alert('Failed to approve commission. Please try again.');
-    }
-  });
 
   // Get current payment schedule (prefer API response, fallback to targets)
   const paymentSchedule = paymentScheduleFromAPI || 
     targets?.find((t: any) => t.is_active)?.commission_payment_schedule || 
     'monthly';
 
-  // Auto-calculate historical commissions when missing periods are available
-  const [hasAutoCalculated, setHasAutoCalculated] = useState(false);
-  
-  useEffect(() => {
-    if (
-      missingPeriods && 
-      missingPeriods.length > 0 && 
-      !hasAutoCalculated &&
-      !calculateHistoricalCommissionsMutation.isPending &&
-      isManager && managerView === 'team' // Only auto-calculate for team views
-    ) {
-      // Filter periods that can be calculated (have targets)
-      const calculablePeriods = missingPeriods.filter((period: any) => 
-        period.can_calculate && !period.missing_target
-      );
-      
-      if (calculablePeriods.length > 0) {
-        console.log(`🔄 Auto-calculating ${calculablePeriods.length} historical commission periods for team view`);
-        console.log('Calculable periods:', calculablePeriods);
-        
-        // Don't auto-calculate - let users manually trigger if needed
-        // This avoids 400 errors for periods without targets
-        // setHasAutoCalculated(true);
-        // calculateHistoricalCommissionsMutation.mutate(
-        //   calculablePeriods.map((p: any) => ({
-        //     period_start: p.period_start,
-        //     period_end: p.period_end
-        //   }))
-        // );
-      }
-    }
-  }, [missingPeriods, hasAutoCalculated, calculateHistoricalCommissionsMutation.isPending, isManager, managerView]);
   
   // Calculate current period based on period view
   const getCurrentPeriod = () => {
@@ -395,10 +335,10 @@ const CommissionsPage = () => {
     }) || [] :
     commissions || [];
 
-  // Calculate totals
-  const totalEarned = commissions?.reduce((sum, c) => sum + Number(c.commission_earned), 0) || 0;
-  const averageAttainment = commissions?.length ? 
-    commissions.reduce((sum, c) => sum + Number(c.attainment_pct), 0) / commissions.length : 0;
+  // Calculate totals - use summary data from API or calculate from commissions
+  const totalEarned = summary.total_commission || commissions?.reduce((sum, c) => sum + Number(c.commission_earned), 0) || 0;
+  const averageAttainment = summary.overall_attainment || (commissions?.length ? 
+    commissions.reduce((sum, c) => sum + Number(c.attainment_pct), 0) / commissions.length : 0);
 
 
   if (isLoading) {
@@ -641,15 +581,6 @@ const CommissionsPage = () => {
                             <Clock className="w-5 h-5 mr-1" />
                             Calculated
                           </div>
-                          {user?.is_admin && (
-                            <button
-                              onClick={() => approveCommissionMutation.mutate(currentCommission.id)}
-                              disabled={approveCommissionMutation.isPending}
-                              className="px-3 py-1 text-sm bg-green-600 text-white rounded hover:bg-green-700 disabled:opacity-50 disabled:cursor-not-allowed"
-                            >
-                              {approveCommissionMutation.isPending ? 'Approving...' : 'Approve'}
-                            </button>
-                          )}
                         </>
                       )}
                     </div>
@@ -657,48 +588,48 @@ const CommissionsPage = () => {
                 </div>
 
                 {/* Deal Breakdown */}
-                <div className="mt-6">
-                  <button
-                    onClick={() => setExpandedCommission(
-                      expandedCommission === currentCommission.id ? null : currentCommission.id
-                    )}
-                    className="flex items-center text-blue-600 hover:text-blue-700 font-medium"
-                  >
-                    <Eye className="w-4 h-4 mr-1" />
-                    View Deal Breakdown ({currentCommission.commission_details.length} deals)
-                  </button>
-                  
-                  {expandedCommission === currentCommission.id && (
-                    <div className="mt-4 bg-gray-50 rounded-lg p-4">
-                      <div className="space-y-3">
-                        {currentCommission.commission_details.map((detail) => (
-                          <div key={detail.id} className="flex items-center justify-between py-2 border-b border-gray-200 last:border-b-0">
-                            <div>
-                              <p className="font-medium text-gray-900">{detail.deal.account_name}</p>
-                              <p className="text-sm text-gray-600">{detail.deal.deal_name}</p>
+                {currentCommission.deals && currentCommission.deals.length > 0 && (
+                  <div className="mt-6">
+                    <button
+                      onClick={() => setExpandedCommission(
+                        expandedCommission === currentCommission.period_key ? null : currentCommission.period_key
+                      )}
+                      className="flex items-center text-blue-600 hover:text-blue-700 font-medium"
+                    >
+                      <Eye className="w-4 h-4 mr-1" />
+                      View Deal Breakdown ({currentCommission.deals.length} deals)
+                    </button>
+                    
+                    {expandedCommission === currentCommission.period_key && (
+                      <div className="mt-4 bg-gray-50 rounded-lg p-4">
+                        <div className="space-y-3">
+                          {currentCommission.deals.map((deal) => (
+                            <div key={deal.id} className="flex items-center justify-between py-2 border-b border-gray-200 last:border-b-0">
+                              <div>
+                                <p className="font-medium text-gray-900">{deal.account_name}</p>
+                                <p className="text-sm text-gray-600">{deal.deal_name}</p>
+                              </div>
+                              <div className="text-right">
+                                <p className="font-medium text-gray-900">
+                                  £{Number(deal.commission_amount || 0).toLocaleString()}
+                                </p>
+                                <p className="text-sm text-gray-600">
+                                  {new Date(deal.close_date).toLocaleDateString('en-GB')}
+                                </p>
+                              </div>
                             </div>
-                            <div className="text-right">
-                              <p className="font-medium text-gray-900">
-                                £{Number(detail.commission_amount).toLocaleString()}
-                              </p>
-                              <p className="text-sm text-gray-600">
-                                {new Date(detail.deal.close_date).toLocaleDateString('en-GB')}
-                              </p>
-                            </div>
-                          </div>
-                        ))}
+                          ))}
+                        </div>
                       </div>
-                    </div>
-                  )}
-                </div>
+                    )}
+                  </div>
+                )}
               </div>
             ) : (
               <div className="text-center py-8">
                 <AlertCircle className="w-12 h-12 text-gray-400 mx-auto mb-4" />
                 
-                {calculateCurrentPeriodMutation.isError && 
-                 (calculateCurrentPeriodMutation.error as any)?.response?.status === 400 && 
-                 (calculateCurrentPeriodMutation.error as any)?.response?.data?.error === 'No active target found for this period' ? (
+                {!hasActiveTargetForCurrentPeriod ? (
                   <div className="bg-amber-50 border border-amber-200 rounded-lg p-6 mb-6 text-left max-w-md mx-auto">
                     <div className="flex items-start">
                       <Target className="w-5 h-5 text-amber-600 mt-0.5 mr-3 flex-shrink-0" />
@@ -729,13 +660,6 @@ const CommissionsPage = () => {
                   </div>
                 ) : (
                   <p className="text-gray-600">No commission calculated for current period</p>
-                )}
-                
-                {calculateHistoricalCommissionsMutation.isPending && (
-                  <p className="text-sm text-gray-600 mt-2">
-                    <span className="inline-block animate-spin mr-2">⏳</span>
-                    Calculating commissions...
-                  </p>
                 )}
               </div>
             )}
@@ -809,7 +733,7 @@ const CommissionsPage = () => {
               commissions={historicalCommissions}
               isManager={isManager}
               managerView={managerView}
-              isCalculating={calculateHistoricalCommissionsMutation.isPending}
+              isCalculating={false}
               teamMemberCount={teamMembers.length > 0 ? teamMembers.length : undefined}
               teamMembers={isManager && (managerView === 'team' || managerView === 'all') ? teamMembers : undefined}
               periodView={periodView}
@@ -849,7 +773,7 @@ const CommissionsPage = () => {
                 </thead>
                 <tbody className="bg-white divide-y divide-gray-200">
                   {commissions.map((commission) => (
-                    <tr key={commission.id}>
+                    <tr key={`${commission.user_id}-${commission.period_key}`}>
                       <td className="px-6 py-4 whitespace-nowrap">
                         <div className="text-sm font-medium text-gray-900">
                           {commission.user.first_name} {commission.user.last_name}
@@ -864,7 +788,7 @@ const CommissionsPage = () => {
                           £{Number(commission.commission_earned).toLocaleString()}
                         </div>
                         <div className="text-sm text-gray-500">
-                          Base: £{Number(commission.base_commission).toLocaleString()}
+                          Rate: {(commission.commission_rate * 100).toFixed(2)}%
                         </div>
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap">
@@ -887,14 +811,9 @@ const CommissionsPage = () => {
                         )}
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
-                        {commission.status !== 'approved' && (
-                          <button
-                            onClick={() => approveCommissionMutation.mutate(commission.id)}
-                            disabled={approveCommissionMutation.isPending}
-                            className="text-green-600 hover:text-green-900 disabled:opacity-50 disabled:cursor-not-allowed"
-                          >
-                            {approveCommissionMutation.isPending ? 'Approving...' : 'Approve'}
-                          </button>
+                        {/* Approval functionality not yet implemented for new commission system */}
+                        {commission.warning && (
+                          <span className="text-amber-600 text-xs">{commission.warning}</span>
                         )}
                       </td>
                     </tr>

@@ -95,15 +95,17 @@ const DealsPage = () => {
   };
 
   // Helper function to get commission value from deal
-  const getDealCommission = (deal: Deal) => {
-    // Use actual_commission for closed deals, projected_commission for open deals
+  const getDealCommission = (deal: Deal, commissionRate?: number) => {
+    // Use actual_commission for closed deals
     if (deal.status === 'closed_won' && deal.actual_commission !== undefined) {
       return Number(deal.actual_commission);
-    } else if (deal.status === 'open' && deal.projected_commission !== undefined) {
-      return Number(deal.projected_commission);
     }
-    // Fallback to calculated value if commission fields not available
-    return Number(deal.amount) * 0.10;
+    // For open deals, calculate based on provided commission rate
+    if (commissionRate !== undefined) {
+      return Number(deal.amount) * commissionRate;
+    }
+    // No fallback - return 0 if no commission rate provided
+    return 0;
   };
 
   // Calculate quota amount based on selected period
@@ -377,6 +379,32 @@ const DealsPage = () => {
   // Fallback to default if no quota found  
   // Note: quotaAmount now comes from current period targets (quarterly), not annual
   const currentPeriodQuotaTarget = quotaAmount || 60000; // Default quarterly fallback
+  
+  // Get commission rate based on current view
+  let commissionRate = 0;
+  if (isManager && managerView) {
+    if (managerView === 'personal') {
+      const managerTarget = targets.find((t: any) => t.is_active && t.user_id === user?.id);
+      commissionRate = Number(managerTarget?.commission_rate) || 0;
+    } else if (managerView === 'member' && selectedMemberId) {
+      const memberTarget = targets.find((t: any) => t.is_active && t.user_id === selectedMemberId);
+      commissionRate = Number(memberTarget?.commission_rate) || 0;
+    } else if (managerView === 'team' || managerView === 'all') {
+      // For team/all views, use average commission rate
+      const relevantTargets = managerView === 'team' 
+        ? targets.filter((t: any) => t.is_active && t.user_id !== user?.id)
+        : targets.filter((t: any) => t.is_active);
+      
+      if (relevantTargets.length > 0) {
+        const totalRate = relevantTargets.reduce((sum: number, target: any) => sum + Number(target.commission_rate), 0);
+        commissionRate = totalRate / relevantTargets.length;
+      }
+    }
+  } else {
+    // Non-manager: their own commission rate
+    const currentTarget = targets.find((t: any) => t.is_active && t.user_id === user?.id);
+    commissionRate = Number(currentTarget?.commission_rate) || 0;
+  }
 
   // ML Training Data Logging
   const logCategorizationChange = async (dealId: string, fromCategory: string, toCategory: string) => {
@@ -531,7 +559,7 @@ const DealsPage = () => {
   };
 
   const DealCard = ({ deal }: { deal: Deal }) => {
-    const commission = getDealCommission(deal);
+    const commission = getDealCommission(deal, commissionRate);
     const daysToCloseRaw = deal.close_date ? 
       Math.ceil((new Date(deal.close_date).getTime() - new Date().getTime()) / (1000 * 60 * 60 * 24)) : 
       null;
@@ -669,7 +697,7 @@ const DealsPage = () => {
 
   const DealsSection = ({ title, icon: Icon, deals, bgColor, borderColor, iconColor, textColor, category, badge, description, tooltipContent }: any) => {
     const totalValue = deals.reduce((sum: number, deal: Deal) => sum + Number(deal.amount), 0);
-    const totalCommission = deals.reduce((sum: number, deal: Deal) => sum + getDealCommission(deal), 0);
+    const totalCommission = deals.reduce((sum: number, deal: Deal) => sum + getDealCommission(deal, commissionRate), 0);
     
     return (
       <div className={`bg-white rounded-xl border-2 shadow-lg overflow-hidden transition-all duration-300 ${
@@ -786,8 +814,8 @@ const DealsPage = () => {
     const projectedProgress = (totalProjectedAttainment / ringScale) * 100; // Outer ring: total projected scaled to ring
     
     // Commission calculations - sum actual commissions from deals
-    const actualCommission = dealsByCategory.closed.reduce((sum: number, deal: Deal) => sum + getDealCommission(deal), 0);
-    const projectedCommission = [...dealsByCategory.commit, ...dealsByCategory.best_case].reduce((sum: number, deal: Deal) => sum + getDealCommission(deal), 0);
+    const actualCommission = dealsByCategory.closed.reduce((sum: number, deal: Deal) => sum + getDealCommission(deal, commissionRate), 0);
+    const projectedCommission = [...dealsByCategory.commit, ...dealsByCategory.best_case].reduce((sum: number, deal: Deal) => sum + getDealCommission(deal, commissionRate), 0);
     const totalCommission = actualCommission + projectedCommission;
 
     const [hoveredSegment, setHoveredSegment] = useState<string | null>(null);
@@ -1045,7 +1073,7 @@ const DealsPage = () => {
                     £{commitAmount.toLocaleString()}
                   </div>
                   <div className="text-xs text-amber-600 font-semibold">
-                    Potential: £{dealsByCategory.commit.reduce((sum: number, deal: Deal) => sum + getDealCommission(deal), 0).toLocaleString()}
+                    Potential: £{dealsByCategory.commit.reduce((sum: number, deal: Deal) => sum + getDealCommission(deal, commissionRate), 0).toLocaleString()}
                   </div>
                 </div>
               ) : hoveredSegment === 'bestcase-outer' ? (
@@ -1060,7 +1088,7 @@ const DealsPage = () => {
                     £{bestCaseAmount.toLocaleString()}
                   </div>
                   <div className="text-xs text-purple-600 font-semibold">
-                    Potential: £{dealsByCategory.best_case.reduce((sum: number, deal: Deal) => sum + getDealCommission(deal), 0).toLocaleString()}
+                    Potential: £{dealsByCategory.best_case.reduce((sum: number, deal: Deal) => sum + getDealCommission(deal, commissionRate), 0).toLocaleString()}
                   </div>
                 </div>
               ) : hoveredSegment === 'projected' ? (
@@ -1384,7 +1412,7 @@ const DealsPage = () => {
                 £{closedAmount.toLocaleString()}
               </div>
               <div className="text-sm text-green-100">
-                Commission: £{dealsByCategory.closed.reduce((sum: number, deal: Deal) => sum + getDealCommission(deal), 0).toLocaleString()}
+                Commission: £{dealsByCategory.closed.reduce((sum: number, deal: Deal) => sum + getDealCommission(deal, commissionRate), 0).toLocaleString()}
               </div>
             </div>
 
@@ -1398,7 +1426,7 @@ const DealsPage = () => {
                 £{(commitAmount + bestCaseAmount).toLocaleString()}
               </div>
               <div className="text-sm text-green-100">
-                Commission: £{[...dealsByCategory.commit, ...dealsByCategory.best_case].reduce((sum: number, deal: Deal) => sum + getDealCommission(deal), 0).toLocaleString()}
+                Commission: £{[...dealsByCategory.commit, ...dealsByCategory.best_case].reduce((sum: number, deal: Deal) => sum + getDealCommission(deal, commissionRate), 0).toLocaleString()}
               </div>
             </div>
 
