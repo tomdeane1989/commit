@@ -378,7 +378,7 @@ const DealsPage = () => {
   
   // Fallback to default if no quota found  
   // Note: quotaAmount now comes from current period targets (quarterly), not annual
-  const currentPeriodQuotaTarget = quotaAmount || 60000; // Default quarterly fallback
+  const currentPeriodQuotaTarget = quotaAmount || 0; // No fallback - show 0 if no quota set
   
   // Get commission rate based on current view
   let commissionRate = 0;
