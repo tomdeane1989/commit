@@ -9,7 +9,7 @@
 
 ## 🏢 **Project Overview**
 **Name**: Sales Commission SaaS  
-**Purpose**: Sales pipeline and commission tracking solution for small to medium b2b companies
+**Purpose**: Sales pipeline and commission tracking solution for small to medium B2B companies
 **Core Value**: Simple pipeline clarity for sales reps, outcome forecasting for management  
 **Key Principle**: NOT a CRM - focuses purely on commission tracking and pipeline commitment. Integration for CRM data is fundamental.
 
@@ -20,9 +20,11 @@
 ### **✅ What's Working Right Now**
 - **Authentication**: JWT-based login with localStorage (test@company.com / password123)
 - **Dashboard**: Live data from PostgreSQL with modern gradient UI
-- **Deal Management**: 5-column drag-and-drop categorization (Pipeline → Commit → Best Case → Closed Won (managed by CRM))
+- **Deal Management**: 5-column drag-and-drop categorization (Pipeline → Commit → Best Case → Closed Won)
 - **Team Management**: Role-based access with admin permissions
 - **Target Management**: Quota planning wizard with UK fiscal year support
+- **Commission System**: Deal-based commission tracking with automatic calculation on deal closure
+- **CRM Integration**: Google Sheets integration with Deal ID support
 - **Database**: PostgreSQL with Prisma ORM, fully seeded with test data
 - **Deployment**: Live on Vercel (frontend) + Render (backend)
 
@@ -59,42 +61,51 @@
 /backend/
 ├── server-working.js              # Main server file (START HERE)
 ├── prisma/schema.prisma           # Database schema
-├── seed-data.js                   # Database seeding (safe to re-run)
+├── seed-data-safe.js              # Safe database seeding (checks existing data)
 ├── routes/
-│   ├── auth.js                   # Authentication endpoints
-│   ├── dashboard.js              # Dashboard data
-│   ├── deals.js                  # Deal management + categorization
-│   ├── teams.js                  # Team management + permissions
-│   ├── targets.js                # Quota/target management
-│   └── analytics.js              # ML training data collection
+│   ├── auth.js                    # Authentication endpoints
+│   ├── deals.js                   # Deal management + categorization + commission
+│   ├── teams.js                   # Team views and member management
+│   ├── team-management.js         # Team CRUD operations
+│   ├── targets.js                 # Quota/target management with backfill
+│   ├── commissions.js             # Commission queries from deals table
+│   ├── integrations.js            # CRM integrations (Google Sheets)
+│   └── admin.js                   # Admin utilities
+├── services/
+│   ├── dealCommissionCalculator.js # Automatic commission calculation
+│   └── googleSheets.js            # Google Sheets integration service
 ├── middleware/
-│   ├── secureAuth.js             # JWT authentication middleware
-│   └── roleHelpers.js            # Permission checking functions
-└── .env                          # Environment variables (see below)
+│   ├── secureAuth.js              # JWT authentication middleware
+│   ├── permissions.js             # Centralized permission management
+│   └── roleHelpers.js             # Permission checking functions
+└── .env                           # Environment variables
 ```
 
 ### **Frontend Key Files**
 ```
 /frontend/
 ├── src/pages/
-│   ├── login.tsx                 # Authentication page
-│   ├── dashboard.tsx             # Main dashboard with live metrics
-│   ├── deals/index.tsx           # 5-column drag-and-drop interface
-│   ├── team.tsx                  # Team management (modular components)
-│   └── settings.tsx              # Target/quota management wizard
+│   ├── login.tsx                  # Authentication page
+│   ├── dashboard.tsx              # Main dashboard with live metrics
+│   ├── deals/index.tsx            # 5-column drag-and-drop interface
+│   ├── team.tsx                   # Team management (modular components)
+│   ├── commissions.tsx            # Commission tracking and history
+│   ├── settings.tsx               # Target/quota management wizard
+│   └── integrations.tsx           # CRM integration management
 ├── src/components/
-│   ├── layout.tsx                # Sidebar navigation
-│   ├── ProtectedRoute.tsx        # Route authentication
-│   └── team/                     # Modular team components
+│   ├── layout.tsx                 # Sidebar navigation
+│   ├── ProtectedRoute.tsx         # Route authentication
+│   ├── CommissionChart.tsx        # Commission visualization
+│   └── team/                      # Modular team components
 │       ├── TeamMemberCard.tsx
 │       ├── TeamStats.tsx
-│       ├── QuotaWizard.tsx       # 4-step quota planning
-│       └── [4 other components]
+│       ├── QuotaWizard.tsx        # 4-step quota planning
+│       └── TeamTargetInterceptModal.tsx
 ├── src/hooks/
-│   └── useAuth.tsx               # Authentication state
+│   └── useAuth.tsx                # Authentication state
 ├── src/lib/
-│   └── api.ts                    # API client with JWT headers
-└── src/types/                    # TypeScript definitions
+│   └── api.ts                     # API client with JWT headers
+└── src/types/                     # TypeScript definitions
 ```
 
 ## 🔧 **Environment Configuration**
@@ -111,6 +122,9 @@ NODE_ENV=development
 
 # CORS
 FRONTEND_URL=http://localhost:3000
+
+# Google Sheets API (optional)
+GOOGLE_SHEETS_CREDENTIALS='{...}' # Service account JSON
 ```
 
 ### **Frontend (.env.local)**
@@ -120,7 +134,7 @@ NEXT_PUBLIC_API_URL=http://localhost:3002
 ```
 
 ### **Production Environment Variables**
-- **Render Backend**: DATABASE_URL, JWT_SECRET, NODE_ENV=production
+- **Render Backend**: DATABASE_URL, JWT_SECRET, NODE_ENV=production, GOOGLE_SHEETS_CREDENTIALS
 - **Vercel Frontend**: NEXT_PUBLIC_API_URL=https://sales-commission-backend-latest.onrender.com
 
 ## 🚀 **Development Workflow**
@@ -137,13 +151,13 @@ createdb sales_commission_db
 cd backend
 npm install
 npx prisma migrate deploy    # Create schema
-node seed-data.js           # Add test data (safe to re-run)
-node server-working.js      # Start backend (port 3002)
+node seed-data-safe.js       # Add test data (checks existing)
+node server-working.js       # Start backend (port 3002)
 
 # 4. Frontend setup (new terminal)
 cd frontend
 npm install
-npm run dev                 # Start frontend (port 3000)
+npm run dev                  # Start frontend (port 3000)
 
 # 5. Access application
 # Local: http://localhost:3000
@@ -168,10 +182,29 @@ git push origin main        # Triggers auto-deploy
 ### **Core Tables**
 - **companies**: Multi-tenant company data
 - **users**: Sales reps with roles (sales_rep, manager) + is_admin flag
-- **deals**: CRM-synced deal data with categorization tracking
+- **deals**: CRM-synced deals with commission fields (commission_amount, commission_rate, commission_calculated_at)
 - **deal_categorizations**: ML training data for rep decisions
-- **targets**: Quota/commission settings with UK fiscal year support
-- **commissions**: Calculated commission payments
+- **targets**: Individual quota/commission settings (team_target field deprecated - see Team Target Architecture)
+- **crm_integrations**: Integration configurations (Google Sheets, etc.)
+- **activity_log**: Audit trail for all system actions
+
+### **Commission Architecture**
+- Commissions are calculated and stored directly on deals (no separate commission table)
+- Commission calculation triggers:
+  - When a deal moves to closed_won status
+  - When new targets are created (backfill for existing closed deals)
+  - Daily scheduled job at 2 AM UTC (catches any missed calculations)
+- Commission fields on deals:
+  - `commission_amount`: Calculated commission value
+  - `commission_rate`: Rate used for calculation
+  - `commission_calculated_at`: Timestamp of calculation
+
+### **Team Target Architecture**
+- All targets are individual targets (no separate team aggregation records)
+- Team targets are calculated dynamically by summing individual team member targets
+- `team_target` field is deprecated but retained for backwards compatibility
+- API endpoint `/targets/team-aggregate` provides dynamic team aggregation
+- See TEAM_TARGET_MIGRATION.md for migration details
 
 ### **Database Operations**
 ```bash
@@ -181,7 +214,7 @@ psql -d sales_commission_db -c "SELECT email FROM users;"
 # Reset database (WARNING: deletes all data)
 dropdb sales_commission_db
 createdb sales_commission_db
-cd backend && npx prisma migrate deploy && node seed-data.js
+cd backend && npx prisma migrate deploy && node seed-data-safe.js
 
 # View schema
 cd backend && npx prisma studio  # Visual database browser
@@ -223,33 +256,37 @@ git commit -m "Add migration: descriptive_name_here"
 
 ## 🎯 **Current Development Priorities**
 
-### **1. System consistency
-- ** ensure that all endpoints work effectively
-- ** ensure that the system is flexible, limiting hardcoded gates to visibility and functionality
-- ** Configure system to work better at scale
+### **1. CRM Integration Enhancement**
+- **Salesforce OAuth**: Real-time deal sync
+- **HubSpot Integration**: Webhook-based updates  
+- **Pipedrive Support**: API integration
+- **Deal ID Management**: Automatic unique ID generation for CRMs without Deal IDs
 
-### **2. Commission System Enhancement**
-- **Approval Workflows**: Multi-user commission approval
-- **Complex Commission Rules**: Tiered rates, bonuses, overrides
-- **Commission History**: historic commissions stored for analysis
-
-### **3. Advanced Analytics**
+### **2. Advanced Analytics**
 - **AI-Powered Predictions**: Deal probability scoring using collected ML data
 - **Performance Analytics**: Team performance insights
 - **Forecast Accuracy**: Track prediction vs actual outcomes
+
+### **3. Commission System Features**
+- **Approval Workflows**: Multi-user commission approval
+- **Complex Commission Rules**: Tiered rates, bonuses, overrides
+- **Payment Integration**: Track actual commission payments
 
 ## 🔒 **Security & Permissions**
 
 ### **Role System**
 - **sales_rep**: Basic user, can manage own deals and see own targets
-- **manager**: Can see team data, manage team members (if is_admin: true)
-- **Admin Permission**: is_admin boolean field for managers only
+- **manager**: Can see team data, manage team members (requires is_admin: true for full access)
+- **Admin Permission**: is_admin boolean field enables full system access
 
-### **Permission Helpers** (middleware/roleHelpers.js)
+### **Permission Helpers** (middleware/permissions.js & roleHelpers.js)
 ```javascript
-isAdmin(user)           // Check if user has admin permissions
-canManageTeam(user)     // Check if user can manage team
+// Centralized permission checks
+attachPermissions()      // Middleware to add user permissions to request
 requireAdmin()          // Middleware to require admin access
+requireManager()        // Middleware to require manager role
+canManageTeam(user)     // Check if user can manage team
+isAdmin(user)          // Check if user has admin permissions
 ```
 
 ## 🛠️ **Known Technical Considerations**
@@ -260,38 +297,90 @@ requireAdmin()          // Middleware to require admin access
 - ✅ Express 4.18.2 (v5.x has route parsing issues)
 - ✅ PostgreSQL local + cloud (both working)
 - ✅ JWT localStorage auth (working in development)
+- ✅ Deal-based commission architecture (no separate commission records)
 
 ### **Development Notes**
-- **Seed Script**: Safe to re-run, preserves existing data
+- **Seed Script**: Use `seed-data-safe.js` which preserves existing data
 - **Database**: Restart-persistent (survives computer restarts)
 - **Hot Reloading**: Both frontend and backend support live changes
 - **Error Handling**: Comprehensive error boundaries and API validation
 - **Modern UI**: Glassmorphism, gradients, smooth animations
+- **Commission Calculation**: Automatic on deal closure and target creation
+
+### **Date/Time Standardization (CRITICAL)**
+All date/time handling in this application follows UTC standards to ensure consistency:
+
+#### **Creating Dates**
+```javascript
+// ✅ CORRECT - Always use UTC
+const periodStart = new Date(Date.UTC(year, month, day));
+const periodEnd = new Date(Date.UTC(year, month + 1, 0, 23, 59, 59, 999));
+
+// ❌ WRONG - Never use local time
+const periodStart = new Date(year, month, day);
+```
+
+#### **Date Comparisons**
+```javascript
+// ✅ CORRECT - Use date range overlaps for period matching
+const periodsMatch = commissionStart <= currentEnd && commissionEnd >= currentStart;
+
+// ❌ WRONG - Don't use exact string matching for dates
+const periodsMatch = commissionStart.toISOString() === currentPeriod.start;
+```
+
+#### **Date Methods**
+- Always use UTC methods: `getUTCFullYear()`, `getUTCMonth()`, `getUTCDate()`
+- Never use local methods: `getFullYear()`, `getMonth()`, `getDate()`
+
+#### **Date Storage**
+- Database stores all dates in UTC
+- API returns dates in ISO 8601 format
+- Frontend displays dates using `toLocaleDateString('en-GB')` for user's local timezone
+
+This standardization prevents timezone-related bugs and ensures consistent behavior across different user locations.
 
 ### **API Endpoints Structure**
 ```bash
 # Authentication
 POST /auth/login
 POST /auth/register
+GET /auth/me
 
 # Dashboard
-GET /dashboard/metrics
+GET /dashboard/sales-rep    # Supports view parameter for managers
 
 # Deal Management  
 GET /deals
-PUT /deals/:id/categorize  # Drag-and-drop categorization
 POST /deals
+PUT /deals/:id
+PATCH /deals/:id/categorize  # Drag-and-drop categorization
 
 # Team Management
-GET /teams
-POST /teams/invite
-PUT /teams/:id
-DELETE /teams/:id
+GET /team                    # Team view with performance metrics
+GET /teams                   # Team member list
+POST /teams/invite          # Invite new member
+PATCH /teams/:id            # Update member
+DELETE /teams/:id           # Remove member
 
 # Target/Quota Management
 GET /targets
-POST /targets
+POST /targets               # Creates parent and child targets
 PUT /targets/:id
+PATCH /targets/:id/deactivate
+POST /targets/resolve-conflicts
+
+# Commission Tracking
+GET /commissions            # Query deals table for commission data
+GET /commissions/team-members
+GET /commissions/team       # Team commission summary
+
+# CRM Integrations
+GET /integrations
+POST /integrations
+POST /integrations/:id/sync
+DELETE /integrations/:id
+GET /integrations/template/sheets
 ```
 
 ## 🐳 **Docker Alternative (Optional)**
@@ -307,15 +396,16 @@ docker-compose up -d        # Start all services
 - **Deal Flow**: Deals can be dragged between categorization columns
 - **Team Management**: Admins can invite/edit team members
 - **Target Setting**: Quota wizard creates targets successfully
+- **Commission Tracking**: Automatic calculation on deal closure
 - **Data Persistence**: All changes save to database correctly
 - **Responsive UI**: Works on desktop and mobile
 
 ---
 
-**Last Updated**: 2025-08-04  
+**Last Updated**: 2025-08-06  
 **Production Status**: ✅ Fully deployed and operational  
 **Development Status**: ✅ Local environment fully functional  
-**Next Session Priority**: CRM integrations (Salesforce, HubSpot, Pipedrive)
+**Next Session Priority**: Enhanced CRM integrations (Salesforce, HubSpot, Pipedrive)
 
 ## 🚨 DATABASE PROTECTION RULES (CRITICAL)
 
@@ -324,7 +414,7 @@ docker-compose up -d        # Start all services
 2. `DROP TABLE` or `TRUNCATE` commands
 3. `deleteMany()` without specific conditions
 4. Any operation that removes production data
-5. Running `seed-data.js` directly
+5. Running `seed-data.js` directly (use `seed-data-safe.js`)
 
 **ALWAYS use these safe alternatives:**
 - Use `npm run migrate:safe` instead of direct migrate commands

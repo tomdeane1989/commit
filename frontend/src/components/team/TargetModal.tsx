@@ -78,15 +78,20 @@ export const TargetModal: React.FC<TargetModalProps> = ({
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     
-    const data = {
-      ...formData,
-      target_type: targetType,
+    // Build data object with only the fields the backend expects
+    const data: any = {
+      period_type: formData.period_type,
+      period_start: formData.period_start,
+      period_end: formData.period_end,
       quota_amount: parseFloat(formData.quota_amount),
       commission_rate: parseFloat(formData.commission_rate) / 100, // Convert percentage to decimal
-      // Clear the field that's not being used
-      user_id: targetType === 'individual' ? formData.user_id : null,
-      role: targetType === 'role' ? formData.role : null
     };
+    
+    // Only include user_id for new targets (not when editing)
+    if (!editingTarget) {
+      data.user_id = targetType === 'individual' ? formData.user_id : null;
+      data.role = targetType === 'role' ? formData.role : null;
+    }
     
     onSubmit(data);
     

@@ -30,6 +30,8 @@ interface QuotaWizardProps {
   onConflictDetected?: (conflicts: any[]) => void;
   mutationError?: any;
   mutationData?: any;
+  editMode?: boolean;
+  editingTarget?: any;
 }
 
 interface WizardData {
@@ -138,17 +140,44 @@ export const QuotaWizard: React.FC<QuotaWizardProps> = ({
   loading,
   onConflictDetected,
   mutationError,
-  mutationData
+  mutationData,
+  editMode = false,
+  editingTarget
 }) => {
   const [currentStep, setCurrentStep] = useState(1);
   const [conflictModalOpen, setConflictModalOpen] = useState(false);
   const [conflicts, setConflicts] = useState<any[]>([]);
-  const [wizardData, setWizardData] = useState<WizardData>({
-    scope: 'team',
-    year_type: 'calendar',
-    fiscal_start_month: 4, // April for UK fiscal year
-    start_date: new Date().toISOString().split('T')[0],
-    distribution: 'even',
+  
+  // Initialize wizard data based on edit mode
+  const getInitialData = (): WizardData => {
+    if (editMode && editingTarget) {
+      // When editing, skip to step 2 and pre-populate data
+      const startDate = new Date(editingTarget.period_start);
+      const endDate = new Date(editingTarget.period_end);
+      const yearDiff = endDate.getFullYear() - startDate.getFullYear();
+      
+      return {
+        scope: 'individual', // Always individual when editing
+        user_id: editingTarget.user_id,
+        year_type: 'calendar', // Default, could be enhanced
+        fiscal_start_month: 4,
+        start_date: startDate.toISOString().split('T')[0],
+        distribution: editingTarget.distribution_method || 'even',
+        annual_quota: editingTarget.quota_amount,
+        commission_rate: editingTarget.commission_rate * 100, // Convert to percentage
+        commission_payment_schedule: 'monthly',
+        seasonal_granularity: 'quarterly',
+        seasonal_allocation_method: 'percentage',
+        seasonal_allocations: {}
+      };
+    }
+    
+    return {
+      scope: 'team',
+      year_type: 'calendar',
+      fiscal_start_month: 4, // April for UK fiscal year
+      start_date: new Date().toISOString().split('T')[0],
+      distribution: 'even',
     seasonal_granularity: 'quarterly',
     seasonal_allocation_method: 'percentage',
     seasonal_allocations: {
@@ -163,11 +192,21 @@ export const QuotaWizard: React.FC<QuotaWizardProps> = ({
     commission_payment_schedule: 'monthly',
     breakdown: [],
     conflicts: []
-  });
+  };
+  };
+  
+  const [wizardData, setWizardData] = useState<WizardData>(getInitialData());
 
   const updateWizardData = (updates: Partial<WizardData>) => {
     setWizardData(prev => ({ ...prev, ...updates }));
   };
+  
+  // When editing, start at step 2 (distribution)
+  useEffect(() => {
+    if (editMode) {
+      setCurrentStep(2);
+    }
+  }, [editMode]);
 
   // Validation functions for each step
   const validateStep1 = (): { isValid: boolean; errors: string[] } => {
@@ -375,6 +414,20 @@ export const QuotaWizard: React.FC<QuotaWizardProps> = ({
   };
 
   const transformWizardDataToApiFormat = (data: WizardData) => {
+    // For edit mode, only send fields accepted by the backend update endpoint
+    if (editMode) {
+      return {
+        period_type: data.distribution === 'one-time' ? 'custom' : 'annual',
+        period_start: data.distribution === 'one-time' ? data.one_time_period_start : data.start_date,
+        period_end: data.distribution === 'one-time' ? data.one_time_period_end : calculateEndDate(data.start_date, data.year_type, data.fiscal_start_month),
+        quota_amount: data.annual_quota,
+        commission_rate: data.commission_rate / 100,
+        role: null,
+        team_target: false
+      };
+    }
+    
+    // For create mode, send all fields
     const baseData = {
       target_type: data.scope,
       user_id: data.user_id,
@@ -501,8 +554,12 @@ export const QuotaWizard: React.FC<QuotaWizardProps> = ({
         {/* Header */}
         <div className="flex items-center justify-between p-6 border-b border-gray-200">
           <div>
-            <h2 className="text-xl font-semibold text-gray-900">Quota Planning Wizard</h2>
-            <p className="text-sm text-gray-600">Step {currentStep} of 4</p>
+            <h2 className="text-xl font-semibold text-gray-900">
+              {editMode ? 'Edit Target' : 'Quota Planning Wizard'}
+            </h2>
+            <p className="text-sm text-gray-600">
+              Step {editMode ? currentStep - 1 : currentStep} of {editMode ? 3 : 4}
+            </p>
           </div>
           <button
             onClick={onClose}
@@ -515,7 +572,7 @@ export const QuotaWizard: React.FC<QuotaWizardProps> = ({
         {/* Progress Bar */}
         <div className="px-6 py-4 bg-gray-50">
           <div className="flex items-center justify-between">
-            {[1, 2, 3, 4].map((step) => (
+            {(editMode ? [2, 3, 4] : [1, 2, 3, 4]).map((step, index) => (
               <div key={step} className="flex items-center">
                 <div className={`w-8 h-8 rounded-full flex items-center justify-center text-sm font-medium ${
                   step <= currentStep
@@ -523,9 +580,9 @@ export const QuotaWizard: React.FC<QuotaWizardProps> = ({
                     : 'bg-gray-200 text-gray-500'
                 }`}
                 style={step <= currentStep ? { backgroundColor: '#82a365' } : {}}>
-                  {step < currentStep ? <CheckCircle className="w-4 h-4" /> : step}
+                  {step < currentStep ? <CheckCircle className="w-4 h-4" /> : (editMode ? index + 1 : step)}
                 </div>
-                {step < 4 && (
+                {index < (editMode ? 2 : 3) && (
                   <div className={`w-16 h-1 mx-2 ${
                     step < currentStep ? '' : 'bg-gray-200'
                   }`} 
@@ -535,16 +592,26 @@ export const QuotaWizard: React.FC<QuotaWizardProps> = ({
             ))}
           </div>
           <div className="flex justify-between mt-2 text-xs text-gray-600">
-            <span>Scope & Timing</span>
-            <span>Set Amounts</span>
-            <span>Distribution</span>
-            <span>Review</span>
+            {editMode ? (
+              <>
+                <span>Set Amounts</span>
+                <span>Distribution</span>
+                <span>Review</span>
+              </>
+            ) : (
+              <>
+                <span>Scope & Timing</span>
+                <span>Set Amounts</span>
+                <span>Distribution</span>
+                <span>Review</span>
+              </>
+            )}
           </div>
         </div>
 
         {/* Step Content */}
         <div className="p-6">
-          {currentStep === 1 && (
+          {currentStep === 1 && !editMode && (
             <Step1ScopeAndTiming 
               data={wizardData} 
               updateData={updateWizardData}
@@ -595,9 +662,9 @@ export const QuotaWizard: React.FC<QuotaWizardProps> = ({
         <div className="flex items-center justify-between p-6 border-t border-gray-200">
           <button
             onClick={prevStep}
-            disabled={currentStep === 1}
+            disabled={editMode ? currentStep === 2 : currentStep === 1}
             className={`flex items-center px-4 py-2 text-sm font-medium rounded-lg ${
-              currentStep === 1
+              (editMode ? currentStep === 2 : currentStep === 1)
                 ? 'text-gray-400 cursor-not-allowed'
                 : 'text-gray-700 hover:bg-gray-100'
             }`}
@@ -631,7 +698,7 @@ export const QuotaWizard: React.FC<QuotaWizardProps> = ({
                 disabled={loading}
                 className="px-4 py-2 text-sm font-medium text-white bg-green-600 rounded-lg hover:bg-green-700 disabled:opacity-50"
               >
-                {loading ? 'Creating...' : 'Create Targets'}
+                {loading ? (editMode ? 'Updating...' : 'Creating...') : (editMode ? 'Update Target' : 'Create Targets')}
               </button>
             )}
           </div>

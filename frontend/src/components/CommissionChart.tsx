@@ -24,6 +24,17 @@ interface Commission {
   deals_with_commission?: number;
   deals_without_commission?: number;
   warning?: string;
+  commission_details?: Array<{
+    id: string;
+    deal: {
+      deal_name: string;
+      account_name: string;
+      amount: string | number;
+      close_date?: string;
+      closed_date?: string;
+    };
+    commission_amount: number;
+  }>;
 }
 
 interface TeamMember {
@@ -106,7 +117,9 @@ const CommissionChart: React.FC<CommissionChartProps> = ({
   const groupedCommissions = React.useMemo(() => {
     if (!isManager || managerView === 'personal') {
       // For personal view, just show what we have
-      return commissions.map(c => ({ period: c.period_start, commissions: [c] }));
+      return commissions
+        .sort((a, b) => new Date(b.period_start).getTime() - new Date(a.period_start).getTime())
+        .map(c => ({ period: c.period_start, commissions: [c] }));
     }
     
     const groups = commissions.reduce((acc, commission) => {

@@ -8,8 +8,6 @@ import {
   PoundSterling, 
   TrendingUp, 
   Calendar,
-  CheckCircle,
-  Clock,
   Eye,
   Download,
   ArrowUpRight,
@@ -246,14 +244,15 @@ const CommissionsPage = () => {
         });
       }
     } else if (periodView === 'quarterly') {
-      // Last 4 quarters including current
+      // Last 3 quarters plus current (total 4 quarters)
       const currentYear = now.getUTCFullYear();
       const currentMonth = now.getUTCMonth();
       
       // Calculate current quarter
       const currentQuarter = Math.floor(currentMonth / 3);
       
-      for (let i = 0; i < 4; i++) {
+      // Start from 3 quarters ago (i=3) to current quarter (i=0)
+      for (let i = 3; i >= 0; i--) {
         // Calculate the target quarter (going backwards from current quarter)
         let targetYear = currentYear;
         let targetQuarter = currentQuarter - i;
@@ -323,22 +322,47 @@ const CommissionsPage = () => {
   // Find current period commission (only for personal view)
   const currentCommission = !isManager || managerView === 'personal' ? 
     commissions?.find(c => {
-      const commissionStart = new Date(c.period_start).toISOString().split('T')[0];
-      return commissionStart === currentPeriod.start && c.user_id === user?.id;
+      // Use date range comparison instead of exact match to handle timezone differences
+      const commissionStart = new Date(c.period_start);
+      const commissionEnd = new Date(c.period_end);
+      const currentStart = new Date(currentPeriod.start);
+      const currentEnd = new Date(currentPeriod.end);
+      
+      // Check if commission period overlaps with current period
+      const periodsMatch = commissionStart <= currentEnd && commissionEnd >= currentStart;
+      return periodsMatch && c.user_id === user?.id;
     }) : null;
 
-  // Filter historical commissions (for personal view, exclude current period; for team views, show all)
-  const historicalCommissions = !isManager || managerView === 'personal' ?
-    commissions?.filter(c => {
-      const commissionStart = new Date(c.period_start).toISOString().split('T')[0];
-      return commissionStart !== currentPeriod.start;
-    }) || [] :
-    commissions || [];
+  // For historical chart, show all commissions including current period
+  // The chart component handles ordering (newest to oldest)
+  const historicalCommissions = commissions || [];
 
-  // Calculate totals - use summary data from API or calculate from commissions
-  const totalEarned = summary.total_commission || commissions?.reduce((sum, c) => sum + Number(c.commission_earned), 0) || 0;
-  const averageAttainment = summary.overall_attainment || (commissions?.length ? 
-    commissions.reduce((sum, c) => sum + Number(c.attainment_pct), 0) / commissions.length : 0);
+  // Calculate rolling 12-month totals
+  const twelveMonthsAgo = new Date();
+  twelveMonthsAgo.setMonth(twelveMonthsAgo.getMonth() - 12);
+  
+  const rolling12MonthCommissions = commissions?.filter(c => 
+    new Date(c.period_start) >= twelveMonthsAgo
+  ) || [];
+  
+  const totalEarned = rolling12MonthCommissions.reduce((sum, c) => sum + Number(c.commission_earned), 0);
+  const averageAttainment = rolling12MonthCommissions.length ? 
+    rolling12MonthCommissions.reduce((sum, c) => sum + Number(c.attainment_pct), 0) / rolling12MonthCommissions.length : 0;
+  
+  // Get most recent quarter data
+  const mostRecentQuarter = commissions?.find(c => {
+    const periodStart = new Date(c.period_start);
+    const periodEnd = new Date(c.period_end);
+    const periodLengthDays = (periodEnd.getTime() - periodStart.getTime()) / (1000 * 60 * 60 * 24);
+    // Check if it's a quarterly period (60-120 days)
+    return periodLengthDays > 60 && periodLengthDays < 120;
+  });
+  
+  const recentQuarterLabel = mostRecentQuarter ? (() => {
+    const periodStart = new Date(mostRecentQuarter.period_start);
+    const quarter = Math.floor(periodStart.getMonth() / 3) + 1;
+    return `Q${quarter} ${periodStart.getFullYear()}`;
+  })() : 'No Data';
 
 
   if (isLoading) {
@@ -357,7 +381,7 @@ const CommissionsPage = () => {
         {/* Header */}
         <div className="flex items-center justify-between">
           <div>
-            <h1 className="text-3xl font-bold text-gray-900">Commission Overview</h1>
+            <h1 className="text-3xl font-bold text-gray-900">Performance Overview</h1>
             <p className="text-gray-600 mt-1">
               {isManager ? `Manage team commission calculations and performance` : `Track your earnings and performance across ${paymentSchedule} payment periods`}
             </p>
@@ -381,42 +405,43 @@ const CommissionsPage = () => {
           </div>
         </div>
 
-        {/* Manager Filter Controls */}
-        {isManager && (
-          <div className="bg-white rounded-xl border border-gray-200 p-4 shadow-sm">
-            <div className="flex items-center justify-between">
-              <div className="flex bg-gray-100 rounded-lg p-1">
-                <button 
-                  onClick={() => { setManagerView('personal'); setSelectedMemberId(''); }}
-                  className={`px-4 py-2 rounded-md text-sm font-medium transition-colors ${
-                    managerView === 'personal' ? 'bg-white text-blue-600 shadow-sm' : 'text-gray-600 hover:text-gray-900'
-                  }`}
-                >
-                  <User className="w-4 h-4 inline mr-2" />
-                  Personal
-                </button>
-                <button 
-                  onClick={() => { setManagerView('team'); setSelectedMemberId(''); }}
-                  className={`px-4 py-2 rounded-md text-sm font-medium transition-colors ${
-                    managerView === 'team' ? 'bg-white text-blue-600 shadow-sm' : 'text-gray-600 hover:text-gray-900'
-                  }`}
-                >
-                  <Users className="w-4 h-4 inline mr-2" />
-                  Team
-                </button>
-                <button 
-                  onClick={() => setManagerView('all')}
-                  className={`px-4 py-2 rounded-md text-sm font-medium transition-colors ${
-                    managerView === 'all' ? 'bg-white text-blue-600 shadow-sm' : 'text-gray-600 hover:text-gray-900'
-                  }`}
-                >
-                  <Users className="w-4 h-4 inline mr-2" />
-                  All
-                </button>
-              </div>
-              
-              {/* Individual Member Selector */}
-              <div className="flex items-center space-x-3">
+        {/* Combined Filter Controls */}
+        <div className="bg-white rounded-xl border border-gray-200 p-4 shadow-sm">
+          <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4">
+            {/* Left side - Manager filters (if manager) */}
+            {isManager && (
+              <div className="flex items-center gap-3 flex-wrap">
+                <div className="flex bg-gray-100 rounded-lg p-1">
+                  <button 
+                    onClick={() => { setManagerView('personal'); setSelectedMemberId(''); }}
+                    className={`px-4 py-2 rounded-md text-sm font-medium transition-colors ${
+                      managerView === 'personal' ? 'bg-white text-blue-600 shadow-sm' : 'text-gray-600 hover:text-gray-900'
+                    }`}
+                  >
+                    <User className="w-4 h-4 inline mr-2" />
+                    Personal
+                  </button>
+                  <button 
+                    onClick={() => { setManagerView('team'); setSelectedMemberId(''); }}
+                    className={`px-4 py-2 rounded-md text-sm font-medium transition-colors ${
+                      managerView === 'team' ? 'bg-white text-blue-600 shadow-sm' : 'text-gray-600 hover:text-gray-900'
+                    }`}
+                  >
+                    <Users className="w-4 h-4 inline mr-2" />
+                    Team
+                  </button>
+                  <button 
+                    onClick={() => setManagerView('all')}
+                    className={`px-4 py-2 rounded-md text-sm font-medium transition-colors ${
+                      managerView === 'all' ? 'bg-white text-blue-600 shadow-sm' : 'text-gray-600 hover:text-gray-900'
+                    }`}
+                  >
+                    <Users className="w-4 h-4 inline mr-2" />
+                    All
+                  </button>
+                </div>
+                
+                {/* Individual Member Selector */}
                 <select
                   value={selectedMemberId}
                   onChange={(e) => {
@@ -436,52 +461,49 @@ const CommissionsPage = () => {
                   ))}
                 </select>
               </div>
-            </div>
+            )}
             
-            {/* View Context Display */}
+            {/* Right side - Period selector */}
+            <div className="flex items-center gap-2">
+              <label className="text-sm font-medium text-gray-700">Period:</label>
+              <div className="flex bg-gray-100 rounded-lg p-1">
+                <button 
+                  onClick={() => setPeriodView('monthly')}
+                  className={`px-3 py-1.5 rounded-md text-sm font-medium transition-colors ${
+                    periodView === 'monthly' ? 'bg-white text-blue-600 shadow-sm' : 'text-gray-600 hover:text-gray-900'
+                  }`}
+                >
+                  Monthly
+                </button>
+                <button 
+                  onClick={() => setPeriodView('quarterly')}
+                  className={`px-3 py-1.5 rounded-md text-sm font-medium transition-colors ${
+                    periodView === 'quarterly' ? 'bg-white text-blue-600 shadow-sm' : 'text-gray-600 hover:text-gray-900'
+                  }`}
+                >
+                  Quarterly
+                </button>
+                <button 
+                  onClick={() => setPeriodView('yearly')}
+                  className={`px-3 py-1.5 rounded-md text-sm font-medium transition-colors ${
+                    periodView === 'yearly' ? 'bg-white text-blue-600 shadow-sm' : 'text-gray-600 hover:text-gray-900'
+                  }`}
+                >
+                  Yearly
+                </button>
+              </div>
+            </div>
+          </div>
+          
+          {/* View Context Display - only show for managers */}
+          {isManager && (
             <div className="mt-3 text-sm text-gray-600">
               {managerView === 'personal' && 'Showing your personal commission calculations'}
               {managerView === 'team' && `Showing commission calculations for all ${teamMembers.length} direct reports`}
               {managerView === 'member' && selectedMemberId && `Showing commission calculations for ${teamMembers.find(m => m.id === selectedMemberId)?.first_name} ${teamMembers.find(m => m.id === selectedMemberId)?.last_name}`}
               {managerView === 'all' && `Showing combined commission calculations (you + ${teamMembers.length} team members)`}
             </div>
-          </div>
-        )}
-
-        {/* Period View Selector */}
-        <div className="bg-white rounded-xl border border-gray-200 p-4 shadow-sm">
-          <div className="flex items-center justify-between">
-            <label className="text-sm font-medium text-gray-700 mr-4">View by:</label>
-            <div className="flex bg-gray-100 rounded-lg p-1">
-              <button 
-                onClick={() => setPeriodView('monthly')}
-                className={`px-4 py-2 rounded-md text-sm font-medium transition-colors ${
-                  periodView === 'monthly' ? 'bg-white text-blue-600 shadow-sm' : 'text-gray-600 hover:text-gray-900'
-                }`}
-              >
-                <Calendar className="w-4 h-4 inline mr-2" />
-                Monthly
-              </button>
-              <button 
-                onClick={() => setPeriodView('quarterly')}
-                className={`px-4 py-2 rounded-md text-sm font-medium transition-colors ${
-                  periodView === 'quarterly' ? 'bg-white text-blue-600 shadow-sm' : 'text-gray-600 hover:text-gray-900'
-                }`}
-              >
-                <Calendar className="w-4 h-4 inline mr-2" />
-                Quarterly
-              </button>
-              <button 
-                onClick={() => setPeriodView('yearly')}
-                className={`px-4 py-2 rounded-md text-sm font-medium transition-colors ${
-                  periodView === 'yearly' ? 'bg-white text-blue-600 shadow-sm' : 'text-gray-600 hover:text-gray-900'
-                }`}
-              >
-                <Calendar className="w-4 h-4 inline mr-2" />
-                Yearly
-              </button>
-            </div>
-          </div>
+          )}
         </div>
 
         {/* Summary Cards */}
@@ -492,7 +514,7 @@ const CommissionsPage = () => {
                 <PoundSterling className="w-6 h-6 text-green-600" />
               </div>
               <div className="ml-4">
-                <p className="text-sm font-medium text-gray-600">Total Earned</p>
+                <p className="text-sm font-medium text-gray-600">Total Earned (12M)</p>
                 <p className="text-2xl font-bold text-gray-900">
                   £{totalEarned.toLocaleString()}
                 </p>
@@ -506,7 +528,7 @@ const CommissionsPage = () => {
                 <Target className="w-6 h-6 text-blue-600" />
               </div>
               <div className="ml-4">
-                <p className="text-sm font-medium text-gray-600">Avg. Attainment</p>
+                <p className="text-sm font-medium text-gray-600">Avg. Attainment (12M)</p>
                 <p className="text-2xl font-bold text-gray-900">
                   {averageAttainment.toFixed(1)}%
                 </p>
@@ -531,13 +553,18 @@ const CommissionsPage = () => {
           <div className="bg-white rounded-lg shadow p-6">
             <div className="flex items-center">
               <div className="p-2 bg-orange-100 rounded-lg">
-                <Award className="w-6 h-6 text-orange-600" />
+                <TrendingUp className="w-6 h-6 text-orange-600" />
               </div>
               <div className="ml-4">
-                <p className="text-sm font-medium text-gray-600">Periods Tracked</p>
-                <p className="text-2xl font-bold text-gray-900">
-                  {commissions?.length || 0}
-                </p>
+                <p className="text-sm font-medium text-gray-600">Recent Quarter</p>
+                <div>
+                  <p className="text-2xl font-bold text-gray-900">
+                    {mostRecentQuarter ? `${mostRecentQuarter.attainment_pct.toFixed(0)}%` : '-'}
+                  </p>
+                  <p className="text-xs text-gray-500">
+                    {recentQuarterLabel}
+                  </p>
+                </div>
               </div>
             </div>
           </div>
@@ -554,7 +581,7 @@ const CommissionsPage = () => {
           <div className="p-6">
             {currentCommission ? (
               <div className="space-y-4">
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                   <div className="text-center">
                     <p className="text-sm font-medium text-gray-600">Commission Earned</p>
                     <p className="text-3xl font-bold text-green-600">
@@ -566,24 +593,6 @@ const CommissionsPage = () => {
                     <p className="text-3xl font-bold text-blue-600">
                       {Number(currentCommission.attainment_pct).toFixed(1)}%
                     </p>
-                  </div>
-                  <div className="text-center">
-                    <p className="text-sm font-medium text-gray-600">Status</p>
-                    <div className="flex flex-col items-center justify-center mt-2">
-                      {currentCommission.status === 'approved' ? (
-                        <div className="flex items-center text-green-600">
-                          <CheckCircle className="w-5 h-5 mr-1" />
-                          Approved
-                        </div>
-                      ) : (
-                        <>
-                          <div className="flex items-center text-orange-600 mb-2">
-                            <Clock className="w-5 h-5 mr-1" />
-                            Calculated
-                          </div>
-                        </>
-                      )}
-                    </div>
                   </div>
                 </div>
 
@@ -717,13 +726,13 @@ const CommissionsPage = () => {
               {isManager && managerView === 'team' ? 'Team Commission Data' : 
                isManager && managerView === 'all' ? 'All Commission Data' :
                isManager && managerView === 'member' ? 'Member Commission History' : 
-               'Historical Commissions'}
+               'Commission History'}
               <span className="text-sm font-normal text-gray-600 ml-2">
                 {isManager && managerView !== 'personal' ? 
                   `(${commissions?.length || 0} total records)` :
-                  periodView === 'yearly' ? '(Last 3 years)' :
-                  periodView === 'quarterly' ? '(Last 4 quarters)' :
-                  '(Last 12 months)'
+                  periodView === 'yearly' ? '(Including current year)' :
+                  periodView === 'quarterly' ? '(Including current quarter)' :
+                  '(Including current month)'
                 }
               </span>
             </h3>
@@ -741,88 +750,6 @@ const CommissionsPage = () => {
           </div>
         </div>
 
-        {/* Commission Approval Table (Admin Only) */}
-        {user?.is_admin && (
-          <div className="bg-white rounded-lg shadow">
-            <div className="px-6 py-4 border-b border-gray-200">
-              <h3 className="text-lg font-semibold text-gray-900">Commission Approvals</h3>
-            </div>
-            <div className="overflow-x-auto">
-              <table className="min-w-full divide-y divide-gray-200">
-                <thead className="bg-gray-50">
-                  <tr>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                      User
-                    </th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                      Period
-                    </th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                      Amount
-                    </th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                      Attainment
-                    </th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                      Status
-                    </th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                      Action
-                    </th>
-                  </tr>
-                </thead>
-                <tbody className="bg-white divide-y divide-gray-200">
-                  {commissions.map((commission) => (
-                    <tr key={`${commission.user_id}-${commission.period_key}`}>
-                      <td className="px-6 py-4 whitespace-nowrap">
-                        <div className="text-sm font-medium text-gray-900">
-                          {commission.user.first_name} {commission.user.last_name}
-                        </div>
-                        <div className="text-sm text-gray-500">{commission.user.email}</div>
-                      </td>
-                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                        {new Date(commission.period_start).toLocaleDateString('en-GB')} - {new Date(commission.period_end).toLocaleDateString('en-GB')}
-                      </td>
-                      <td className="px-6 py-4 whitespace-nowrap">
-                        <div className="text-sm font-medium text-gray-900">
-                          £{Number(commission.commission_earned).toLocaleString()}
-                        </div>
-                        <div className="text-sm text-gray-500">
-                          Rate: {(commission.commission_rate * 100).toFixed(2)}%
-                        </div>
-                      </td>
-                      <td className="px-6 py-4 whitespace-nowrap">
-                        <div className="text-sm font-medium text-gray-900">
-                          {Number(commission.attainment_pct).toFixed(1)}%
-                        </div>
-                        <div className="text-sm text-gray-500">
-                          £{Number(commission.actual_amount).toLocaleString()} / £{Number(commission.quota_amount).toLocaleString()}
-                        </div>
-                      </td>
-                      <td className="px-6 py-4 whitespace-nowrap">
-                        {commission.status === 'approved' ? (
-                          <span className="px-2 inline-flex text-xs leading-5 font-semibold rounded-full bg-green-100 text-green-800">
-                            Approved
-                          </span>
-                        ) : (
-                          <span className="px-2 inline-flex text-xs leading-5 font-semibold rounded-full bg-yellow-100 text-yellow-800">
-                            Calculated
-                          </span>
-                        )}
-                      </td>
-                      <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
-                        {/* Approval functionality not yet implemented for new commission system */}
-                        {commission.warning && (
-                          <span className="text-amber-600 text-xs">{commission.warning}</span>
-                        )}
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          </div>
-        )}
       </div>
     </Layout>
   );

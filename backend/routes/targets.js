@@ -404,6 +404,106 @@ router.get('/', async (req, res) => {
   }
 });
 
+// Get team target aggregation
+router.get('/team-aggregate', async (req, res) => {
+  try {
+    if (!req.user) {
+      return res.status(401).json({ error: 'Authentication required' });
+    }
+
+    // Only managers can see team aggregates
+    if (!canManageTeam(req.user)) {
+      return res.status(403).json({ error: 'Access denied - managers only' });
+    }
+
+    // Get all team members including the manager
+    const teamMembers = await prisma.users.findMany({
+      where: {
+        OR: [
+          { manager_id: req.user.id },
+          { id: req.user.id }
+        ],
+        is_active: true
+      },
+      select: {
+        id: true,
+        first_name: true,
+        last_name: true,
+        email: true
+      }
+    });
+
+    const teamMemberIds = teamMembers.map(m => m.id);
+
+    // Get active targets for all team members
+    const teamTargets = await prisma.targets.findMany({
+      where: {
+        user_id: { in: teamMemberIds },
+        is_active: true
+        // Removed parent_target_id filter to get all active targets
+      },
+      include: {
+        user: {
+          select: {
+            id: true,
+            first_name: true,
+            last_name: true,
+            email: true
+          }
+        }
+      },
+      orderBy: { period_start: 'desc' } // Get newest targets first
+    });
+    
+    console.log(`📊 Team Aggregate: Found ${teamTargets.length} active targets for team members`);
+    teamTargets.forEach(t => {
+      console.log(`  - ${t.user.email}: £${t.quota_amount} (${t.period_type}) ${t.period_start} to ${t.period_end}`);
+    });
+
+    // Group targets by period
+    const periodMap = new Map();
+    
+    for (const target of teamTargets) {
+      const periodKey = `${target.period_type}_${target.period_start}_${target.period_end}`;
+      
+      if (!periodMap.has(periodKey)) {
+        periodMap.set(periodKey, {
+          period_type: target.period_type,
+          period_start: target.period_start,
+          period_end: target.period_end,
+          commission_rate: target.commission_rate,
+          total_quota: 0,
+          member_targets: []
+        });
+      }
+      
+      const period = periodMap.get(periodKey);
+      period.total_quota += Number(target.quota_amount);
+      period.member_targets.push({
+        user: target.user,
+        quota_amount: target.quota_amount,
+        target_id: target.id
+      });
+    }
+
+    // Convert to array
+    const teamAggregates = Array.from(periodMap.values()).map(period => ({
+      ...period,
+      member_count: period.member_targets.length
+    }));
+
+    res.json({
+      team_aggregates: teamAggregates,
+      team_members: teamMembers,
+      success: true
+    });
+
+  } catch (error) {
+    console.error('Get team aggregate error:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
 // Get child targets for a parent target
 router.get('/:id/children', async (req, res) => {
   try {

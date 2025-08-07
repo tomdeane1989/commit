@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { User, Mail, Building, Calendar, MoreVertical, Edit, Trash2, UserCheck, UserX, Users, Target } from 'lucide-react';
+import { User, Mail, Building, Calendar, MoreVertical, Edit, Trash2, UserCheck, UserX, Users, Target, ChevronUp, ChevronDown } from 'lucide-react';
 
 interface TeamMember {
   id: string;
@@ -70,6 +70,50 @@ interface TeamMember {
     has_personal_quota: boolean;
     has_team_quota: boolean;
     display_mode: 'dual' | 'team_only' | 'personal_only' | 'none';
+    
+    // Dual period metrics
+    quarterly_personal_metrics?: {
+      closedAmount: number;
+      commitAmount: number;
+      bestCaseAmount: number;
+      pipelineAmount: number;
+      quotaAmount: number;
+      commissionRate: number;
+      quotaProgress: number;
+      periodType: string;
+    } | null;
+    annual_personal_metrics?: {
+      closedAmount: number;
+      commitAmount: number;
+      bestCaseAmount: number;
+      pipelineAmount: number;
+      quotaAmount: number;
+      commissionRate: number;
+      quotaProgress: number;
+      periodType: string;
+    } | null;
+    quarterly_team_metrics?: {
+      closedAmount: number;
+      commitAmount: number;
+      bestCaseAmount: number;
+      pipelineAmount: number;
+      quotaAmount: number;
+      commissionRate: number;
+      quotaProgress: number;
+      teamMemberCount: number;
+      periodType: string;
+    } | null;
+    annual_team_metrics?: {
+      closedAmount: number;
+      commitAmount: number;
+      bestCaseAmount: number;
+      pipelineAmount: number;
+      quotaAmount: number;
+      commissionRate: number;
+      quotaProgress: number;
+      teamMemberCount: number;
+      periodType: string;
+    } | null;
   };
 }
 
@@ -95,7 +139,82 @@ export const TeamMemberCard: React.FC<TeamMemberCardProps> = ({
     console.log('🎯 TeamMemberCard - Tom\'s data received:', member);
     console.log('🎯 TeamMemberCard - is_admin:', member.is_admin, 'type:', typeof member.is_admin);
     console.log('🎯 TeamMemberCard - is_manager:', member.is_manager, 'type:', typeof member.is_manager);
+    console.log('🎯 TeamMemberCard - display_mode:', member.performance.display_mode);
+    console.log('🎯 TeamMemberCard - personal_metrics:', member.performance.personal_metrics);
+    console.log('🎯 TeamMemberCard - team_metrics:', member.performance.team_metrics);
+    console.log('🎯 TeamMemberCard - quarterly_personal_metrics:', member.performance.quarterly_personal_metrics);
+    console.log('🎯 TeamMemberCard - annual_personal_metrics:', member.performance.annual_personal_metrics);
+    console.log('🎯 TeamMemberCard - quarterly_team_metrics:', member.performance.quarterly_team_metrics);
+    console.log('🎯 TeamMemberCard - annual_team_metrics:', member.performance.annual_team_metrics);
   }
+
+  // Dual Progress Meter Component - shows quarterly with collapsible annual
+  const DualProgressMeter = ({
+    quarterlyMetrics,
+    annualMetrics,
+    title,
+    isTeam = false
+  }: {
+    quarterlyMetrics: any;
+    annualMetrics: any;
+    title: string;
+    isTeam?: boolean;
+  }) => {
+    const [showAnnual, setShowAnnual] = useState(false);
+    
+    // Use quarterly if available, otherwise fall back to annual
+    const primaryMetrics = quarterlyMetrics || annualMetrics;
+    if (!primaryMetrics) return null;
+    
+    // Calculate current quarter for display
+    const now = new Date();
+    const currentQuarter = Math.floor(now.getMonth() / 3) + 1;
+    const currentYear = now.getFullYear();
+    
+    return (
+      <div className="space-y-2">
+        {/* Primary (Quarterly) Progress */}
+        <ProgressMeter
+          metrics={primaryMetrics}
+          title={title}
+          subtitle={quarterlyMetrics ? `Q${currentQuarter} ${currentYear}` : `${currentYear} Annual`}
+        />
+        
+        {/* Annual Toggle - only show if we have both metrics */}
+        {quarterlyMetrics && annualMetrics && (
+          <div>
+            <button
+              onClick={() => setShowAnnual(!showAnnual)}
+              className="text-xs text-gray-500 hover:text-gray-700 flex items-center space-x-1 mt-1"
+            >
+              {showAnnual ? (
+                <>
+                  <ChevronUp className="w-3 h-3" />
+                  <span>Hide annual view</span>
+                </>
+              ) : (
+                <>
+                  <ChevronDown className="w-3 h-3" />
+                  <span>Show annual view</span>
+                </>
+              )}
+            </button>
+            
+            {/* Collapsible Annual Progress */}
+            {showAnnual && (
+              <div className="mt-2 pl-2 border-l-2 border-gray-200">
+                <ProgressMeter
+                  metrics={annualMetrics}
+                  title=""
+                  subtitle={`${currentYear} Annual`}
+                />
+              </div>
+            )}
+          </div>
+        )}
+      </div>
+    );
+  };
 
   // Progress Meter Component
   const ProgressMeter = ({ 
@@ -123,6 +242,8 @@ export const TeamMemberCard: React.FC<TeamMemberCardProps> = ({
       ? (metrics.bestCaseAmount / metrics.quotaAmount) * 100
       : 0;
 
+    const actualAttainment = closedContribution;
+    const projectedAttainment = closedContribution + commitContribution;
     const totalProgress = closedContribution + commitContribution + bestCaseContribution;
 
     return (
@@ -136,7 +257,17 @@ export const TeamMemberCard: React.FC<TeamMemberCardProps> = ({
               </span>
             )}
           </div>
-          <p className="text-xs text-gray-600">{totalProgress.toFixed(1)}%</p>
+          <div className="flex items-center space-x-3 text-xs">
+            <span className="text-gray-600">
+              <span className="font-medium">{actualAttainment.toFixed(1)}%</span>
+              <span className="text-gray-400 ml-1">actual</span>
+            </span>
+            <span className="text-gray-500">|</span>
+            <span className="text-gray-600">
+              <span className="font-medium">{projectedAttainment.toFixed(1)}%</span>
+              <span className="text-gray-400 ml-1">projected</span>
+            </span>
+          </div>
         </div>
         
         {/* Three-tier Stacked Progress Bar */}
@@ -162,6 +293,13 @@ export const TeamMemberCard: React.FC<TeamMemberCardProps> = ({
             }`}
             style={{ width: `${Math.min(closedContribution, 100)}%` }}
           />
+          {/* Vertical line indicator at actual attainment */}
+          {closedContribution > 0 && closedContribution < 100 && (
+            <div
+              className="absolute top-0 bottom-0 w-px bg-gray-600 opacity-50"
+              style={{ left: `${closedContribution}%` }}
+            />
+          )}
         </div>
         
         {/* Progress Breakdown */}
@@ -416,41 +554,79 @@ export const TeamMemberCard: React.FC<TeamMemberCardProps> = ({
           </div>
         </div>
 
-        {/* Conditional Progress Meters */}
-        {member.performance.display_mode === 'dual' && member.performance.personal_metrics && member.performance.team_metrics && (
+        {/* Conditional Progress Meters - Now with Dual Period Support */}
+        {member.performance.display_mode === 'dual' && (
           <div className="space-y-4">
-            {/* Personal Progress Meter */}
-            <ProgressMeter
-              metrics={member.performance.personal_metrics}
-              title="Personal Quota Progress"
-              subtitle="Individual"
-            />
+            {/* Personal Dual Progress Meter */}
+            {(member.performance.quarterly_personal_metrics || member.performance.annual_personal_metrics) ? (
+              <DualProgressMeter
+                quarterlyMetrics={member.performance.quarterly_personal_metrics}
+                annualMetrics={member.performance.annual_personal_metrics}
+                title="Personal Quota Progress"
+              />
+            ) : member.performance.personal_metrics && (
+              <ProgressMeter
+                metrics={member.performance.personal_metrics}
+                title="Personal Quota Progress"
+                subtitle="Individual"
+              />
+            )}
             
             {/* Divider */}
             <div className="border-t border-gray-200"></div>
             
-            {/* Team Progress Meter */}
-            <ProgressMeter
-              metrics={member.performance.team_metrics}
-              title="Team Quota Progress"
-              isTeam={true}
-            />
+            {/* Team Dual Progress Meter */}
+            {(member.performance.quarterly_team_metrics || member.performance.annual_team_metrics) ? (
+              <DualProgressMeter
+                quarterlyMetrics={member.performance.quarterly_team_metrics}
+                annualMetrics={member.performance.annual_team_metrics}
+                title="Team Quota Progress"
+                isTeam={true}
+              />
+            ) : member.performance.team_metrics && (
+              <ProgressMeter
+                metrics={member.performance.team_metrics}
+                title="Team Quota Progress"
+                isTeam={true}
+              />
+            )}
           </div>
         )}
         
-        {member.performance.display_mode === 'personal_only' && member.performance.personal_metrics && (
-          <ProgressMeter
-            metrics={member.performance.personal_metrics}
-            title="Quota Progress"
-          />
+        {member.performance.display_mode === 'personal_only' && (
+          <>
+            {(member.performance.quarterly_personal_metrics || member.performance.annual_personal_metrics) ? (
+              <DualProgressMeter
+                quarterlyMetrics={member.performance.quarterly_personal_metrics}
+                annualMetrics={member.performance.annual_personal_metrics}
+                title="Quota Progress"
+              />
+            ) : member.performance.personal_metrics && (
+              <ProgressMeter
+                metrics={member.performance.personal_metrics}
+                title="Quota Progress"
+              />
+            )}
+          </>
         )}
         
-        {member.performance.display_mode === 'team_only' && member.performance.team_metrics && (
-          <ProgressMeter
-            metrics={member.performance.team_metrics}
-            title="Team Quota Progress"
-            isTeam={true}
-          />
+        {member.performance.display_mode === 'team_only' && (
+          <>
+            {(member.performance.quarterly_team_metrics || member.performance.annual_team_metrics) ? (
+              <DualProgressMeter
+                quarterlyMetrics={member.performance.quarterly_team_metrics}
+                annualMetrics={member.performance.annual_team_metrics}
+                title="Team Quota Progress"
+                isTeam={true}
+              />
+            ) : member.performance.team_metrics && (
+              <ProgressMeter
+                metrics={member.performance.team_metrics}
+                title="Team Quota Progress"
+                isTeam={true}
+              />
+            )}
+          </>
         )}
         
         {/* Legacy fallback for backward compatibility */}

@@ -37,8 +37,6 @@ export const TargetDistributionModal: React.FC<TargetDistributionModalProps> = (
   if (!isOpen || !target) return null;
 
   const getDistributionBreakdown = () => {
-    if (!target.distribution_config) return [];
-    
     const method = target.distribution_method;
     const config = target.distribution_config;
     
@@ -55,9 +53,69 @@ export const TargetDistributionModal: React.FC<TargetDistributionModalProps> = (
           quota_amount: target.quota_amount,
           period_type: 'custom'
         }];
+      case 'even':
       default:
-        return [];
+        return getEvenDistributionBreakdown();
     }
+  };
+
+  const getEvenDistributionBreakdown = () => {
+    const breakdown = [];
+    const startDate = new Date(target.period_start);
+    const endDate = new Date(target.period_end);
+    
+    // Determine the period type based on the target duration
+    const durationMonths = Math.round((endDate.getTime() - startDate.getTime()) / (1000 * 60 * 60 * 24 * 30));
+    
+    if (target.period_type === 'annual' || durationMonths >= 11) {
+      // Generate quarterly breakdown for annual targets
+      const quotaPerQuarter = target.quota_amount / 4;
+      const quarters = ['Q1', 'Q2', 'Q3', 'Q4'];
+      
+      quarters.forEach((quarter, index) => {
+        const quarterStart = new Date(startDate.getFullYear(), index * 3, 1);
+        const quarterEnd = new Date(startDate.getFullYear(), index * 3 + 2, new Date(startDate.getFullYear(), index * 3 + 3, 0).getDate());
+        
+        // Only include quarters within the target period
+        if (quarterStart <= endDate && quarterEnd >= startDate) {
+          breakdown.push({
+            period_name: `${quarter} ${startDate.getFullYear()} (${getQuarterMonths(quarter)})`,
+            period_start: quarterStart.toISOString().split('T')[0],
+            period_end: quarterEnd.toISOString().split('T')[0],
+            quota_amount: quotaPerQuarter,
+            period_type: 'quarterly'
+          });
+        }
+      });
+    } else if (target.period_type === 'quarterly' || durationMonths >= 2) {
+      // Generate monthly breakdown for quarterly targets
+      const quotaPerMonth = target.quota_amount / 3;
+      const startMonth = startDate.getMonth();
+      
+      for (let i = 0; i < 3; i++) {
+        const monthDate = new Date(startDate.getFullYear(), startMonth + i, 1);
+        const monthEnd = new Date(startDate.getFullYear(), startMonth + i + 1, 0);
+        
+        breakdown.push({
+          period_name: monthDate.toLocaleDateString('en-GB', { month: 'long', year: 'numeric' }),
+          period_start: monthDate.toISOString().split('T')[0],
+          period_end: monthEnd.toISOString().split('T')[0],
+          quota_amount: quotaPerMonth,
+          period_type: 'monthly'
+        });
+      }
+    } else {
+      // For shorter periods, just show the single period
+      breakdown.push({
+        period_name: `${startDate.toLocaleDateString('en-GB', { month: 'short', year: 'numeric' })} - ${endDate.toLocaleDateString('en-GB', { month: 'short', year: 'numeric' })}`,
+        period_start: target.period_start,
+        period_end: target.period_end,
+        quota_amount: target.quota_amount,
+        period_type: 'custom'
+      });
+    }
+    
+    return breakdown;
   };
 
   const getSeasonalBreakdown = (seasonalConfig: any, totalQuota: number) => {
@@ -357,7 +415,7 @@ export const TargetDistributionModal: React.FC<TargetDistributionModalProps> = (
             </div>
           ) : (
             <div className="text-center py-8 text-gray-500">
-              No distribution breakdown available for this target.
+              Unable to generate distribution breakdown for this target.
             </div>
           )}
         </div>

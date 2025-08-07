@@ -28,7 +28,9 @@ import {
   Clock,
   AlertTriangle,
   X,
-  Download
+  Download,
+  ChevronUp,
+  ChevronDown
 } from 'lucide-react';
 
 const SettingsPage = () => {
@@ -38,6 +40,7 @@ const SettingsPage = () => {
   const [editingTarget, setEditingTarget] = useState<any>(null);
   const [showSetupModal, setShowSetupModal] = useState(false);
   const [selectedIntegration, setSelectedIntegration] = useState<any>(null);
+  const [expandedTeamTarget, setExpandedTeamTarget] = useState(false);
   const queryClient = useQueryClient();
 
   const [targetForm, setTargetForm] = useState({
@@ -153,6 +156,15 @@ const SettingsPage = () => {
   });
 
   const targets = targetsData?.targets || [];
+  
+  // Separate team targets and individual targets
+  const teamTargets = targets.filter((t: any) => t.team_target);
+  const individualTargets = targets.filter((t: any) => !t.team_target);
+  
+  // Calculate team totals
+  const teamTotalQuota = teamTargets.reduce((sum: number, target: any) => sum + target.quota_amount, 0);
+  const teamTotalAchievement = teamTargets.reduce((sum: number, target: any) => sum + (target.current_achievement || 0), 0);
+  const teamProgress = teamTotalQuota > 0 ? (teamTotalAchievement / teamTotalQuota) * 100 : 0;
 
   // Integration helper functions
   const formatDate = (dateString?: string) => {
@@ -251,6 +263,139 @@ const SettingsPage = () => {
         <Icon className={`w-5 h-5 ${isActive ? 'text-white' : 'text-gray-500'}`} />
         <span className="font-medium">{tab.name}</span>
       </button>
+    );
+  };
+
+  const TeamTargetCard = ({ teamTargets, isExpanded, onToggle }: { teamTargets: any[], isExpanded: boolean, onToggle: () => void }) => {
+    // Calculate team totals with proper number conversion
+    const totalQuota = teamTargets.reduce((sum, target) => sum + Number(target.quota_amount), 0);
+    const totalAchievement = teamTargets.reduce((sum, target) => sum + Number(target.current_achievement || 0), 0);
+    const progress = totalQuota > 0 ? (totalAchievement / totalQuota) * 100 : 0;
+    
+    // Get unique commission rate (assuming all team members have same rate)
+    const commissionRate = teamTargets[0]?.commission_rate || 0;
+    
+    // Date range from first target
+    const firstTarget = teamTargets[0];
+    const dateRange = firstTarget ? `${new Date(firstTarget.period_start).toLocaleDateString()} - ${new Date(firstTarget.period_end).toLocaleDateString()}` : '';
+    
+    return (
+      <div className="bg-white rounded-2xl border border-purple-300 shadow-sm hover:shadow-md transition-shadow">
+        {/* Parent Row */}
+        <div 
+          className="p-6 cursor-pointer ring-2 ring-purple-200"
+          onClick={onToggle}
+        >
+          <div className="flex items-start justify-between mb-4">
+            <div className="flex-1">
+              <div className="flex items-center space-x-3 mb-2">
+                <h3 className="text-lg font-semibold text-gray-900">
+                  Team Target
+                </h3>
+                <span className="px-3 py-1 rounded-full text-xs font-medium bg-purple-100 text-purple-600">
+                  {teamTargets.length} Members
+                </span>
+              </div>
+              <p className="text-sm text-gray-600">
+                Combined team quota • {dateRange}
+              </p>
+              <div className="mt-2 flex items-center space-x-1">
+                <Users className="w-4 h-4 text-purple-500" />
+                <span className="text-xs text-purple-600 font-medium">
+                  Click to {isExpanded ? 'collapse' : 'expand'} team member targets
+                </span>
+              </div>
+            </div>
+            <div className="flex items-center">
+              {isExpanded ? (
+                <ChevronUp className="w-5 h-5 text-gray-400" />
+              ) : (
+                <ChevronDown className="w-5 h-5 text-gray-400" />
+              )}
+            </div>
+          </div>
+
+          <div className="space-y-4">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center space-x-2">
+                <PoundSterling className="w-5 h-5 text-green-600" />
+                <span className="text-sm text-gray-600">Total Team Quota</span>
+              </div>
+              <span className="text-lg font-bold text-gray-900">
+                £{totalQuota.toLocaleString()}
+              </span>
+            </div>
+
+            <div className="flex items-center justify-between">
+              <div className="flex items-center space-x-2">
+                <TrendingUp className="w-5 h-5 text-blue-600" />
+                <span className="text-sm text-gray-600">Commission Rate</span>
+              </div>
+              <span className="text-lg font-bold text-blue-600">
+                {commissionRate}%
+              </span>
+            </div>
+
+            <div>
+              <div className="flex items-center justify-between mb-2">
+                <span className="text-sm text-gray-600">Team Progress</span>
+                <span className="text-sm font-semibold text-gray-900">
+                  {progress.toFixed(1)}%
+                </span>
+              </div>
+              <div className="w-full bg-gray-200 rounded-full h-3">
+                <div 
+                  className="bg-gradient-to-r from-purple-500 to-purple-600 h-3 rounded-full transition-all duration-500"
+                  style={{ width: `${Math.min(progress, 100)}%` }}
+                ></div>
+              </div>
+              <div className="flex items-center justify-between mt-2 text-xs text-gray-500">
+                <span>£{totalAchievement.toLocaleString()}</span>
+                <span>£{totalQuota.toLocaleString()}</span>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {/* Expandable Section */}
+        {isExpanded && (
+          <div className="border-t border-purple-200 bg-purple-50/30">
+            <div className="p-6 space-y-4">
+              <h4 className="text-sm font-semibold text-gray-700 mb-3">Team Member Targets</h4>
+              {teamTargets.map((target) => (
+                <div key={target.id} className="bg-white rounded-xl border border-gray-200 p-4">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <h5 className="font-medium text-gray-900">
+                        {target.user ? `${target.user.first_name} ${target.user.last_name}` : 'Team Member'}
+                      </h5>
+                      <p className="text-sm text-gray-600">
+                        Individual quota: £{target.quota_amount.toLocaleString()}
+                      </p>
+                    </div>
+                    <div className="text-right">
+                      <div className="text-sm font-semibold text-gray-900">
+                        {target.current_achievement ? `£${target.current_achievement.toLocaleString()}` : '£0'}
+                      </div>
+                      <div className="text-xs text-gray-500">
+                        {target.quota_amount > 0 ? ((target.current_achievement || 0) / target.quota_amount * 100).toFixed(1) : '0.0'}% achieved
+                      </div>
+                    </div>
+                  </div>
+                  <div className="mt-3">
+                    <div className="w-full bg-gray-200 rounded-full h-2">
+                      <div 
+                        className="bg-gradient-to-r from-indigo-500 to-purple-600 h-2 rounded-full transition-all duration-500"
+                        style={{ width: `${Math.min(((target.current_achievement || 0) / target.quota_amount * 100), 100)}%` }}
+                      ></div>
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+      </div>
     );
   };
 
@@ -558,10 +703,29 @@ const SettingsPage = () => {
                       <p className="text-gray-600">Create your first sales target to start tracking progress</p>
                     </div>
                   ) : (
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                      {targets.map((target: any) => (
-                        <TargetCard key={target.id} target={target} />
-                      ))}
+                    <div className="space-y-6">
+                      {/* Team Target Section */}
+                      {teamTargets.length > 0 && (
+                        <TeamTargetCard 
+                          teamTargets={teamTargets}
+                          isExpanded={expandedTeamTarget}
+                          onToggle={() => setExpandedTeamTarget(!expandedTeamTarget)}
+                        />
+                      )}
+                      
+                      {/* Individual Targets */}
+                      {individualTargets.length > 0 && (
+                        <div>
+                          {teamTargets.length > 0 && (
+                            <h3 className="text-lg font-semibold text-gray-800 mb-4">Individual Targets</h3>
+                          )}
+                          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                            {individualTargets.map((target: any) => (
+                              <TargetCard key={target.id} target={target} />
+                            ))}
+                          </div>
+                        </div>
+                      )}
                     </div>
                   )}
                 </div>

@@ -5,9 +5,9 @@ import { useAuth } from '../hooks/useAuth';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import api, { targetsApi, teamApi } from '../lib/api';
 import { QuotaWizard } from '../components/team/QuotaWizard';
-import { TargetModal } from '../components/team/TargetModal';
+// import { TargetModal } from '../components/team/TargetModal'; // Replaced with QuotaWizard edit mode
 import { TargetDistributionModal } from '../components/team/TargetDistributionModal';
-import { Target, Settings, TrendingUp, Plus, ChevronRight, Edit, Trash2 } from 'lucide-react';
+import { Target, Settings, TrendingUp, Plus, ChevronRight, Edit, Trash2, ChevronUp, ChevronDown, Users, PoundSterling, Clock, Eye, EyeOff } from 'lucide-react';
 
 interface TargetData {
   id: string;
@@ -45,6 +45,8 @@ const TargetsPage = () => {
   const [editingTarget, setEditingTarget] = useState<TargetData | null>(null);
   const [showDistributionModal, setShowDistributionModal] = useState(false);
   const [distributionData, setDistributionData] = useState<any>(null);
+  const [expandedTeamTarget, setExpandedTeamTarget] = useState(false);
+  const [showHistoricalTargets, setShowHistoricalTargets] = useState(false);
 
   // Check if user has admin/manager permissions using flags
   const canManageTargets = user?.is_admin === true || user?.is_manager === true;
@@ -68,6 +70,16 @@ const TargetsPage = () => {
       console.log('🎯 Targets Array:', response.targets);
       console.log('🎯 Targets Count:', response.targets?.length || 0);
       return response.targets || [];
+    },
+    enabled: canManageTargets && !authLoading
+  });
+  
+  // Fetch team aggregate data
+  const { data: teamAggregateData } = useQuery({
+    queryKey: ['team-aggregate'],
+    queryFn: async () => {
+      const response = await api.get('/targets/team-aggregate');
+      return response.data;
     },
     enabled: canManageTargets && !authLoading
   });
@@ -186,6 +198,42 @@ const TargetsPage = () => {
     setShowDistributionModal(true);
   };
 
+  // All targets are now individual targets
+  const allIndividualTargets = targetsData || [];
+  
+  // Separate current and historical targets
+  const currentDate = new Date();
+  const currentTargets = allIndividualTargets.filter((t: TargetData) => {
+    const endDate = new Date(t.period_end);
+    return endDate >= currentDate;
+  });
+  
+  const historicalTargets = allIndividualTargets.filter((t: TargetData) => {
+    const endDate = new Date(t.period_end);
+    return endDate < currentDate;
+  });
+  
+  // Don't filter here - we'll display them in separate sections
+  const individualTargets = currentTargets;
+  
+  // Get current period's team aggregate
+  // Find the aggregate for the current year
+  const currentYear = new Date().getFullYear();
+  const currentTeamAggregate = teamAggregateData?.team_aggregates?.find(agg => {
+    const aggregateYear = new Date(agg.period_start).getFullYear();
+    return aggregateYear === currentYear;
+  }) || teamAggregateData?.team_aggregates?.[0]; // Fallback to first if no current year found
+  
+  const teamMembers = currentTeamAggregate?.member_targets || [];
+  const teamTotalQuota = currentTeamAggregate?.total_quota || 0;
+  
+  // Debug logging
+  console.log('🎯 Team Aggregate Data:', teamAggregateData);
+  console.log('🎯 Current Year:', currentYear);
+  console.log('🎯 Current Team Aggregate:', currentTeamAggregate);
+  console.log('🎯 Team Members:', teamMembers);
+  console.log('🎯 Team Total Quota:', teamTotalQuota);
+
   // Show loading if still checking auth
   if (authLoading) {
     return <Layout>Loading...</Layout>;
@@ -214,18 +262,40 @@ const TargetsPage = () => {
           </button>
         </div>
 
-        {/* Period Filter */}
-        <div className="flex items-center space-x-4">
-          <label className="text-sm font-medium text-gray-700">Period:</label>
-          <select
-            value={periodFilter}
-            onChange={(e) => setPeriodFilter(e.target.value as 'monthly' | 'quarterly' | 'yearly')}
-            className="px-3 py-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
-          >
-            <option value="monthly">Monthly</option>
-            <option value="quarterly">Quarterly</option>
-            <option value="yearly">Yearly</option>
-          </select>
+        {/* Filters and Controls */}
+        <div className="flex items-center justify-between">
+          <div className="flex items-center space-x-4">
+            <label className="text-sm font-medium text-gray-700">Period:</label>
+            <select
+              value={periodFilter}
+              onChange={(e) => setPeriodFilter(e.target.value as 'monthly' | 'quarterly' | 'yearly')}
+              className="px-3 py-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
+            >
+              <option value="monthly">Monthly</option>
+              <option value="quarterly">Quarterly</option>
+              <option value="yearly">Yearly</option>
+            </select>
+          </div>
+          
+          {/* Historical Targets Toggle */}
+          {historicalTargets.length > 0 && (
+            <button
+              onClick={() => setShowHistoricalTargets(!showHistoricalTargets)}
+              className="inline-flex items-center px-3 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-md hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+            >
+              {showHistoricalTargets ? (
+                <>
+                  <EyeOff className="w-4 h-4 mr-2" />
+                  Hide historical targets
+                </>
+              ) : (
+                <>
+                  <Eye className="w-4 h-4 mr-2" />
+                  Show targets for previous periods ({historicalTargets.length})
+                </>
+              )}
+            </button>
+          )}
         </div>
 
         {/* Targets List */}
@@ -239,60 +309,223 @@ const TargetsPage = () => {
             <div className="px-6 py-4 border-b border-gray-200">
               <h3 className="text-lg font-medium text-gray-900">Active Targets</h3>
             </div>
-            <div className="divide-y divide-gray-200">
+            <div className="">
               {targetsData && targetsData.length > 0 ? (
-                targetsData.map((target: TargetData) => (
-                  <div key={target.id} className="px-6 py-4 hover:bg-gray-50">
-                    <div className="flex items-center justify-between">
-                      <div className="flex-1">
-                        <div className="flex items-center space-x-4">
-                          <div className="flex-shrink-0">
-                            <div className="w-10 h-10 rounded-full bg-indigo-100 flex items-center justify-center">
-                              <Target className="w-5 h-5 text-indigo-600" />
+                <>
+                  {/* Team Target Section */}
+                  {currentTeamAggregate && teamMembers.length > 0 && (
+                    <div className="px-6 py-4 hover:bg-gray-50 border-b-2 border-gray-200">
+                      <div 
+                        className="flex items-center justify-between cursor-pointer"
+                        onClick={() => setExpandedTeamTarget(!expandedTeamTarget)}
+                      >
+                        <div className="flex-1">
+                          <div className="flex items-center space-x-4">
+                            <div className="flex-shrink-0">
+                              <div className="w-10 h-10 rounded-full bg-purple-100 flex items-center justify-center">
+                                <Users className="w-5 h-5 text-purple-600" />
+                              </div>
+                            </div>
+                            <div className="flex-1 min-w-0">
+                              <p className="text-sm font-medium text-gray-900 flex items-center">
+                                Team Target (Aggregated)
+                                <span className="ml-2 px-2 py-1 rounded-full text-xs font-medium bg-purple-100 text-purple-600">
+                                  {teamMembers.length} Members
+                                </span>
+                              </p>
+                              <p className="text-sm text-gray-500">
+                                {currentTeamAggregate.period_type.charAt(0).toUpperCase() + currentTeamAggregate.period_type.slice(1)} • 
+                                £{teamTotalQuota.toLocaleString()} • 
+                                {(currentTeamAggregate.commission_rate * 100).toFixed(1)}% commission
+                              </p>
+                              <p className="text-xs text-gray-400">
+                                {new Date(currentTeamAggregate.period_start).toLocaleDateString()} - {new Date(currentTeamAggregate.period_end).toLocaleDateString()}
+                              </p>
                             </div>
                           </div>
-                          <div className="flex-1 min-w-0">
-                            <p className="text-sm font-medium text-gray-900">
-                              {target.team_target ? 'Team Target' : 'Individual Target'}
-                              {target.user && ` - ${target.user.first_name} ${target.user.last_name}`}
-                            </p>
-                            <p className="text-sm text-gray-500">
-                              {target.period_type.charAt(0).toUpperCase() + target.period_type.slice(1)} • 
-                              £{target.quota_amount.toLocaleString()} • 
-                              {(target.commission_rate * 100).toFixed(1)}% commission
-                            </p>
-                            <p className="text-xs text-gray-400">
-                              {new Date(target.period_start).toLocaleDateString()} - {new Date(target.period_end).toLocaleDateString()}
-                            </p>
+                        </div>
+                        <div className="flex items-center space-x-2">
+                          <div className="text-xs text-gray-500 mr-2">
+                            Dynamically calculated
+                          </div>
+                          <div className="pl-2">
+                            {expandedTeamTarget ? (
+                              <ChevronUp className="w-5 h-5 text-gray-400" />
+                            ) : (
+                              <ChevronDown className="w-5 h-5 text-gray-400" />
+                            )}
                           </div>
                         </div>
                       </div>
-                      <div className="flex items-center space-x-2">
-                        <button
-                          onClick={() => handleDistribution(target)}
-                          className="inline-flex items-center px-3 py-1 border border-gray-300 text-xs font-medium rounded text-gray-700 bg-white hover:bg-gray-50"
-                        >
-                          <TrendingUp className="w-3 h-3 mr-1" />
-                          Distribute
-                        </button>
-                        <button
-                          onClick={() => handleTargetEdit(target)}
-                          className="inline-flex items-center px-3 py-1 border border-gray-300 text-xs font-medium rounded text-gray-700 bg-white hover:bg-gray-50"
-                        >
-                          <Edit className="w-3 h-3 mr-1" />
-                          Edit
-                        </button>
-                        <button
-                          onClick={() => handleTargetDelete(target.id)}
-                          className="inline-flex items-center px-3 py-1 border border-gray-300 text-xs font-medium rounded text-red-600 bg-white hover:bg-red-50"
-                        >
-                          <Trash2 className="w-3 h-3 mr-1" />
-                          Deactivate
-                        </button>
-                      </div>
+                      
+                      {/* Expandable Team Members */}
+                      {expandedTeamTarget && (
+                        <div className="mt-4 ml-14 space-y-3">
+                          <h4 className="text-xs font-semibold text-gray-700 uppercase tracking-wider">Team Member Targets</h4>
+                          {teamMembers.map((member: any) => {
+                            // Find the actual target for this member
+                            const memberTarget = individualTargets.find((t: TargetData) => t.user_id === member.user.id);
+                            
+                            return (
+                              <div key={member.target_id} className="bg-gray-50 rounded-lg p-3">
+                                <div className="flex items-center justify-between">
+                                  <div>
+                                    <p className="text-sm font-medium text-gray-900">
+                                      {member.user ? `${member.user.first_name} ${member.user.last_name}` : 'Team Member'}
+                                    </p>
+                                    <p className="text-xs text-gray-600">
+                                      Individual quota: £{member.quota_amount.toLocaleString()}
+                                    </p>
+                                  </div>
+                                  {memberTarget && (
+                                    <div className="flex items-center space-x-2">
+                                      <button
+                                        onClick={() => handleTargetEdit(memberTarget)}
+                                        className="inline-flex items-center px-2 py-1 border border-gray-300 text-xs font-medium rounded text-gray-700 bg-white hover:bg-gray-50"
+                                      >
+                                        <Edit className="w-3 h-3" />
+                                      </button>
+                                      <button
+                                        onClick={() => handleTargetDelete(memberTarget.id)}
+                                        className="inline-flex items-center px-2 py-1 border border-gray-300 text-xs font-medium rounded text-red-600 bg-white hover:bg-red-50"
+                                      >
+                                        <Trash2 className="w-3 h-3" />
+                                      </button>
+                                    </div>
+                                  )}
+                                </div>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      )}
                     </div>
-                  </div>
-                ))
+                  )}
+                  
+                  {/* Individual Targets */}
+                  {individualTargets.map((target: TargetData) => (
+                      <div key={target.id} className="px-6 py-4 border-b border-gray-200 hover:bg-gray-50">
+                        <div className="flex items-center justify-between">
+                          <div className="flex-1">
+                            <div className="flex items-center space-x-4">
+                              <div className="flex-shrink-0">
+                                <div className="w-10 h-10 rounded-full bg-indigo-100 flex items-center justify-center">
+                                  <Target className="w-5 h-5 text-indigo-600" />
+                                </div>
+                              </div>
+                              <div className="flex-1 min-w-0">
+                                <p className="text-sm font-medium text-gray-900">
+                                  Individual Target
+                                  {target.user && ` - ${target.user.first_name} ${target.user.last_name}`}
+                                </p>
+                                <p className="text-sm text-gray-500">
+                                  {target.period_type.charAt(0).toUpperCase() + target.period_type.slice(1)} • 
+                                  £{target.quota_amount.toLocaleString()} • 
+                                  {(target.commission_rate * 100).toFixed(1)}% commission
+                                </p>
+                                <p className="text-xs text-gray-400">
+                                  {new Date(target.period_start).toLocaleDateString()} - {new Date(target.period_end).toLocaleDateString()}
+                                </p>
+                              </div>
+                            </div>
+                          </div>
+                          <div className="flex items-center space-x-2">
+                            <button
+                              onClick={() => handleDistribution(target)}
+                              className="inline-flex items-center px-3 py-1 border border-gray-300 text-xs font-medium rounded text-gray-700 bg-white hover:bg-gray-50"
+                            >
+                              <TrendingUp className="w-3 h-3 mr-1" />
+                              Distribute
+                            </button>
+                            <button
+                              onClick={() => handleTargetEdit(target)}
+                              className="inline-flex items-center px-3 py-1 border border-gray-300 text-xs font-medium rounded text-gray-700 bg-white hover:bg-gray-50"
+                            >
+                              <Edit className="w-3 h-3 mr-1" />
+                              Edit
+                            </button>
+                            <button
+                              onClick={() => handleTargetDelete(target.id)}
+                              className="inline-flex items-center px-3 py-1 border border-gray-300 text-xs font-medium rounded text-red-600 bg-white hover:bg-red-50"
+                            >
+                              <Trash2 className="w-3 h-3 mr-1" />
+                              Deactivate
+                            </button>
+                          </div>
+                        </div>
+                      </div>
+                  ))}
+                  
+                  {/* Historical Targets Section */}
+                  {showHistoricalTargets && historicalTargets.length > 0 && (
+                    <>
+                      <div className="px-6 py-3 bg-gray-100 border-y border-gray-300">
+                        <div className="flex items-center space-x-2">
+                          <Clock className="w-4 h-4 text-gray-500" />
+                          <h4 className="text-sm font-semibold text-gray-700 uppercase tracking-wider">
+                            Historical Targets (Previous Periods)
+                          </h4>
+                        </div>
+                      </div>
+                      
+                      {historicalTargets.map((target: TargetData) => (
+                        <div key={target.id} className="px-6 py-4 border-b border-gray-200 bg-gray-50">
+                          <div className="flex items-center justify-between">
+                            <div className="flex-1">
+                              <div className="flex items-center space-x-4">
+                                <div className="flex-shrink-0">
+                                  <div className="w-10 h-10 rounded-full bg-gray-100 flex items-center justify-center">
+                                    <Clock className="w-5 h-5 text-gray-400" />
+                                  </div>
+                                </div>
+                                <div className="flex-1 min-w-0">
+                                  <p className="text-sm font-medium text-gray-600">
+                                    Individual Target
+                                    {target.user && ` - ${target.user.first_name} ${target.user.last_name}`}
+                                    <span className="ml-2 px-2 py-1 text-xs font-medium bg-gray-200 text-gray-600 rounded">
+                                      Historical
+                                    </span>
+                                  </p>
+                                  <p className="text-sm text-gray-400">
+                                    {target.period_type.charAt(0).toUpperCase() + target.period_type.slice(1)} • 
+                                    £{target.quota_amount.toLocaleString()} • 
+                                    {(target.commission_rate * 100).toFixed(1)}% commission
+                                  </p>
+                                  <p className="text-xs text-gray-400">
+                                    {new Date(target.period_start).toLocaleDateString()} - {new Date(target.period_end).toLocaleDateString()}
+                                  </p>
+                                </div>
+                              </div>
+                            </div>
+                            <div className="flex items-center space-x-2">
+                              <button
+                                className="inline-flex items-center px-3 py-1 border border-gray-200 text-xs font-medium rounded text-gray-400 bg-gray-50 cursor-not-allowed"
+                                disabled
+                              >
+                                <TrendingUp className="w-3 h-3 mr-1" />
+                                Distribute
+                              </button>
+                              <button
+                                className="inline-flex items-center px-3 py-1 border border-gray-200 text-xs font-medium rounded text-gray-400 bg-gray-50 cursor-not-allowed"
+                                disabled
+                              >
+                                <Edit className="w-3 h-3 mr-1" />
+                                Edit
+                              </button>
+                              <button
+                                className="inline-flex items-center px-3 py-1 border border-gray-200 text-xs font-medium rounded text-gray-400 bg-gray-50 cursor-not-allowed"
+                                disabled
+                              >
+                                <Trash2 className="w-3 h-3 mr-1" />
+                                Deactivate
+                              </button>
+                            </div>
+                          </div>
+                        </div>
+                      ))}
+                    </>
+                  )}
+                </>
               ) : (
                 <div className="px-6 py-12 text-center">
                   <Target className="w-12 h-12 text-gray-400 mx-auto mb-4" />
@@ -325,17 +558,21 @@ const TargetsPage = () => {
         />
       )}
 
-      {/* Target Edit Modal */}
+      {/* Target Edit Modal - Using QuotaWizard */}
       {showTargetModal && editingTarget && (
-        <TargetModal
+        <QuotaWizard
           isOpen={showTargetModal}
           onClose={() => {
             setShowTargetModal(false);
             setEditingTarget(null);
           }}
           onSubmit={(data) => updateTargetMutation.mutate({ id: editingTarget.id, data })}
-          target={editingTarget}
+          onResolveConflicts={() => {}} // Not needed for editing
           loading={updateTargetMutation.isPending}
+          teams={teamsData?.teams || []}
+          teamMembers={teamMembersData || []}
+          editMode={true}
+          editingTarget={editingTarget}
         />
       )}
 

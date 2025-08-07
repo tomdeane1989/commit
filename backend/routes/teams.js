@@ -23,6 +23,82 @@ const capitalizeName = (name) => {
 // Attach permissions to all team routes for conditional logic
 router.use(attachPermissions);
 
+// Helper function to calculate metrics for a specific period
+const calculateMetricsForPeriod = (periodType, targets, deals, currentDate = new Date()) => {
+  // Get period boundaries
+  let periodStart, periodEnd;
+  
+  if (periodType === 'quarterly') {
+    const quarter = Math.floor(currentDate.getMonth() / 3);
+    periodStart = new Date(currentDate.getFullYear(), quarter * 3, 1);
+    periodEnd = new Date(currentDate.getFullYear(), (quarter + 1) * 3, 0, 23, 59, 59, 999);
+  } else if (periodType === 'annual' || periodType === 'yearly') {
+    // Use calendar year for now
+    periodStart = new Date(currentDate.getFullYear(), 0, 1);
+    periodEnd = new Date(currentDate.getFullYear(), 11, 31, 23, 59, 59, 999);
+  }
+  
+  // Filter deals for the period
+  const periodDeals = {
+    closed: deals.closed.filter(d => {
+      const dealDate = d.closed_date || d.close_date;
+      return dealDate >= periodStart && dealDate <= periodEnd;
+    }),
+    commit: deals.commit.filter(d => {
+      const dealDate = d.close_date;
+      return dealDate >= periodStart && dealDate <= periodEnd;
+    }),
+    bestCase: deals.bestCase.filter(d => {
+      const dealDate = d.close_date;
+      return dealDate >= periodStart && dealDate <= periodEnd;
+    }),
+    pipeline: deals.pipeline.filter(d => {
+      const dealDate = d.close_date;
+      return dealDate >= periodStart && dealDate <= periodEnd;
+    })
+  };
+  
+  // Calculate amounts
+  const closedAmount = periodDeals.closed.reduce((sum, d) => sum + (d.amount || 0), 0);
+  const commitAmount = periodDeals.commit.reduce((sum, d) => sum + (d.amount || 0), 0);
+  const bestCaseAmount = periodDeals.bestCase.reduce((sum, d) => sum + (d.amount || 0), 0);
+  const pipelineAmount = periodDeals.pipeline.reduce((sum, d) => sum + (d.amount || 0), 0);
+  
+  // Find appropriate target for the period
+  const relevantTarget = targets.find(t => {
+    const targetStart = new Date(t.period_start);
+    const targetEnd = new Date(t.period_end);
+    
+    // Check if target overlaps with period
+    return targetStart <= periodEnd && targetEnd >= periodStart;
+  });
+  
+  if (!relevantTarget) {
+    return null;
+  }
+  
+  // Calculate quota for the period
+  let quotaAmount = Number(relevantTarget.quota_amount);
+  
+  // Pro-rate if target is annual but we're looking at quarterly
+  if (relevantTarget.period_type === 'annual' && periodType === 'quarterly') {
+    quotaAmount = quotaAmount / 4;
+  }
+  
+  return {
+    closedAmount,
+    commitAmount,
+    bestCaseAmount,
+    pipelineAmount,
+    quotaAmount,
+    commissionRate: relevantTarget.commission_rate,
+    quotaProgress: quotaAmount > 0 ? (closedAmount / quotaAmount) * 100 : 0,
+    periodType,
+    periodStart: periodStart.toISOString(),
+    periodEnd: periodEnd.toISOString()
+  };
+};
+
 // Get team members - managers and admins can view
 router.get('/', requireTeamView, async (req, res) => {
   try {
@@ -38,16 +114,18 @@ router.get('/', requireTeamView, async (req, res) => {
     let startDate, endDate;
     
     if (period === 'monthly') {
-      startDate = new Date(now.getFullYear(), now.getMonth(), 1);
-      endDate = new Date(now.getFullYear(), now.getMonth() + 1, 0, 23, 59, 59, 999);
+      startDate = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1));
+      endDate = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() + 1, 0, 23, 59, 59, 999));
     } else if (period === 'quarterly') {
-      const quarter = Math.floor(now.getMonth() / 3);
-      startDate = new Date(now.getFullYear(), quarter * 3, 1);
-      endDate = new Date(now.getFullYear(), quarter * 3 + 3, 0, 23, 59, 59, 999);
+      const quarter = Math.floor(now.getUTCMonth() / 3);
+      startDate = new Date(Date.UTC(now.getUTCFullYear(), quarter * 3, 1));
+      endDate = new Date(Date.UTC(now.getUTCFullYear(), quarter * 3 + 3, 0, 23, 59, 59, 999));
     } else { // yearly
-      startDate = new Date(now.getFullYear(), 0, 1);
-      endDate = new Date(now.getFullYear(), 11, 31, 23, 59, 59, 999);
+      startDate = new Date(Date.UTC(now.getUTCFullYear(), 0, 1));
+      endDate = new Date(Date.UTC(now.getUTCFullYear(), 11, 31, 23, 59, 59, 999));
     }
+    
+    console.log(`📅 Date range for ${period} period: ${startDate.toISOString()} to ${endDate.toISOString()}`);
 
     // Optimized query to avoid N+1 issues
     const teamMembers = await prisma.users.findMany({
@@ -88,15 +166,8 @@ router.get('/', requireTeamView, async (req, res) => {
       orderBy: { created_at: 'desc' }
     });
 
-    // DEBUG: Log what fields are actually being returned
-    console.log('🔍 BACKEND DEBUG - Team members data:', teamMembers.map(member => ({
-      email: member.email,
-      is_admin: member.is_admin,
-      is_manager: member.is_manager,
-      role: member.role,
-      hasIsAdmin: 'is_admin' in member,
-      hasIsManager: 'is_manager' in member
-    })));
+    // DEBUG: Log team member flags
+    console.log('🔍 Team members found:', teamMembers.length);
 
     // Get aggregated data for all team members in batch queries
     // Include the requesting user (manager) to get their team targets
@@ -334,17 +405,16 @@ router.get('/', requireTeamView, async (req, res) => {
 
     // Calculate performance metrics using batch data
     const teamWithMetrics = teamMembers.map(member => {
+      console.log(`📊 Processing member: ${member.email}, is_manager: ${member.is_manager}, is_admin: ${member.is_admin}`);
       const openDeals = openDealsMap.get(member.id);
       const closedWonDeals = closedWonDealsMap.get(member.id);
       const commitDeals = commitDealsMap.get(member.id);
       const bestCaseDeals = bestCaseDealsMap.get(member.id);
-      // Get manager's targets (could have personal, team, or both)
-      const allTargets = targetsData.filter(t => t.user_id === member.id);
-      const personalTarget = allTargets.find(t => !t.team_target);
-      const teamTarget = allTargets.find(t => t.team_target);
+      // Get user's personal target
+      const personalTarget = targetsData.find(t => t.user_id === member.id && !t.team_target);
       
       // Default target for basic calculations
-      let target = personalTarget || teamTarget;
+      let target = personalTarget;
       const commissions = commissionsMap.get(member.id);
       
       let openDealsAmount = openDeals?._sum?.amount ? Number(openDeals._sum.amount) : 0;
@@ -355,6 +425,10 @@ router.get('/', requireTeamView, async (req, res) => {
       // Prepare personal and team metrics for conditional display
       let personalMetrics = null;
       let teamMetrics = null;
+      let quarterlyPersonalMetrics = null;
+      let annualPersonalMetrics = null;
+      let quarterlyTeamMetrics = null;
+      let annualTeamMetrics = null;
       
       // Personal metrics (if manager has personal target)
       if (personalTarget) {
@@ -388,111 +462,161 @@ router.get('/', requireTeamView, async (req, res) => {
           commissionRate: Number(personalTarget.commission_rate),
           quotaProgress: closedWonAmount + commitAmount + bestCaseAmount
         };
+        
+        // Calculate quarterly metrics for personal target
+        if (personalTarget.period_type === 'annual') {
+          // For annual targets, calculate quarterly pro-rated amount
+          quarterlyPersonalMetrics = {
+            closedAmount: closedWonAmount,
+            commitAmount: commitAmount,
+            bestCaseAmount: bestCaseAmount,
+            pipelineAmount: openDealsAmount,
+            quotaAmount: originalPersonalQuota / 4, // Quarterly portion of annual
+            commissionRate: Number(personalTarget.commission_rate),
+            quotaProgress: closedWonAmount + commitAmount + bestCaseAmount,
+            periodType: 'quarterly'
+          };
+          
+          // Annual metrics use the full target
+          annualPersonalMetrics = {
+            closedAmount: closedWonAmount, // This would need to be recalculated for full year
+            commitAmount: commitAmount,
+            bestCaseAmount: bestCaseAmount,
+            pipelineAmount: openDealsAmount,
+            quotaAmount: originalPersonalQuota,
+            commissionRate: Number(personalTarget.commission_rate),
+            quotaProgress: closedWonAmount + commitAmount + bestCaseAmount,
+            periodType: 'annual'
+          };
+        } else if (personalTarget.period_type === 'quarterly') {
+          // For quarterly targets, use as-is for quarterly, multiply for annual
+          quarterlyPersonalMetrics = {
+            closedAmount: closedWonAmount,
+            commitAmount: commitAmount,
+            bestCaseAmount: bestCaseAmount,
+            pipelineAmount: openDealsAmount,
+            quotaAmount: originalPersonalQuota,
+            commissionRate: Number(personalTarget.commission_rate),
+            quotaProgress: closedWonAmount + commitAmount + bestCaseAmount,
+            periodType: 'quarterly'
+          };
+          
+          // Extrapolate to annual (4x quarterly)
+          annualPersonalMetrics = {
+            closedAmount: closedWonAmount, // This would need to be recalculated for full year
+            commitAmount: commitAmount,
+            bestCaseAmount: bestCaseAmount,
+            pipelineAmount: openDealsAmount,
+            quotaAmount: originalPersonalQuota * 4,
+            commissionRate: Number(personalTarget.commission_rate),
+            quotaProgress: closedWonAmount + commitAmount + bestCaseAmount,
+            periodType: 'annual'
+          };
+        }
       }
       
-      // Team aggregated metrics (if manager has team target)
-      if (teamTarget && member.role === 'manager') {
-        // Get all direct reports for this manager
-        const directReports = teamMembers.filter(tm => tm.manager?.email === member.email);
-        const directReportIds = directReports.map(dr => dr.id);
+      // Team aggregated metrics (only for managers/admins)
+      if (member.is_manager === true || member.is_admin === true) {
+        console.log(`🎯 Processing team metrics for manager: ${member.email}`);
+        // Get all team members (including the manager)
+        const allTeamMemberIds = teamMembers.map(tm => tm.id);
         
-        if (directReportIds.length > 0) {
-          // Aggregate team performance data (including manager's personal performance)
-          const teamClosedAmount = directReportIds.reduce((sum, userId) => {
+        if (allTeamMemberIds.length > 0) {
+          // Aggregate team performance data for all team members
+          const teamClosedAmount = allTeamMemberIds.reduce((sum, userId) => {
             const deals = closedWonDealsMap.get(userId);
             return sum + (deals?._sum?.amount ? Number(deals._sum.amount) : 0);
-          }, 0) + closedWonAmount; // Add manager's personal closed deals
+          }, 0);
           
-          const teamCommitAmount = directReportIds.reduce((sum, userId) => {
+          const teamCommitAmount = allTeamMemberIds.reduce((sum, userId) => {
             const deals = commitDealsMap.get(userId);
             return sum + (deals?.amount || 0);
-          }, 0) + commitAmount; // Add manager's personal commit deals
+          }, 0);
           
-          const teamBestCaseAmount = directReportIds.reduce((sum, userId) => {
+          const teamBestCaseAmount = allTeamMemberIds.reduce((sum, userId) => {
             const deals = bestCaseDealsMap.get(userId);
             return sum + (deals?.amount || 0);
-          }, 0) + bestCaseAmount; // Add manager's personal best case deals
+          }, 0);
           
-          const teamOpenAmount = directReportIds.reduce((sum, userId) => {
+          const teamOpenAmount = allTeamMemberIds.reduce((sum, userId) => {
             const deals = openDealsMap.get(userId);
             return sum + (deals?._sum?.amount ? Number(deals._sum.amount) : 0);
-          }, 0) + openDealsAmount; // Add manager's personal pipeline deals
+          }, 0);
           
-          // Calculate pro-rated team quota using the same logic as currentQuota
-          const teamTargetStart = new Date(teamTarget.period_start);
-          const teamTargetEnd = new Date(teamTarget.period_end);
-          const originalTeamQuota = Number(teamTarget.quota_amount);
-          
-          let proRatedTeamQuota = originalTeamQuota;
-          const teamOverlapStart = new Date(Math.max(teamTargetStart.getTime(), startDate.getTime()));
-          const teamOverlapEnd = new Date(Math.min(teamTargetEnd.getTime(), endDate.getTime()));
-          
-          if (teamOverlapStart <= teamOverlapEnd) {
-            let teamProRatio = 1;
-            if (teamTarget.period_type === 'annual' && period === 'quarterly') {
-              teamProRatio = 1 / 4;
-            } else if (teamTarget.period_type === 'annual' && period === 'monthly') {
-              teamProRatio = 1 / 12;
-            } else if (teamTarget.period_type === 'quarterly' && period === 'monthly') {
-              teamProRatio = 1 / 3;
+          // Calculate team quota by summing all team members' individual quotas
+          let teamQuotaTotal = 0;
+          allTeamMemberIds.forEach(userId => {
+            const userTarget = targetsData.find(t => t.user_id === userId && !t.team_target);
+            if (userTarget) {
+              const targetStart = new Date(userTarget.period_start);
+              const targetEnd = new Date(userTarget.period_end);
+              const originalQuota = Number(userTarget.quota_amount);
+              
+              let proRatedQuota = originalQuota;
+              const overlapStart = new Date(Math.max(targetStart.getTime(), startDate.getTime()));
+              const overlapEnd = new Date(Math.min(targetEnd.getTime(), endDate.getTime()));
+              
+              if (overlapStart <= overlapEnd) {
+                let proRatio = 1;
+                if (userTarget.period_type === 'annual' && period === 'quarterly') {
+                  proRatio = 1 / 4;
+                } else if (userTarget.period_type === 'annual' && period === 'monthly') {
+                  proRatio = 1 / 12;
+                } else if (userTarget.period_type === 'quarterly' && period === 'monthly') {
+                  proRatio = 1 / 3;
+                }
+                proRatedQuota = originalQuota * proRatio;
+              }
+              teamQuotaTotal += proRatedQuota;
             }
-            proRatedTeamQuota = originalTeamQuota * teamProRatio;
-          }
-          
-          // Calculate total team quota (team quota + manager's personal quota if exists)
-          let teamQuotaAmount = proRatedTeamQuota;
-          if (personalTarget && personalMetrics) {
-            // If manager has both personal and team targets, team quota includes their personal pro-rated quota
-            teamQuotaAmount = proRatedTeamQuota + personalMetrics.quotaAmount;
-          }
+          });
           
           teamMetrics = {
             closedAmount: teamClosedAmount,
             commitAmount: teamCommitAmount,
             bestCaseAmount: teamBestCaseAmount,
             pipelineAmount: teamOpenAmount,
-            quotaAmount: teamQuotaAmount,
-            commissionRate: Number(teamTarget.commission_rate),
+            quotaAmount: teamQuotaTotal,
+            commissionRate: personalTarget ? Number(personalTarget.commission_rate) : 0.05, // Use manager's personal rate or default
             quotaProgress: teamClosedAmount + teamCommitAmount + teamBestCaseAmount,
-            teamMemberCount: directReportIds.length + (personalTarget ? 1 : 0) // Include manager if they have personal quota
+            teamMemberCount: allTeamMemberIds.length
           };
+          console.log(`🎯 Team metrics calculated for ${member.email}:`, teamMetrics);
+          
+          // Calculate dual period team metrics
+          // For now, use simple pro-rating based on period type
+          // TODO: In future, fetch actual year-to-date data for more accurate annual metrics
+          if (period === 'quarterly') {
+            quarterlyTeamMetrics = {
+              closedAmount: teamClosedAmount,
+              commitAmount: teamCommitAmount,
+              bestCaseAmount: teamBestCaseAmount,
+              pipelineAmount: teamOpenAmount,
+              quotaAmount: teamQuotaTotal,
+              commissionRate: personalTarget ? Number(personalTarget.commission_rate) : 0.05,
+              quotaProgress: teamClosedAmount + teamCommitAmount + teamBestCaseAmount,
+              teamMemberCount: allTeamMemberIds.length,
+              periodType: 'quarterly'
+            };
+            
+            // Extrapolate annual from quarterly (simplified - multiply by 4)
+            annualTeamMetrics = {
+              closedAmount: teamClosedAmount, // Would need YTD data for accuracy
+              commitAmount: teamCommitAmount,
+              bestCaseAmount: teamBestCaseAmount,
+              pipelineAmount: teamOpenAmount,
+              quotaAmount: teamQuotaTotal * 4, // Annual is 4x quarterly
+              commissionRate: personalTarget ? Number(personalTarget.commission_rate) : 0.05,
+              quotaProgress: teamClosedAmount + teamCommitAmount + teamBestCaseAmount,
+              teamMemberCount: allTeamMemberIds.length,
+              periodType: 'annual'
+            };
+          }
         }
       }
       
-      // Team metrics for non-managers with team targets
-      if (teamTarget && member.role !== 'manager' && !teamMetrics) {
-        // For team members, show their individual contribution to team target
-        const teamTargetStart = new Date(teamTarget.period_start);
-        const teamTargetEnd = new Date(teamTarget.period_end);
-        const originalTeamQuota = Number(teamTarget.quota_amount);
-        
-        let proRatedTeamQuota = originalTeamQuota;
-        const teamOverlapStart = new Date(Math.max(teamTargetStart.getTime(), startDate.getTime()));
-        const teamOverlapEnd = new Date(Math.min(teamTargetEnd.getTime(), endDate.getTime()));
-        
-        if (teamOverlapStart <= teamOverlapEnd) {
-          let teamProRatio = 1;
-          if (teamTarget.period_type === 'annual' && period === 'quarterly') {
-            teamProRatio = 1 / 4;
-          } else if (teamTarget.period_type === 'annual' && period === 'monthly') {
-            teamProRatio = 1 / 12;
-          } else if (teamTarget.period_type === 'quarterly' && period === 'monthly') {
-            teamProRatio = 1 / 3;
-          }
-          proRatedTeamQuota = originalTeamQuota * teamProRatio;
-        }
-        
-        teamMetrics = {
-          closedAmount: closedWonAmount,
-          commitAmount: commitAmount,
-          bestCaseAmount: bestCaseAmount,
-          pipelineAmount: openDealsAmount,
-          quotaAmount: proRatedTeamQuota,
-          commissionRate: Number(teamTarget.commission_rate),
-          quotaProgress: closedWonAmount + commitAmount + bestCaseAmount,
-          teamMemberCount: 1 // Individual team member
-        };
-      }
+      // We no longer use team targets for non-managers
+      // Team aggregation is only shown for the manager
       
       // Total progress = closed + commit + best case (for quota progress bar)
       const quotaProgressAmount = closedWonAmount + commitAmount + bestCaseAmount;
@@ -591,18 +715,48 @@ router.get('/', requireTeamView, async (req, res) => {
           personal_metrics: personalMetrics,
           team_metrics: teamMetrics,
           has_personal_quota: !!personalTarget,
-          has_team_quota: !!teamTarget,
-          display_mode: personalTarget && teamTarget ? 'dual' : 
-                       teamTarget ? 'team_only' : 
-                       personalTarget ? 'personal_only' : 'none'
+          has_team_quota: !!teamMetrics,
+          display_mode: personalTarget && teamMetrics ? 'dual' : 
+                       teamMetrics ? 'team_only' : 
+                       personalTarget ? 'personal_only' : 'none',
+          
+          // Dual period metrics (quarterly + annual)
+          quarterly_personal_metrics: quarterlyPersonalMetrics,
+          annual_personal_metrics: annualPersonalMetrics,
+          quarterly_team_metrics: quarterlyTeamMetrics,
+          annual_team_metrics: annualTeamMetrics
         }
       };
+      
+      // Debug logging for Tom
+      if (member.email === 'tom@test.com') {
+        console.log(`🎯 Tom's final performance object:`, {
+          has_personal_quota: !!personalTarget,
+          has_team_quota: !!teamMetrics,
+          display_mode: personalTarget && teamMetrics ? 'dual' : 
+                       teamMetrics ? 'team_only' : 
+                       personalTarget ? 'personal_only' : 'none',
+          personalMetrics: personalMetrics ? {
+            closedAmount: personalMetrics.closedAmount,
+            quotaAmount: personalMetrics.quotaAmount,
+            quotaProgress: `${((personalMetrics.closedAmount / personalMetrics.quotaAmount) * 100).toFixed(1)}%`
+          } : null,
+          teamMetrics: teamMetrics ? {
+            closedAmount: teamMetrics.closedAmount,
+            quotaAmount: teamMetrics.quotaAmount,
+            quotaProgress: `${((teamMetrics.closedAmount / teamMetrics.quotaAmount) * 100).toFixed(1)}%`,
+            teamMemberCount: teamMetrics.teamMemberCount
+          } : null
+        });
+        console.log(`🎯 Tom's full team_metrics object:`, teamMetrics);
+      }
+      
+      return memberWithPerformance;
     });
 
     // Manager is now processed in the main team members loop with both personal and team targets
-    console.log(`🎯 Manager processed in main loop - avoiding duplicate tile`);
-    
     let finalTeamMembers = teamWithMetrics;
+    console.log(`🎯 Team processed - ${finalTeamMembers.length} members total`);
 
     res.json({
       team_members: finalTeamMembers,

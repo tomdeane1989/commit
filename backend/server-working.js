@@ -17,6 +17,9 @@ import dealsRoutes from './routes/deals.js';
 import commissionsRoutes from './routes/commissions.js';
 import integrationsRoutes from './routes/integrations.js';
 
+// Import scheduled jobs
+import { scheduleCommissionRecalculation } from './jobs/commissionRecalculationJob.js';
+
 
 
 dotenv.config();
@@ -552,4 +555,15 @@ app.use(errorHandler);
 
 app.listen(PORT, '0.0.0.0', () => {
   console.log(`Server running on 0.0.0.0:${PORT}`);
+  
+  // Start scheduled jobs
+  scheduleCommissionRecalculation();
+  
+  // Run commission recalculation on startup
+  console.log('🚀 Running commission recalculation on server startup...');
+  import('./jobs/commissionRecalculationJob.js').then(({ runCommissionRecalculation }) => {
+    runCommissionRecalculation().catch(error => {
+      console.error('Error running startup commission recalculation:', error);
+    });
+  });
 });

@@ -30,7 +30,7 @@ router.get('/', async (req, res) => {
 
     const targetUserId = user_id || req.user.id;
 
-    // Get date range (default to last 12 months)
+    // Get date range based on period view
     let dateRange = {};
     if (start_date && end_date) {
       dateRange = {
@@ -41,11 +41,37 @@ router.get('/', async (req, res) => {
       };
     } else {
       const now = new Date();
-      const twelveMonthsAgo = new Date(now);
-      twelveMonthsAgo.setMonth(now.getMonth() - 12);
+      let startDate;
+      
+      if (period_view === 'quarterly') {
+        // For quarterly view, limit to 4 quarters including current
+        const currentQuarter = Math.floor(now.getMonth() / 3);
+        const currentYear = now.getFullYear();
+        
+        // Calculate 3 quarters ago
+        let targetQuarter = currentQuarter - 3;
+        let targetYear = currentYear;
+        
+        while (targetQuarter < 0) {
+          targetQuarter += 4;
+          targetYear -= 1;
+        }
+        
+        // Start of the quarter 3 quarters ago
+        startDate = new Date(Date.UTC(targetYear, targetQuarter * 3, 1));
+      } else if (period_view === 'yearly') {
+        // For yearly view, show last 3 years including current
+        startDate = new Date(Date.UTC(now.getFullYear() - 2, 0, 1));
+      } else {
+        // For monthly view, show last 12 months
+        startDate = new Date(now);
+        startDate.setMonth(now.getMonth() - 11);
+        startDate.setDate(1);
+      }
+      
       dateRange = {
         close_date: {
-          gte: twelveMonthsAgo,
+          gte: startDate,
           lte: now
         }
       };
@@ -83,7 +109,10 @@ router.get('/', async (req, res) => {
           }
         ]
       },
-      orderBy: { period_start: 'asc' }
+      orderBy: [
+        { parent_target_id: 'desc' }, // Prefer child targets (non-null) over parent targets (null)
+        { period_start: 'asc' }
+      ]
     });
 
     // Group deals by period based on period_view
@@ -94,18 +123,18 @@ router.get('/', async (req, res) => {
       let periodKey, periodStart, periodEnd;
 
       if (period_view === 'monthly') {
-        periodStart = new Date(closeDate.getFullYear(), closeDate.getMonth(), 1);
-        periodEnd = new Date(closeDate.getFullYear(), closeDate.getMonth() + 1, 0);
+        periodStart = new Date(Date.UTC(closeDate.getUTCFullYear(), closeDate.getUTCMonth(), 1));
+        periodEnd = new Date(Date.UTC(closeDate.getUTCFullYear(), closeDate.getUTCMonth() + 1, 0));
         periodKey = periodStart.toISOString().substring(0, 7);
       } else if (period_view === 'quarterly') {
-        const quarter = Math.floor(closeDate.getMonth() / 3);
-        periodStart = new Date(closeDate.getFullYear(), quarter * 3, 1);
-        periodEnd = new Date(closeDate.getFullYear(), quarter * 3 + 3, 0);
-        periodKey = `${closeDate.getFullYear()}-Q${quarter + 1}`;
+        const quarter = Math.floor(closeDate.getUTCMonth() / 3);
+        periodStart = new Date(Date.UTC(closeDate.getUTCFullYear(), quarter * 3, 1));
+        periodEnd = new Date(Date.UTC(closeDate.getUTCFullYear(), quarter * 3 + 3, 0));
+        periodKey = `${closeDate.getUTCFullYear()}-Q${quarter + 1}`;
       } else if (period_view === 'yearly') {
-        periodStart = new Date(closeDate.getFullYear(), 0, 1);
-        periodEnd = new Date(closeDate.getFullYear(), 11, 31);
-        periodKey = closeDate.getFullYear().toString();
+        periodStart = new Date(Date.UTC(closeDate.getUTCFullYear(), 0, 1));
+        periodEnd = new Date(Date.UTC(closeDate.getUTCFullYear(), 11, 31));
+        periodKey = closeDate.getUTCFullYear().toString();
       }
 
       if (!periodData.has(periodKey)) {
@@ -134,18 +163,29 @@ router.get('/', async (req, res) => {
 
         // Calculate quota for this period
         if (periodTarget) {
-          const targetStart = new Date(periodTarget.period_start);
-          const targetEnd = new Date(periodTarget.period_end);
-          const targetDays = (targetEnd - targetStart) / (1000 * 60 * 60 * 24) + 1;
+          let quotaAmount = Number(periodTarget.quota_amount);
           
-          // Calculate overlap days
-          const overlapStart = periodStart > targetStart ? periodStart : targetStart;
-          const overlapEnd = periodEnd < targetEnd ? periodEnd : targetEnd;
-          const overlapDays = (overlapEnd - overlapStart) / (1000 * 60 * 60 * 24) + 1;
-          
-          // Pro-rate quota based on overlap
-          const quotaProportion = overlapDays / targetDays;
-          periodData.get(periodKey).quota_amount = Number(periodTarget.quota_amount) * quotaProportion;
+          // If this is a child target (has parent_target_id), it already has the correctly allocated amount
+          // including any seasonal adjustments
+          if (periodTarget.parent_target_id) {
+            // Child targets already have their allocated amounts (including seasonal)
+            periodData.get(periodKey).quota_amount = quotaAmount;
+          } else {
+            // Parent targets need to be divided based on view
+            // Note: This simple division won't reflect seasonal allocations
+            // Users should create child targets with proper allocations for accurate seasonal quotas
+            if (periodTarget.period_type === 'annual') {
+              if (period_view === 'monthly') {
+                quotaAmount = quotaAmount / 12;
+              } else if (period_view === 'quarterly') {
+                quotaAmount = quotaAmount / 4;
+              }
+            } else if (periodTarget.period_type === 'quarterly' && period_view === 'monthly') {
+              quotaAmount = quotaAmount / 3;
+            }
+            
+            periodData.get(periodKey).quota_amount = quotaAmount;
+          }
         }
       }
 
@@ -162,6 +202,94 @@ router.get('/', async (req, res) => {
       }
     }
 
+    // Now add periods from targets that don't have any deals
+    // This ensures we capture all team member quotas even if they have no deals
+    for (const target of targets) {
+      const targetStart = new Date(target.period_start);
+      const targetEnd = new Date(target.period_end);
+      
+      // Generate periods that overlap with this target
+      let currentDate = new Date(targetStart);
+      
+      while (currentDate <= targetEnd && currentDate <= dateRange.close_date.lte) {
+        let periodKey, periodStart, periodEnd;
+        
+        if (period_view === 'monthly') {
+          periodStart = new Date(Date.UTC(currentDate.getUTCFullYear(), currentDate.getUTCMonth(), 1));
+          periodEnd = new Date(Date.UTC(currentDate.getUTCFullYear(), currentDate.getUTCMonth() + 1, 0));
+          periodKey = periodStart.toISOString().substring(0, 7);
+          currentDate.setMonth(currentDate.getMonth() + 1);
+        } else if (period_view === 'quarterly') {
+          const quarter = Math.floor(currentDate.getUTCMonth() / 3);
+          periodStart = new Date(Date.UTC(currentDate.getUTCFullYear(), quarter * 3, 1));
+          periodEnd = new Date(Date.UTC(currentDate.getUTCFullYear(), quarter * 3 + 3, 0));
+          periodKey = `${currentDate.getUTCFullYear()}-Q${quarter + 1}`;
+          currentDate.setMonth(currentDate.getMonth() + 3);
+        } else if (period_view === 'yearly') {
+          periodStart = new Date(Date.UTC(currentDate.getUTCFullYear(), 0, 1));
+          periodEnd = new Date(Date.UTC(currentDate.getUTCFullYear(), 11, 31));
+          periodKey = currentDate.getUTCFullYear().toString();
+          currentDate.setFullYear(currentDate.getFullYear() + 1);
+        }
+        
+        // Only add if we don't already have this period and it's within our date range
+        if (!periodData.has(periodKey) && periodStart >= dateRange.close_date.gte && periodStart <= dateRange.close_date.lte) {
+          // Get user info
+          const userInfo = await prisma.users.findUnique({
+            where: { id: targetUserId },
+            select: {
+              id: true,
+              first_name: true,
+              last_name: true,
+              email: true
+            }
+          });
+          
+          periodData.set(periodKey, {
+            period_key: periodKey,
+            period_start: periodStart,
+            period_end: periodEnd,
+            user_id: targetUserId,
+            user: userInfo,
+            deals: [],
+            quota_amount: 0,
+            actual_amount: 0,
+            commission_earned: 0,
+            commission_rate: target.commission_rate || 0,
+            target_id: target.id || null,
+            deals_count: 0,
+            deals_with_commission: 0,
+            deals_without_commission: 0
+          });
+          
+          // Calculate quota for this period
+          let quotaAmount = Number(target.quota_amount);
+          
+          if (target.parent_target_id) {
+            // Child targets already have their allocated amounts
+            periodData.get(periodKey).quota_amount = quotaAmount;
+          } else {
+            // Parent targets need to be divided based on view
+            if (target.period_type === 'annual') {
+              if (period_view === 'monthly') {
+                quotaAmount = quotaAmount / 12;
+              } else if (period_view === 'quarterly') {
+                quotaAmount = quotaAmount / 4;
+              }
+            } else if (target.period_type === 'quarterly' && period_view === 'monthly') {
+              quotaAmount = quotaAmount / 3;
+            }
+            periodData.get(periodKey).quota_amount = quotaAmount;
+          }
+        }
+        
+        // Break if we've gone past the end date
+        if (currentDate > dateRange.close_date.lte) {
+          break;
+        }
+      }
+    }
+
     // Convert to array and calculate attainment
     const commissionData = Array.from(periodData.values()).map(period => ({
       ...period,
@@ -172,11 +300,23 @@ router.get('/', async (req, res) => {
       status: period.deals_without_commission > 0 ? 'partial' : 'calculated',
       warning: period.deals_without_commission > 0 
         ? `${period.deals_without_commission} deals missing commission (no active target when closed)`
-        : null
+        : null,
+      // Include deals as commission_details for frontend compatibility
+      commission_details: period.deals.map(deal => ({
+        id: deal.id,
+        deal: {
+          deal_name: deal.deal_name,
+          account_name: deal.account_name,
+          amount: deal.amount,
+          close_date: deal.close_date,
+          closed_date: deal.closed_date
+        },
+        commission_amount: deal.commission_amount || 0
+      }))
     }));
 
-    // Sort by period
-    commissionData.sort((a, b) => new Date(a.period_start) - new Date(b.period_start));
+    // Sort by period - newest first
+    commissionData.sort((a, b) => new Date(b.period_start) - new Date(a.period_start));
 
     // Format for export if needed
     if (is_export === 'true') {
@@ -278,7 +418,7 @@ router.get('/team', async (req, res) => {
     const teamMemberIds = teamMembers.map(m => m.id);
     teamMemberIds.push(req.user.id); // Include manager
 
-    // Get date range
+    // Get date range based on period view
     let dateRange = {};
     if (start_date && end_date) {
       dateRange = {
@@ -289,11 +429,37 @@ router.get('/team', async (req, res) => {
       };
     } else {
       const now = new Date();
-      const twelveMonthsAgo = new Date(now);
-      twelveMonthsAgo.setMonth(now.getMonth() - 12);
+      let startDate;
+      
+      if (period_view === 'quarterly') {
+        // For quarterly view, limit to 4 quarters including current
+        const currentQuarter = Math.floor(now.getMonth() / 3);
+        const currentYear = now.getFullYear();
+        
+        // Calculate 3 quarters ago
+        let targetQuarter = currentQuarter - 3;
+        let targetYear = currentYear;
+        
+        while (targetQuarter < 0) {
+          targetQuarter += 4;
+          targetYear -= 1;
+        }
+        
+        // Start of the quarter 3 quarters ago
+        startDate = new Date(Date.UTC(targetYear, targetQuarter * 3, 1));
+      } else if (period_view === 'yearly') {
+        // For yearly view, show last 3 years including current
+        startDate = new Date(Date.UTC(now.getFullYear() - 2, 0, 1));
+      } else {
+        // For monthly view, show last 12 months
+        startDate = new Date(now);
+        startDate.setMonth(now.getMonth() - 11);
+        startDate.setDate(1);
+      }
+      
       dateRange = {
         close_date: {
-          gte: twelveMonthsAgo,
+          gte: startDate,
           lte: now
         }
       };

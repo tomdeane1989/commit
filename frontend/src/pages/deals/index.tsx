@@ -144,28 +144,28 @@ const DealsPage = () => {
 
       case 'monthly':
         // Current month
-        startDate = new Date(now.getFullYear(), now.getMonth(), 1);
-        endDate = new Date(now.getFullYear(), now.getMonth() + 1, 0, 23, 59, 59, 999);
+        startDate = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1));
+        endDate = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() + 1, 0, 23, 59, 59, 999));
         break;
 
       case 'quarterly':
         // Current quarter (Q1: Jan-Mar, Q2: Apr-Jun, Q3: Jul-Sep, Q4: Oct-Dec)
-        const quarter = Math.floor(now.getMonth() / 3);
-        startDate = new Date(now.getFullYear(), quarter * 3, 1);
-        endDate = new Date(now.getFullYear(), quarter * 3 + 3, 0, 23, 59, 59, 999);
+        const quarter = Math.floor(now.getUTCMonth() / 3);
+        startDate = new Date(Date.UTC(now.getUTCFullYear(), quarter * 3, 1));
+        endDate = new Date(Date.UTC(now.getUTCFullYear(), quarter * 3 + 3, 0, 23, 59, 59, 999));
         break;
 
       case 'annual':
         // Current year
-        startDate = new Date(now.getFullYear(), 0, 1);
-        endDate = new Date(now.getFullYear(), 11, 31, 23, 59, 59, 999);
+        startDate = new Date(Date.UTC(now.getUTCFullYear(), 0, 1));
+        endDate = new Date(Date.UTC(now.getUTCFullYear(), 11, 31, 23, 59, 59, 999));
         break;
 
       default:
         // Default to quarterly
-        const defaultQuarter = Math.floor(now.getMonth() / 3);
-        startDate = new Date(now.getFullYear(), defaultQuarter * 3, 1);
-        endDate = new Date(now.getFullYear(), defaultQuarter * 3 + 3, 0, 23, 59, 59, 999);
+        const defaultQuarter = Math.floor(now.getUTCMonth() / 3);
+        startDate = new Date(Date.UTC(now.getUTCFullYear(), defaultQuarter * 3, 1));
+        endDate = new Date(Date.UTC(now.getUTCFullYear(), defaultQuarter * 3 + 3, 0, 23, 59, 59, 999));
     }
 
     return { startDate, endDate };

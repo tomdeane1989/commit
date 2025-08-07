@@ -124,8 +124,8 @@ router.get('/:teamId', requireTeamView, async (req, res) => {
     const currentQuarter = Math.floor(now.getMonth() / 3);
     const quarterStartMonth = currentQuarter * 3;
     
-    const periodStart = new Date(currentYear, quarterStartMonth, 1);
-    const periodEnd = new Date(currentYear, quarterStartMonth + 3, 0, 23, 59, 59, 999);
+    const periodStart = new Date(Date.UTC(currentYear, quarterStartMonth, 1));
+    const periodEnd = new Date(Date.UTC(currentYear, quarterStartMonth + 3, 0, 23, 59, 59, 999));
 
     // Get team performance data
     const [closedDeals, openDeals, targets] = await Promise.all([
