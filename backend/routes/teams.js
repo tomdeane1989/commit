@@ -437,6 +437,17 @@ router.get('/', requireTeamView, async (req, res) => {
         const personalTargetEnd = new Date(personalTarget.period_end);
         const originalPersonalQuota = Number(personalTarget.quota_amount);
         
+        // Debug logging for quota issues
+        if (member.name && member.name.includes('Alfie')) {
+          console.log(`🔍 DEBUG - ${member.name}'s target:`, {
+            period_type: personalTarget.period_type,
+            quota_amount: originalPersonalQuota,
+            period_start: personalTarget.period_start,
+            period_end: personalTarget.period_end,
+            distribution_config: personalTarget.distribution_config
+          });
+        }
+        
         let proRatedPersonalQuota = originalPersonalQuota;
         const overlapStart = new Date(Math.max(personalTargetStart.getTime(), startDate.getTime()));
         const overlapEnd = new Date(Math.min(personalTargetEnd.getTime(), endDate.getTime()));
@@ -489,7 +500,7 @@ router.get('/', requireTeamView, async (req, res) => {
             periodType: 'annual'
           };
         } else if (personalTarget.period_type === 'quarterly') {
-          // For quarterly targets, use as-is for quarterly, multiply for annual
+          // For quarterly targets, use as-is for quarterly
           quarterlyPersonalMetrics = {
             closedAmount: closedWonAmount,
             commitAmount: commitAmount,
@@ -501,13 +512,33 @@ router.get('/', requireTeamView, async (req, res) => {
             periodType: 'quarterly'
           };
           
-          // Extrapolate to annual (4x quarterly)
+          // Check if this quarterly target was distributed from an annual parent
+          let annualQuotaAmount = originalPersonalQuota * 4; // Default: multiply by 4
+          
+          if (personalTarget.distribution_config && personalTarget.distribution_config.parent_id) {
+            // This is a distributed quarterly target from an annual parent
+            // The parent's quota amount is the true annual amount
+            const parentTarget = targetsData.find(t => t.id === personalTarget.distribution_config.parent_id);
+            if (parentTarget) {
+              annualQuotaAmount = Number(parentTarget.quota_amount);
+              
+              if (member.name && member.name.includes('Alfie')) {
+                console.log(`🔍 DEBUG - Found parent target for ${member.name}:`, {
+                  parent_quota: annualQuotaAmount,
+                  quarterly_quota: originalPersonalQuota,
+                  expected_quarterly: annualQuotaAmount / 4
+                });
+              }
+            }
+          }
+          
+          // Annual metrics
           annualPersonalMetrics = {
             closedAmount: closedWonAmount, // This would need to be recalculated for full year
             commitAmount: commitAmount,
             bestCaseAmount: bestCaseAmount,
             pipelineAmount: openDealsAmount,
-            quotaAmount: originalPersonalQuota * 4,
+            quotaAmount: annualQuotaAmount,
             commissionRate: Number(personalTarget.commission_rate),
             quotaProgress: closedWonAmount + commitAmount + bestCaseAmount,
             periodType: 'annual'
