@@ -1,7 +1,7 @@
 // routes/team-management.js
 import express from 'express';
 import { PrismaClient } from '@prisma/client';
-import { requireTeamManagement, requireTeamView, attachPermissions } from '../middleware/permissions.js';
+import { requireTeamManagement, requireTeamView, requireManager, attachPermissions } from '../middleware/permissions.js';
 
 const router = express.Router();
 const prisma = new PrismaClient();
@@ -206,8 +206,8 @@ router.get('/:teamId', requireTeamView, async (req, res) => {
   }
 });
 
-// Create a new team
-router.post('/', requireTeamManagement, async (req, res) => {
+// Create a new team - allow managers and admins
+router.post('/', requireManager, async (req, res) => {
   try {
     const { team_name, description, team_lead_id, default_role, default_sub_role } = req.body;
 
