@@ -249,6 +249,7 @@ router.get('/', requireTeamView, async (req, res) => {
             ]
           },
           select: {
+            id: true,
             user_id: true,
             quota_amount: true,
             commission_rate: true,
@@ -257,7 +258,8 @@ router.get('/', requireTeamView, async (req, res) => {
             period_end: true,
             team_target: true,
             role: true,
-            parent_target_id: true
+            parent_target_id: true,
+            distribution_config: true
           }
         });
       } catch (error) {
@@ -273,13 +275,15 @@ router.get('/', requireTeamView, async (req, res) => {
             ]
           },
           select: {
+            id: true,
             user_id: true,
             quota_amount: true,
             commission_rate: true,
             period_type: true,
             period_start: true,
             period_end: true,
-            role: true
+            role: true,
+            distribution_config: true
           }
         });
         
@@ -289,6 +293,26 @@ router.get('/', requireTeamView, async (req, res) => {
           team_target: false, // Default to personal target
           parent_target_id: null // Default to parent target
         }));
+      }
+      
+      // Collect parent target IDs that we need to fetch
+      const parentTargetIds = allTargetsData
+        .filter(t => t.distribution_config && t.distribution_config.parent_id)
+        .map(t => t.distribution_config.parent_id)
+        .filter((id, index, self) => self.indexOf(id) === index); // Remove duplicates
+      
+      // Fetch parent targets if needed
+      if (parentTargetIds.length > 0) {
+        const parentTargets = await prisma.targets.findMany({
+          where: {
+            id: { in: parentTargetIds },
+            is_active: true
+          }
+        });
+        console.log(`📊 Fetched ${parentTargets.length} parent targets for annual quota calculations`);
+        
+        // Add parent targets to allTargetsData for lookup
+        allTargetsData = [...allTargetsData, ...parentTargets];
       }
       
       // Create a map to hold the best target for each user (prefer child targets)
@@ -518,7 +542,7 @@ router.get('/', requireTeamView, async (req, res) => {
           if (personalTarget.distribution_config && personalTarget.distribution_config.parent_id) {
             // This is a distributed quarterly target from an annual parent
             // The parent's quota amount is the true annual amount
-            const parentTarget = targetsData.find(t => t.id === personalTarget.distribution_config.parent_id);
+            const parentTarget = allTargetsData.find(t => t.id === personalTarget.distribution_config.parent_id);
             if (parentTarget) {
               annualQuotaAmount = Number(parentTarget.quota_amount);
               
