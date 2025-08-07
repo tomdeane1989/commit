@@ -89,10 +89,11 @@ const EditMemberModal: React.FC<EditMemberModalProps> = ({
     }
   }, [member, managersData]);
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!member) return;
 
+    // First, update the basic user info
     onSave({
       id: member.id,
       first_name: formData.first_name,
@@ -101,6 +102,31 @@ const EditMemberModal: React.FC<EditMemberModalProps> = ({
       is_manager: formData.is_manager,
       manager_id: formData.manager_id,
     });
+
+    // Handle team assignments separately
+    const currentTeamIds = member.team_memberships?.map(tm => tm.team.id) || [];
+    const newTeamIds = formData.team_ids;
+    
+    // Find teams to add and remove
+    const teamsToAdd = newTeamIds.filter(id => !currentTeamIds.includes(id));
+    const teamsToRemove = currentTeamIds.filter(id => !newTeamIds.includes(id));
+
+    try {
+      // Add member to new teams
+      for (const teamId of teamsToAdd) {
+        await api.post(`/teams/${teamId}/members`, {
+          user_ids: [member.id]
+        });
+      }
+
+      // Remove member from teams they're no longer in
+      for (const teamId of teamsToRemove) {
+        await api.delete(`/teams/${teamId}/members/${member.id}`);
+      }
+    } catch (error) {
+      console.error('Error updating team assignments:', error);
+      alert('Team assignments were partially updated. Please refresh to see the current state.');
+    }
   };
 
   if (!isOpen || !member) return null;

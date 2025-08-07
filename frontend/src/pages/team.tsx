@@ -210,6 +210,7 @@ const TeamPage = () => {
     mutationFn: ({ id, data }: { id: string; data: any }) => teamApi.updateTeamMember(id, data),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['team', user?.id] });
+      queryClient.invalidateQueries({ queryKey: ['teams-management'] });
       setEditMemberModalOpen(false);
       setEditingMember(null);
     },
