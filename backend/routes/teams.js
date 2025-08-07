@@ -301,6 +301,8 @@ router.get('/', requireTeamView, async (req, res) => {
         .map(t => t.distribution_config.parent_id)
         .filter((id, index, self) => self.indexOf(id) === index); // Remove duplicates
       
+      console.log(`🔍 Found ${parentTargetIds.length} parent target IDs to fetch:`, parentTargetIds);
+      
       // Fetch parent targets if needed
       if (parentTargetIds.length > 0) {
         const parentTargets = await prisma.targets.findMany({
@@ -436,6 +438,19 @@ router.get('/', requireTeamView, async (req, res) => {
       const bestCaseDeals = bestCaseDealsMap.get(member.id);
       // Get user's personal target
       const personalTarget = targetsData.find(t => t.user_id === member.id && !t.team_target);
+      
+      // Debug logging for Alfie's target
+      if (member.name && member.name.includes('Alfie')) {
+        console.log(`🎯 DEBUG - Alfie's personal target from targetsData:`, {
+          found: !!personalTarget,
+          target: personalTarget ? {
+            id: personalTarget.id,
+            period_type: personalTarget.period_type,
+            quota_amount: personalTarget.quota_amount,
+            distribution_config: personalTarget.distribution_config
+          } : null
+        });
+      }
       
       // Default target for basic calculations
       let target = personalTarget;
@@ -782,6 +797,18 @@ router.get('/', requireTeamView, async (req, res) => {
           annual_team_metrics: annualTeamMetrics
         }
       };
+      
+      // Debug final performance data for Alfie
+      if (member.name && member.name.includes('Alfie')) {
+        console.log(`📊 DEBUG - Alfie's final performance data:`, {
+          quarterly_quota: quarterlyPersonalMetrics?.quotaAmount,
+          annual_quota: annualPersonalMetrics?.quotaAmount,
+          has_metrics: {
+            quarterly: !!quarterlyPersonalMetrics,
+            annual: !!annualPersonalMetrics
+          }
+        });
+      }
       
       // Debug logging for Tom
       if (member.email === 'tom@test.com') {
