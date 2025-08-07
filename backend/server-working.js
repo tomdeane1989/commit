@@ -566,4 +566,4 @@ app.listen(PORT, '0.0.0.0', () => {
       console.error('Error running startup commission recalculation:', error);
     });
   });
-});
+});// Force rebuild at Thu  7 Aug 2025 14:54:15 BST
