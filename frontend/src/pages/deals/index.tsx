@@ -387,10 +387,14 @@ const DealsPage = () => {
           user_id: t.user_id,
           email: t.user?.email,
           quota: t.quota_amount,
-          is_active: t.is_active
+          quota_type: typeof t.quota_amount,
+          is_active: t.is_active,
+          is_active_type: typeof t.is_active
         }))
       });
-      quotaAmount = teamTargets.reduce((sum: number, target: any) => sum + Number(target.quota_amount), 0);
+      const amounts = teamTargets.map((t: any) => Number(t.quota_amount));
+      console.log('💵 Amount conversions:', amounts, 'Has NaN:', amounts.some(isNaN));
+      quotaAmount = amounts.reduce((sum: number, amount: number) => sum + amount, 0);
     } else if (managerView === 'all') {
       // All view: manager + team quotas combined
       const allActiveTargets = targets.filter((t: any) => t.is_active);
