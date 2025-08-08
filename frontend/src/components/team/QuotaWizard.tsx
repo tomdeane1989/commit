@@ -173,7 +173,7 @@ export const QuotaWizard: React.FC<QuotaWizardProps> = ({
     }
     
     return {
-      scope: 'team',
+      scope: 'individual', // Default to individual targets (team_target: false in backend)
       year_type: 'calendar',
       fiscal_start_month: 4, // April for UK fiscal year
       start_date: new Date().toISOString().split('T')[0],

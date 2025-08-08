@@ -812,7 +812,7 @@ router.post('/', requireTargetManagement, async (req, res) => {
           is_active: true,
           role: target_type === 'role' ? role : null,
           team_id: target_type === 'team' ? team_id : null,
-          team_target: target_type === 'team',
+          team_target: target_type === 'team', // true = aggregated team target, false = individual target
           // Add distribution metadata
           distribution_method: distribution_method || 'even',
           distribution_config: distribution_method !== 'even' && (seasonalData || custom_breakdown) ? {
@@ -866,7 +866,7 @@ router.post('/', requireTargetManagement, async (req, res) => {
               is_active: true,
               role: target_type === 'role' ? role : null,
               team_id: target_type === 'team' ? team_id : null,
-              team_target: target_type === 'team',
+              team_target: target_type === 'team', // true = aggregated team target, false = individual target
               parent_target_id: parentTarget.id, // Link to parent target
               // Child targets inherit distribution method but are marked as child
               distribution_method: 'child',
