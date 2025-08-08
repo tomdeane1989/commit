@@ -173,6 +173,40 @@ router.get('/', requireTeamView, async (req, res) => {
     // Include the requesting user (manager) to get their team targets
     const teamMemberIds = [...teamMembers.map(member => member.id), req.user.id];
     
+    // Pre-fetch team lead relationships for all managers
+    const managerIds = teamMembers.filter(m => m.is_manager || m.is_admin).map(m => m.id);
+    const teamsLedByManagers = await prisma.teams.findMany({
+      where: {
+        team_lead_id: { in: managerIds },
+        is_active: true
+      },
+      include: {
+        team_members: {
+          where: { is_active: true },
+          select: { user_id: true }
+        }
+      }
+    });
+    
+    // Create a map of manager ID to their team members
+    const managerTeamMembersMap = new Map();
+    managerIds.forEach(managerId => {
+      const teamsLed = teamsLedByManagers.filter(t => t.team_lead_id === managerId);
+      const teamMemberIdsSet = new Set();
+      teamMemberIdsSet.add(managerId); // Add manager themselves
+      
+      teamsLed.forEach(team => {
+        team.team_members.forEach(tm => {
+          teamMemberIdsSet.add(tm.user_id);
+        });
+      });
+      
+      managerTeamMembersMap.set(managerId, {
+        teamsLed: teamsLed.length,
+        memberIds: Array.from(teamMemberIdsSet)
+      });
+    });
+    
     // Initialize empty data arrays for when there are no team members
     let openDealsData = [];
     let closedWonDealsData = [];
@@ -589,39 +623,17 @@ router.get('/', requireTeamView, async (req, res) => {
       if (member.is_manager === true || member.is_admin === true) {
         console.log(`🎯 Processing team metrics for manager: ${member.email}`);
         
-        // Get teams where this user is the team lead
-        const teamsLed = await prisma.teams.findMany({
-          where: {
-            team_lead_id: member.id,
-            is_active: true
-          },
-          include: {
-            team_members: {
-              where: { is_active: true },
-              select: { user_id: true }
-            }
-          }
-        });
-        
-        // Collect all unique team member IDs from teams this manager leads
-        const teamMemberIdsSet = new Set();
-        
-        // Add the manager themselves
-        teamMemberIdsSet.add(member.id);
-        
-        // Add all team members from teams they lead
-        teamsLed.forEach(team => {
-          team.team_members.forEach(tm => {
-            teamMemberIdsSet.add(tm.user_id);
-          });
-        });
+        // Get pre-fetched team data for this manager
+        const managerTeamData = managerTeamMembersMap.get(member.id);
         
         // If user is admin but not leading any teams, aggregate all users
-        const allTeamMemberIds = teamsLed.length > 0 
-          ? Array.from(teamMemberIdsSet)
+        const allTeamMemberIds = managerTeamData && managerTeamData.teamsLed > 0
+          ? managerTeamData.memberIds
           : (member.is_admin === true ? teamMembers.map(tm => tm.id) : [member.id]);
         
-        console.log(`🎯 Aggregating targets for ${member.email}: ${allTeamMemberIds.length} team members from ${teamsLed.length} teams`);
+        const teamsLedCount = managerTeamData ? managerTeamData.teamsLed : 0;
+        
+        console.log(`🎯 Aggregating targets for ${member.email}: ${allTeamMemberIds.length} team members from ${teamsLedCount} teams`);
         
         if (allTeamMemberIds.length > 0) {
           // Aggregate team performance data for team members only
