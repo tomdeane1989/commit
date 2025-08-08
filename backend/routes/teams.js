@@ -180,6 +180,7 @@ router.get('/', requireTeamView, async (req, res) => {
     let bestCaseDealsData = [];
     let targetsData = [];
     let commissionsData = [];
+    let allTargetsData = []; // Move declaration to outer scope
     
     // Only run queries if there are team members
     if (teamMemberIds.length > 0) {
@@ -236,7 +237,6 @@ router.get('/', requireTeamView, async (req, res) => {
 
       // Batch query for active targets with period information
       // Prioritize current quarter child targets over parent targets
-      let allTargetsData;
       try {
         // Try with new schema fields first
         allTargetsData = await prisma.targets.findMany({
