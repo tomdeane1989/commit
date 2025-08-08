@@ -25,6 +25,8 @@ import {
   Users,
   User,
   ChevronDown,
+  ChevronUp,
+  Filter,
   Info
 } from 'lucide-react';
 
@@ -40,6 +42,7 @@ const DealsPage = () => {
   const [showAddDeal, setShowAddDeal] = useState(false);
   const [expandedDeals, setExpandedDeals] = useState<Set<string>>(new Set());
   const [quotaPeriod, setQuotaPeriod] = useState<'weekly' | 'monthly' | 'quarterly' | 'annual'>('quarterly');
+  const [filtersExpanded, setFiltersExpanded] = useState(false);
   
   // Manager view filtering state
   const [managerView, setManagerView] = useState<'personal' | 'team' | 'member' | 'all'>('team');
@@ -1317,183 +1320,238 @@ const DealsPage = () => {
               Drag deals into confidence buckets to see your projected earnings and track quota attainment
             </p>
           </div>
-          <div className="flex items-center space-x-3">
-            <button
-              onClick={() => refetch()}
-              disabled={isLoading}
-              className="inline-flex items-center px-4 py-2 bg-white border border-gray-300 rounded-lg text-sm font-medium text-gray-700 hover:bg-gray-50 transition-colors disabled:opacity-50 shadow-sm"
-            >
-              <RefreshCw className={`w-4 h-4 mr-2 ${isLoading ? 'animate-spin' : ''}`} />
-              Sync CRM
-            </button>
-          </div>
         </div>
 
-        {/* Filtering Controls */}
-        <div className="bg-white rounded-xl border border-gray-200 p-4 shadow-sm">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center space-x-4">
-              {/* Period Selector (for all users) */}
-              <div className="flex items-center space-x-2">
-                <label className="text-sm font-medium text-gray-700">Period:</label>
-                <select
-                  value={quotaPeriod}
-                  onChange={(e) => setQuotaPeriod(e.target.value as 'weekly' | 'monthly' | 'quarterly' | 'annual')}
-                  className="px-3 py-2 bg-white border border-gray-300 rounded-lg text-sm font-medium text-gray-700 hover:bg-gray-50 transition-colors shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                >
-                  <option value="weekly">Weekly</option>
-                  <option value="monthly">Monthly</option>
-                  <option value="quarterly">Quarterly</option>
-                  <option value="annual">Annual</option>
-                </select>
-              </div>
+        {/* Consolidated Filtering Controls */}
+        <div className="bg-white rounded-xl border border-gray-200 shadow-sm">
+          {/* First Order: Team View Selector (Always Visible) */}
+          <div className="p-4">
+            <div className="flex flex-col md:flex-row items-start md:items-center justify-between space-y-4 md:space-y-0">
+              <div className="flex flex-col md:flex-row items-start md:items-center space-y-4 md:space-y-0 md:space-x-4 flex-1">
+                {/* Team View Selector (managers only) */}
+                {isManager ? (
+                  <>
+                    <span className="text-sm font-medium text-gray-700">Team View:</span>
+                  
+                    {/* View Toggle Buttons */}
+                    <div className="flex bg-gray-100 rounded-lg p-1">
+                      <button
+                        onClick={() => {
+                          setManagerView('personal');
+                          setSelectedMemberId('');
+                        }}
+                        className={`px-4 py-2 rounded-md text-sm font-medium transition-colors ${
+                          managerView === 'personal'
+                            ? 'bg-white text-blue-600 shadow-sm'
+                            : 'text-gray-600 hover:text-gray-900'
+                        }`}
+                      >
+                        <User className="w-4 h-4 inline mr-2" />
+                        Personal
+                      </button>
+                      <button
+                        onClick={() => {
+                          setManagerView('team');
+                          setSelectedMemberId('');
+                        }}
+                        className={`px-4 py-2 rounded-md text-sm font-medium transition-colors ${
+                          managerView === 'team'
+                            ? 'bg-white text-blue-600 shadow-sm'
+                            : 'text-gray-600 hover:text-gray-900'
+                        }`}
+                      >
+                        <Users className="w-4 h-4 inline mr-2" />
+                        Team
+                      </button>
+                      <button
+                        onClick={() => setManagerView('member')}
+                        className={`px-4 py-2 rounded-md text-sm font-medium transition-colors ${
+                          managerView === 'member'
+                            ? 'bg-white text-blue-600 shadow-sm'
+                            : 'text-gray-600 hover:text-gray-900'
+                        }`}
+                      >
+                        <User className="w-4 h-4 inline mr-2" />
+                        Individual
+                      </button>
+                      <button
+                        onClick={() => {
+                          setManagerView('all');
+                          setSelectedMemberId('');
+                        }}
+                        className={`px-4 py-2 rounded-md text-sm font-medium transition-colors ${
+                          managerView === 'all'
+                            ? 'bg-white text-blue-600 shadow-sm'
+                            : 'text-gray-600 hover:text-gray-900'
+                        }`}
+                      >
+                        <Target className="w-4 h-4 inline mr-2" />
+                        All
+                      </button>
+                    </div>
 
-              {/* Team View Selector (managers only) */}
-              {isManager && (
-                <>
-                  <div className="h-6 w-px bg-gray-300"></div>
-                  <span className="text-sm font-medium text-gray-700">Team View:</span>
-                
-                {/* View Toggle Buttons */}
-                <div className="flex bg-gray-100 rounded-lg p-1">
-                  <button
-                    onClick={() => {
-                      setManagerView('personal');
-                      setSelectedMemberId(''); // Clear selected member when switching views
-                    }}
-                    className={`px-4 py-2 rounded-md text-sm font-medium transition-colors ${
-                      managerView === 'personal'
-                        ? 'bg-white text-blue-600 shadow-sm'
-                        : 'text-gray-600 hover:text-gray-900'
-                    }`}
-                  >
-                    <User className="w-4 h-4 inline mr-2" />
-                    Personal
-                  </button>
-                  <button
-                    onClick={() => {
-                      setManagerView('team');
-                      setSelectedMemberId(''); // Clear selected member when switching views
-                    }}
-                    className={`px-4 py-2 rounded-md text-sm font-medium transition-colors ${
-                      managerView === 'team'
-                        ? 'bg-white text-blue-600 shadow-sm'
-                        : 'text-gray-600 hover:text-gray-900'
-                    }`}
-                  >
-                    <Users className="w-4 h-4 inline mr-2" />
-                    Team
-                  </button>
-                  <button
-                    onClick={() => setManagerView('member')}
-                    className={`px-4 py-2 rounded-md text-sm font-medium transition-colors ${
-                      managerView === 'member'
-                        ? 'bg-white text-blue-600 shadow-sm'
-                        : 'text-gray-600 hover:text-gray-900'
-                    }`}
-                  >
-                    <User className="w-4 h-4 inline mr-2" />
-                    Individual
-                  </button>
-                  <button
-                    onClick={() => {
-                      setManagerView('all');
-                      setSelectedMemberId(''); // Clear selected member when switching views
-                    }}
-                    className={`px-4 py-2 rounded-md text-sm font-medium transition-colors ${
-                      managerView === 'all'
-                        ? 'bg-white text-blue-600 shadow-sm'
-                        : 'text-gray-600 hover:text-gray-900'
-                    }`}
-                  >
-                    <Target className="w-4 h-4 inline mr-2" />
-                    All
-                  </button>
-                </div>
-
-                {/* Team Member Dropdown (shown when Individual is selected) */}
-                {console.log('🔍 Dropdown render check - managerView:', managerView, 'should show dropdown:', managerView === 'member')}
-                {managerView === 'member' && (
-                  <div className="relative" ref={dropdownRef}>
-                    <button
-                      onClick={() => setShowMemberDropdown(!showMemberDropdown)}
-                      className="flex items-center px-4 py-2 bg-white border border-gray-300 rounded-lg text-sm font-medium text-gray-700 hover:bg-gray-50 transition-colors shadow-sm min-w-48"
-                    >
-                      {selectedMemberId && teamMembersData?.team_members ? (
-                        teamMembersData.team_members.find((m: any) => m.id === selectedMemberId)?.first_name + ' ' + 
-                        teamMembersData.team_members.find((m: any) => m.id === selectedMemberId)?.last_name
-                      ) : (
-                        'Select Team Member'
-                      )}
-                      <ChevronDown className="w-4 h-4 ml-2" />
-                    </button>
-                    
-                    {console.log('🔍 Dropdown items render check - showMemberDropdown:', showMemberDropdown, 'has team members:', !!teamMembersData?.team_members)}
-                    {showMemberDropdown && teamMembersData?.team_members && (
-                      <div className="absolute top-full left-0 mt-1 w-64 bg-white border border-gray-200 rounded-lg shadow-lg z-[9999]">
-                        {teamMembersData.team_members.map((member: any) => (
-                          <button
-                            key={member.id}
-                            onClick={() => {
-                              console.log('🔍 Team member selected:', member.first_name, member.last_name, 'ID:', member.id);
-                              setSelectedMemberId(member.id);
-                              setManagerView('member'); // Automatically set view to member when selecting a team member
-                              setShowMemberDropdown(false);
-                              console.log('🔍 States updated - selectedMemberId:', member.id, 'managerView: member');
-                            }}
-                            className="w-full px-4 py-3 text-left text-sm text-gray-700 hover:bg-red-100 border-b border-gray-100 last:border-b-0 flex items-center cursor-pointer"
-                            onMouseEnter={() => console.log('🔍 Mouse entered:', member.first_name)}
-                            onMouseLeave={() => console.log('🔍 Mouse left:', member.first_name)}
-                          >
-                            <User className="w-4 h-4 mr-3 text-gray-400" />
-                            <div>
-                              <div className="font-medium">{member.first_name} {member.last_name}</div>
-                              <div className="text-xs text-gray-500">{member.email}</div>
-                            </div>
-                          </button>
-                        ))}
+                    {/* Team Member Dropdown (shown when Individual is selected) */}
+                    {managerView === 'member' && (
+                      <div className="relative" ref={dropdownRef}>
+                        <button
+                          onClick={() => setShowMemberDropdown(!showMemberDropdown)}
+                          className="flex items-center px-4 py-2 bg-white border border-gray-300 rounded-lg text-sm font-medium text-gray-700 hover:bg-gray-50 transition-colors shadow-sm min-w-48"
+                        >
+                          {selectedMemberId && teamMembersData?.team_members ? (
+                            teamMembersData.team_members.find((m: any) => m.id === selectedMemberId)?.first_name + ' ' + 
+                            teamMembersData.team_members.find((m: any) => m.id === selectedMemberId)?.last_name
+                          ) : (
+                            'Select Team Member'
+                          )}
+                          <ChevronDown className="w-4 h-4 ml-2" />
+                        </button>
+                        
+                        {showMemberDropdown && teamMembersData?.team_members && (
+                          <div className="absolute top-full left-0 mt-1 w-64 bg-white border border-gray-200 rounded-lg shadow-lg z-[9999]">
+                            {teamMembersData.team_members.map((member: any) => (
+                              <button
+                                key={member.id}
+                                onClick={() => {
+                                  setSelectedMemberId(member.id);
+                                  setManagerView('member');
+                                  setShowMemberDropdown(false);
+                                }}
+                                className="w-full px-4 py-3 text-left text-sm text-gray-700 hover:bg-gray-50 border-b border-gray-100 last:border-b-0 flex items-center"
+                              >
+                                <User className="w-4 h-4 mr-3 text-gray-400" />
+                                <div>
+                                  <div className="font-medium">{member.first_name} {member.last_name}</div>
+                                  <div className="text-xs text-gray-500">{member.email}</div>
+                                </div>
+                              </button>
+                            ))}
+                          </div>
+                        )}
                       </div>
                     )}
+                    
+                    {/* View Context Display */}
+                    <div className="text-sm text-gray-500">
+                      {managerView === 'personal' && 'Your deals'}
+                      {managerView === 'team' && `${teamMembersData?.team_members?.length || 0} direct reports`}
+                      {managerView === 'member' && selectedMemberId && teamMembersData?.team_members && 
+                        `${teamMembersData.team_members.find((m: any) => m.id === selectedMemberId)?.first_name} ${teamMembersData.team_members.find((m: any) => m.id === selectedMemberId)?.last_name}`}
+                      {managerView === 'all' && `Combined (you + ${teamMembersData?.team_members?.length || 0})`}
+                    </div>
+                  </>
+                ) : (
+                  <div className="text-sm text-gray-500">
+                    Showing {quotaPeriod} view
                   </div>
                 )}
-                </>
-              )}
-            </div>
-
-            {/* View Context Indicator */}
-            <div className="flex items-center space-x-2">
-              {isManager && dealsData?.view_context && (
-                <span className="text-sm text-gray-500">
-                  {dealsData.view_context.current_view === 'team' && 'Showing team deals'}
-                  {dealsData.view_context.current_view === 'personal' && 'Showing your deals'}
-                  {dealsData.view_context.current_view === 'member' && selectedMemberId && 
-                    `Showing ${teamMembersData?.team_members?.find((m: any) => m.id === selectedMemberId)?.first_name}'s deals`
-                  }
-                  {dealsData.view_context.current_view === 'all' && 'Showing all deals (you + team)'}
-                </span>
-              )}
-              {!isManager && (
-                <span className="text-sm text-gray-500">
-                  Showing {quotaPeriod} view
-                </span>
-              )}
+              </div>
+              
+              {/* Expand/Collapse Button */}
+              <button
+                onClick={() => setFiltersExpanded(!filtersExpanded)}
+                className="flex items-center px-3 py-2 text-sm font-medium text-gray-600 hover:text-gray-900 transition-colors"
+              >
+                <Filter className="w-4 h-4 mr-2" />
+                <span>Filters</span>
+                {filtersExpanded ? (
+                  <ChevronUp className="w-4 h-4 ml-1" />
+                ) : (
+                  <ChevronDown className="w-4 h-4 ml-1" />
+                )}
+              </button>
             </div>
           </div>
+          
+          {/* Expandable Filters Section */}
+          {filtersExpanded && (
+            <div className="border-t border-gray-200 p-4 bg-gray-50">
+              <div className="grid grid-cols-1 md:grid-cols-5 gap-3">
+                {/* Period Selector */}
+                <div className="flex flex-col space-y-1">
+                  <label className="text-xs font-medium text-gray-600">Period</label>
+                  <select
+                    value={quotaPeriod}
+                    onChange={(e) => setQuotaPeriod(e.target.value as 'weekly' | 'monthly' | 'quarterly' | 'annual')}
+                    className="px-3 py-2 bg-white border border-gray-200 rounded-lg text-sm font-medium text-gray-700 hover:bg-gray-50 transition-colors focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                  >
+                    <option value="weekly">Weekly</option>
+                    <option value="monthly">Monthly</option>
+                    <option value="quarterly">Quarterly</option>
+                    <option value="annual">Annual</option>
+                  </select>
+                </div>
+                
+                {/* Search */}
+                <div className="flex flex-col space-y-1">
+                  <label className="text-xs font-medium text-gray-600">Search</label>
+                  <div className="relative">
+                    <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-4 h-4" />
+                    <input
+                      type="text"
+                      placeholder="Search deals..."
+                      value={filters.search}
+                      onChange={(e) => setFilters({...filters, search: e.target.value})}
+                      className="pl-10 pr-4 py-2 w-full bg-white border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                    />
+                  </div>
+                </div>
+                
+                {/* Status Filter */}
+                <div className="flex flex-col space-y-1">
+                  <label className="text-xs font-medium text-gray-600">Status</label>
+                  <select
+                    value={filters.status}
+                    onChange={(e) => setFilters({...filters, status: e.target.value})}
+                    className="py-2 px-3 bg-white border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                  >
+                    <option value="">All Statuses</option>
+                    <option value="open">Open</option>
+                    <option value="closed_won">Closed Won</option>
+                    <option value="closed_lost">Closed Lost</option>
+                  </select>
+                </div>
+                
+                {/* Date From */}
+                <div className="flex flex-col space-y-1">
+                  <label className="text-xs font-medium text-gray-600">From Date</label>
+                  <input
+                    type="date"
+                    value={filters.from_date}
+                    onChange={(e) => setFilters({...filters, from_date: e.target.value})}
+                    className="py-2 px-3 bg-white border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                  />
+                </div>
+                
+                {/* Date To */}
+                <div className="flex flex-col space-y-1">
+                  <label className="text-xs font-medium text-gray-600">To Date</label>
+                  <input
+                    type="date"
+                    value={filters.to_date}
+                    onChange={(e) => setFilters({...filters, to_date: e.target.value})}
+                    className="py-2 px-3 bg-white border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                  />
+                </div>
+              </div>
+            </div>
+          )}
         </div>
 
         {/* Summary Bar */}
-        <div className="bg-gradient-to-r from-green-700 to-green-600 rounded-2xl p-4 md:p-6 text-white shadow-xl" style={{ background: 'linear-gradient(to right, #82a365, #6b8950)' }}>
+        <div className="bg-white rounded-xl border border-gray-200 p-4 md:p-6 shadow-sm hover:shadow-md transition-shadow">
           <div className="grid grid-cols-2 md:grid-cols-4 gap-4 md:gap-6">
             {/* Actual (Closed Won) */}
             <div className="text-center md:text-left">
               <div className="flex items-center justify-center md:justify-start mb-2">
-                <CheckCircle className="w-5 h-5 mr-2 text-green-200" />
-                <span className="text-sm font-medium text-green-100">Actual Closed</span>
+                <div className="p-1.5 bg-green-50 rounded-lg mr-2">
+                  <CheckCircle className="w-4 h-4 text-green-600" />
+                </div>
+                <span className="text-sm font-medium text-gray-600">Actual Closed</span>
               </div>
-              <div className="text-3xl font-bold text-white">
+              <div className="text-2xl font-bold text-gray-900">
                 £{closedAmount.toLocaleString()}
               </div>
-              <div className="text-sm text-green-100">
+              <div className="text-xs text-gray-500">
                 Commission: £{dealsByCategory.closed.reduce((sum: number, deal: Deal) => sum + getDealCommission(deal, commissionRate), 0).toLocaleString()}
               </div>
             </div>
@@ -1501,13 +1559,15 @@ const DealsPage = () => {
             {/* Projected (Commit + Best Case) */}
             <div className="text-center md:text-left">
               <div className="flex items-center justify-center md:justify-start mb-2">
-                <TrendingUp className="w-5 h-5 mr-2 text-yellow-200" />
-                <span className="text-sm font-medium text-green-100">Projected</span>
+                <div className="p-1.5 bg-blue-50 rounded-lg mr-2">
+                  <TrendingUp className="w-4 h-4 text-blue-600" />
+                </div>
+                <span className="text-sm font-medium text-gray-600">Projected</span>
               </div>
-              <div className="text-3xl font-bold text-white">
+              <div className="text-2xl font-bold text-gray-900">
                 £{(commitAmount + bestCaseAmount).toLocaleString()}
               </div>
-              <div className="text-sm text-green-100">
+              <div className="text-xs text-gray-500">
                 Commission: £{[...dealsByCategory.commit, ...dealsByCategory.best_case].reduce((sum: number, deal: Deal) => sum + getDealCommission(deal, commissionRate), 0).toLocaleString()}
               </div>
             </div>
@@ -1515,15 +1575,17 @@ const DealsPage = () => {
             {/* Quota Target */}
             <div className="text-center md:text-left">
               <div className="flex items-center justify-center md:justify-start mb-2">
-                <Target className="w-5 h-5 mr-2 text-blue-200" />
-                <span className="text-sm font-medium text-green-100">
+                <div className="p-1.5 bg-indigo-50 rounded-lg mr-2">
+                  <Target className="w-4 h-4 text-indigo-600" />
+                </div>
+                <span className="text-sm font-medium text-gray-600">
                   {quotaPeriod.charAt(0).toUpperCase() + quotaPeriod.slice(1)} Quota
                 </span>
               </div>
-              <div className="text-3xl font-bold text-white">
+              <div className="text-2xl font-bold text-gray-900">
                 £{quotaTarget.toLocaleString()}
               </div>
-              <div className="text-sm text-green-100">
+              <div className="text-xs text-gray-500">
                 Attainment: {((closedAmount / quotaTarget) * 100).toFixed(0)}%
               </div>
             </div>
@@ -1531,58 +1593,19 @@ const DealsPage = () => {
             {/* Days Remaining */}
             <div className="text-center md:text-left">
               <div className="flex items-center justify-center md:justify-start mb-2">
-                <Timer className="w-5 h-5 mr-2 text-orange-200" />
-                <span className="text-sm font-medium text-green-100">Days Remaining</span>
+                <div className="p-1.5 bg-amber-50 rounded-lg mr-2">
+                  <Timer className="w-4 h-4 text-amber-600" />
+                </div>
+                <span className="text-sm font-medium text-gray-600">Days Remaining</span>
               </div>
-              <div className="text-3xl font-bold text-white">
+              <div className="text-2xl font-bold text-gray-900">
                 {getDaysRemainingInQuarter()}
               </div>
-              <div className="text-sm text-green-100">days in quarter</div>
+              <div className="text-xs text-gray-500">days in quarter</div>
             </div>
           </div>
         </div>
 
-
-        {/* Filters */}
-        <div className="bg-white rounded-xl border border-gray-200 shadow-sm p-4">
-          <div className="grid grid-cols-1 md:grid-cols-4 gap-3">
-            <div className="relative">
-              <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-4 h-4" />
-              <input
-                type="text"
-                placeholder="Search deals..."
-                value={filters.search}
-                onChange={(e) => setFilters({...filters, search: e.target.value})}
-                className="pl-10 pr-4 py-2 w-full bg-gray-50 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:border-transparent\n                style={{ '--tw-ring-color': '#82a365' } as React.CSSProperties}"
-              />
-            </div>
-            
-            <select
-              value={filters.status}
-              onChange={(e) => setFilters({...filters, status: e.target.value})}
-              className="py-2 px-3 bg-gray-50 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:border-transparent\n                style={{ '--tw-ring-color': '#82a365' } as React.CSSProperties}"
-            >
-              <option value="">All Statuses</option>
-              <option value="open">Open</option>
-              <option value="closed_won">Closed Won</option>
-              <option value="closed_lost">Closed Lost</option>
-            </select>
-            
-            <input
-              type="date"
-              value={filters.from_date}
-              onChange={(e) => setFilters({...filters, from_date: e.target.value})}
-              className="py-2 px-3 bg-gray-50 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:border-transparent\n                style={{ '--tw-ring-color': '#82a365' } as React.CSSProperties}"
-            />
-            
-            <input
-              type="date"
-              value={filters.to_date}
-              onChange={(e) => setFilters({...filters, to_date: e.target.value})}
-              className="py-2 px-3 bg-gray-50 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:border-transparent\n                style={{ '--tw-ring-color': '#82a365' } as React.CSSProperties}"
-            />
-          </div>
-        </div>
 
         {/* Main Content */}
         {isLoading ? (

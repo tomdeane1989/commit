@@ -13,8 +13,6 @@ import {
   ChevronRight,
   Bell,
   Search,
-  Filter,
-  MoreHorizontal,
   Menu,
   X,
   Link
@@ -92,22 +90,22 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
       )}
 
       {/* Sidebar */}
-      <div className={`fixed inset-y-0 left-0 z-50 w-80 bg-white/80 backdrop-blur-xl border-r border-gray-200/50 shadow-2xl transform transition-transform duration-300 lg:relative lg:transform-none lg:z-10 ${
+      <div className={`fixed inset-y-0 left-0 z-50 w-64 bg-white/80 backdrop-blur-xl border-r border-gray-200/50 shadow-2xl transform transition-transform duration-300 lg:relative lg:transform-none lg:z-10 ${
         isMobileMenuOpen ? 'translate-x-0' : '-translate-x-full lg:translate-x-0'
       }`}>
         <div className="flex flex-col h-full">
           {/* Logo */}
-          <div className="flex items-center justify-between h-20 px-8 border-b border-gray-200/50">
-            <div className="flex items-center space-x-4">
-              <div className="w-12 h-12 bg-white rounded-lg shadow-lg flex items-center justify-center">
+          <div className="flex items-center justify-between h-20 px-4 border-b border-gray-200/50">
+            <div className="flex items-center space-x-3">
+              <div className="w-10 h-10 bg-white rounded-lg shadow-lg flex items-center justify-center">
                 <img 
                   src="/commit_logo2.png" 
                   alt="Commit Logo" 
-                  className="w-11 h-11 object-contain"
+                  className="w-9 h-9 object-contain"
                 />
               </div>
-              <div className="text-center">
-                <h1 className="text-xl font-bold text-green-800" style={{ fontFamily: 'Calibri, sans-serif' }}>
+              <div>
+                <h1 className="text-lg font-bold text-green-800" style={{ fontFamily: 'Calibri, sans-serif' }}>
                   Commit
                 </h1>
                 <p className="text-xs text-gray-500 font-medium">Own Your Number</p>
@@ -123,9 +121,9 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
           </div>
 
           {/* Navigation */}
-          <nav className="flex-1 px-6 py-8 space-y-2">
-            <div className="mb-6">
-              <h3 className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-3">
+          <nav className="flex-1 px-4 py-6 space-y-1">
+            <div className="mb-4">
+              <h3 className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2 px-3">
                 Main Menu
               </h3>
             </div>
@@ -135,7 +133,7 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
                 <button
                   key={item.name}
                   onClick={() => handleNavigation(item.href)}
-                  className={`w-full flex items-center justify-between px-5 py-4 text-sm font-medium rounded-2xl transition-all duration-300 group relative overflow-hidden ${
+                  className={`w-full flex items-center justify-between px-3 py-3 text-sm font-medium rounded-xl transition-all duration-300 group relative overflow-hidden ${
                     isActive 
                       ? 'text-white shadow-lg' 
                       : 'text-gray-700 hover:bg-gray-50 hover:text-gray-900'
@@ -146,12 +144,12 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
                   } : {}}
                 >
                   <div className="flex items-center">
-                    <div className={`p-2 rounded-xl mr-4 transition-all duration-300 ${
+                    <div className={`p-1.5 rounded-lg mr-3 transition-all duration-300 ${
                       isActive 
                         ? 'bg-white/20' 
                         : 'bg-gray-100 group-hover:bg-gray-200'
                     }`}>
-                      <item.icon className={`w-5 h-5 ${
+                      <item.icon className={`w-4 h-4 ${
                         isActive ? 'text-white' : 'text-gray-600 group-hover:text-gray-700'
                       }`} />
                     </div>
@@ -161,7 +159,7 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
                     <ChevronRight className="w-4 h-4 text-white/70" />
                   )}
                   {isActive && (
-                    <div className="absolute inset-0 opacity-20 rounded-2xl" style={{ background: 'linear-gradient(to right, #82a365, #6b8950)' }}></div>
+                    <div className="absolute inset-0 opacity-20 rounded-xl" style={{ background: 'linear-gradient(to right, #82a365, #6b8950)' }}></div>
                   )}
                 </button>
               );
@@ -169,17 +167,17 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
           </nav>
 
           {/* User info */}
-          <div className="p-6 border-t border-gray-200/50">
-            <div className="flex items-center justify-between p-4 bg-gray-50 rounded-2xl">
-              <div className="flex items-center space-x-3">
+          <div className="p-4 border-t border-gray-200/50">
+            <div className="flex items-center justify-between p-3 bg-gray-50 rounded-xl">
+              <div className="flex items-center space-x-2">
                 <div className="relative">
-                  <div className="w-12 h-12 rounded-2xl flex items-center justify-center text-white text-sm font-bold shadow-lg" style={{ background: 'linear-gradient(to bottom right, #82a365, #6b8950)' }}>
+                  <div className="w-10 h-10 rounded-xl flex items-center justify-center text-white text-xs font-bold shadow-lg" style={{ background: 'linear-gradient(to bottom right, #82a365, #6b8950)' }}>
                     {user?.first_name?.[0]}{user?.last_name?.[0]}
                   </div>
-                  <div className="absolute -bottom-1 -right-1 w-4 h-4 bg-green-500 rounded-full border-2 border-white"></div>
+                  <div className="absolute -bottom-1 -right-1 w-3 h-3 bg-green-500 rounded-full border-2 border-white"></div>
                 </div>
                 <div className="flex-1 min-w-0">
-                  <p className="text-sm font-semibold text-gray-900 truncate">
+                  <p className="text-xs font-semibold text-gray-900 truncate">
                     {user?.first_name} {user?.last_name}
                   </p>
                   <p className="text-xs text-gray-500 capitalize font-medium">
@@ -237,11 +235,6 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
               
             </div>
             <div className="flex items-center space-x-2 lg:space-x-4">
-              {/* Filter button - hidden on mobile */}
-              <button className="hidden sm:block p-3 text-gray-400 hover:text-gray-600 hover:bg-gray-50 rounded-xl transition-all duration-300">
-                <Filter className="w-5 h-5" />
-              </button>
-              
               {/* Notifications */}
               <button className="relative p-3 text-gray-400 hover:text-gray-600 hover:bg-gray-50 rounded-xl transition-all duration-300">
                 <Bell className="w-5 h-5" />
@@ -257,11 +250,6 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
                   <DateDisplay />
                 </div>
               </div>
-              
-              {/* More menu - hidden on mobile */}
-              <button className="hidden sm:block p-3 text-gray-400 hover:text-gray-600 hover:bg-gray-50 rounded-xl transition-all duration-300">
-                <MoreHorizontal className="w-5 h-5" />
-              </button>
             </div>
           </div>
         </div>

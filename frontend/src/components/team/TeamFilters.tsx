@@ -75,14 +75,6 @@ export const TeamFilters: React.FC<TeamFiltersProps> = ({
             <span className="text-sm text-gray-700">Show inactive members</span>
           </label>
 
-          <button
-            onClick={onInviteClick}
-            className="inline-flex items-center px-4 py-2 text-white text-sm font-medium rounded-lg transition-all duration-300 shadow-lg hover:opacity-90"
-            style={{ background: 'linear-gradient(to right, #82a365, #6b8950)', boxShadow: '0 10px 15px -3px rgba(56, 64, 49, 0.25)' }}
-          >
-            <Plus className="w-4 h-4 mr-2" />
-            Invite Member
-          </button>
         </div>
       </div>
     </div>

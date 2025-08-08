@@ -385,14 +385,7 @@ const TeamPage = () => {
                 <div className="col-span-full text-center py-12">
                   <Users className="w-12 h-12 text-gray-400 mx-auto mb-4" />
                   <h3 className="text-lg font-medium text-gray-900 mb-2">No team members found</h3>
-                  <p className="text-gray-600 mb-4">Get started by inviting your first team member.</p>
-                  <button
-                    onClick={() => setInviteModalOpen(true)}
-                    className="inline-flex items-center px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition-colors"
-                  >
-                    <Plus className="w-4 h-4 mr-2" />
-                    Invite Member
-                  </button>
+                  <p className="text-gray-600">Get started by inviting your first team member using the button above.</p>
                 </div>
               ) : (
                 filteredMembers.map((member: TeamMember) => (

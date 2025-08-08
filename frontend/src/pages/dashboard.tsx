@@ -126,7 +126,7 @@ const DashboardPage = () => {
   return (
     <ProtectedRoute>
       <Layout>
-      <div className="max-w-7xl mx-auto space-y-8">
+        <div className="max-w-7xl mx-auto space-y-8">
         
         {/* Header */}
         <div className="flex items-center justify-between">
@@ -179,7 +179,7 @@ const DashboardPage = () => {
                   Team
                 </button>
                 <button 
-                  onClick={() => setManagerView('all')}
+                  onClick={() => { setManagerView('all'); setSelectedMemberId(''); }}
                   className={`px-4 py-2 rounded-md text-sm font-medium transition-colors ${
                     managerView === 'all' ? 'bg-white text-blue-600 shadow-sm' : 'text-gray-600 hover:text-gray-900'
                   }`}
@@ -226,103 +226,91 @@ const DashboardPage = () => {
         {/* Key Metrics */}
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
           {/* Quota Attainment */}
-          <div className="relative overflow-hidden rounded-3xl p-6 text-white shadow-2xl" style={{ background: 'linear-gradient(to bottom right, #82a365, #6b8950)', boxShadow: '0 25px 50px -12px rgba(56, 64, 49, 0.25)' }}>
-            <div className="absolute top-0 right-0 w-32 h-32 bg-white/10 rounded-full -mr-16 -mt-16"></div>
-            <div className="absolute bottom-0 left-0 w-20 h-20 bg-white/10 rounded-full -ml-10 -mb-10"></div>
-            <div className="relative z-10">
-              <div className="flex items-center justify-between mb-4">
-                <div className="p-3 bg-white/20 rounded-2xl">
-                  <Target className="w-6 h-6 text-white" />
-                </div>
-                <div className="flex items-center text-sm font-medium">
-                  <ArrowUp className="w-4 h-4 mr-1" />
-                  +2.5%
-                </div>
+          <div className="bg-white rounded-xl border border-gray-200 p-6 shadow-sm hover:shadow-md transition-shadow">
+            <div className="flex items-center justify-between mb-4">
+              <div className="p-2 bg-indigo-50 rounded-lg">
+                <Target className="w-5 h-5 text-indigo-600" />
               </div>
-              <div>
-                <p className="text-sm font-medium text-white/80 mb-1">Quota Attainment</p>
-                <p className="text-4xl font-bold text-white">
-                  {metrics?.quota_attainment?.toFixed(1) || 0}%
-                </p>
+              {metrics?.quota_attainment > 0 && (
+                <span className="text-xs font-medium text-green-600 bg-green-50 px-2 py-1 rounded-full">
+                  On Track
+                </span>
+              )}
+            </div>
+            <div>
+              <p className="text-sm font-medium text-gray-600 mb-1">Quota Attainment</p>
+              <p className="text-2xl font-bold text-gray-900">
+                {metrics?.quota_attainment?.toFixed(1) || 0}%
+              </p>
+              <div className="mt-2 h-2 bg-gray-100 rounded-full overflow-hidden">
+                <div 
+                  className="h-full bg-indigo-600 rounded-full transition-all duration-500"
+                  style={{ width: `${Math.min(metrics?.quota_attainment || 0, 100)}%` }}
+                />
               </div>
             </div>
           </div>
 
           {/* Closed Amount */}
-          <div className="relative overflow-hidden bg-gradient-to-br from-green-500 to-emerald-600 rounded-3xl p-6 text-white shadow-2xl shadow-green-500/25">
-            <div className="absolute top-0 right-0 w-32 h-32 bg-white/10 rounded-full -mr-16 -mt-16"></div>
-            <div className="absolute bottom-0 left-0 w-20 h-20 bg-white/10 rounded-full -ml-10 -mb-10"></div>
-            <div className="relative z-10">
-              <div className="flex items-center justify-between mb-4">
-                <div className="p-3 bg-white/20 rounded-2xl">
-                  <DollarSign className="w-6 h-6 text-white" />
-                </div>
-                <div className="flex items-center text-sm font-medium">
-                  <ArrowUp className="w-4 h-4 mr-1" />
-                  +12.3%
-                </div>
+          <div className="bg-white rounded-xl border border-gray-200 p-6 shadow-sm hover:shadow-md transition-shadow">
+            <div className="flex items-center justify-between mb-4">
+              <div className="p-2 bg-green-50 rounded-lg">
+                <DollarSign className="w-5 h-5 text-green-600" />
               </div>
-              <div>
-                <p className="text-sm font-medium text-white/80 mb-1">Closed Amount</p>
-                <p className="text-4xl font-bold text-white">
-                  £{metrics?.closed_amount?.toLocaleString() || 0}
-                </p>
-              </div>
+            </div>
+            <div>
+              <p className="text-sm font-medium text-gray-600 mb-1">Closed Amount</p>
+              <p className="text-2xl font-bold text-gray-900">
+                £{metrics?.closed_amount?.toLocaleString() || 0}
+              </p>
+              <p className="text-xs text-gray-500 mt-1">
+                {dashboardData?.period ? `${new Date(dashboardData.period.start).toLocaleDateString('en-GB', { month: 'short' })} - ${new Date(dashboardData.period.end).toLocaleDateString('en-GB', { month: 'short', year: 'numeric' })}` : 'This Period'}
+              </p>
             </div>
           </div>
 
           {/* Commission Earned */}
-          <div className="relative overflow-hidden rounded-3xl p-6 text-white shadow-2xl" style={{ background: 'linear-gradient(to bottom right, #6b8950, #5a6450)', boxShadow: '0 25px 50px -12px rgba(74, 82, 64, 0.25)' }}>
-            <div className="absolute top-0 right-0 w-32 h-32 bg-white/10 rounded-full -mr-16 -mt-16"></div>
-            <div className="absolute bottom-0 left-0 w-20 h-20 bg-white/10 rounded-full -ml-10 -mb-10"></div>
-            <div className="relative z-10">
-              <div className="flex items-center justify-between mb-4">
-                <div className="p-3 bg-white/20 rounded-2xl">
-                  <Award className="w-6 h-6 text-white" />
-                </div>
-                <div className="flex items-center text-sm font-medium">
-                  <ArrowUp className="w-4 h-4 mr-1" />
-                  +8.7%
-                </div>
+          <div className="bg-white rounded-xl border border-gray-200 p-6 shadow-sm hover:shadow-md transition-shadow">
+            <div className="flex items-center justify-between mb-4">
+              <div className="p-2 bg-purple-50 rounded-lg">
+                <Award className="w-5 h-5 text-purple-600" />
               </div>
-              <div>
-                <p className="text-sm font-medium text-white/80 mb-1">Commission Earned</p>
-                <p className="text-4xl font-bold text-white">
-                  £{metrics?.commission_earned?.toLocaleString() || 0}
-                </p>
-              </div>
+            </div>
+            <div>
+              <p className="text-sm font-medium text-gray-600 mb-1">Commission Earned</p>
+              <p className="text-2xl font-bold text-gray-900">
+                £{metrics?.commission_earned?.toLocaleString() || 0}
+              </p>
+              <p className="text-xs text-gray-500 mt-1">
+                {dashboardData?.current_target && `${(dashboardData.current_target.commission_rate * 100).toFixed(1)}% rate`}
+              </p>
             </div>
           </div>
 
           {/* Projected Commission */}
-          <div className="relative overflow-hidden bg-gradient-to-br from-orange-500 to-red-600 rounded-3xl p-6 text-white shadow-2xl shadow-orange-500/25">
-            <div className="absolute top-0 right-0 w-32 h-32 bg-white/10 rounded-full -mr-16 -mt-16"></div>
-            <div className="absolute bottom-0 left-0 w-20 h-20 bg-white/10 rounded-full -ml-10 -mb-10"></div>
-            <div className="relative z-10">
-              <div className="flex items-center justify-between mb-4">
-                <div className="p-3 bg-white/20 rounded-2xl">
-                  <TrendingUp className="w-6 h-6 text-white" />
-                </div>
-                <div className="flex items-center text-sm font-medium">
-                  <TrendingDown className="w-4 h-4 mr-1" />
-                  -1.2%
-                </div>
+          <div className="bg-white rounded-xl border border-gray-200 p-6 shadow-sm hover:shadow-md transition-shadow">
+            <div className="flex items-center justify-between mb-4">
+              <div className="p-2 bg-amber-50 rounded-lg">
+                <TrendingUp className="w-5 h-5 text-amber-600" />
               </div>
-              <div>
-                <p className="text-sm font-medium text-white/80 mb-1">Projected Commission</p>
-                <p className="text-4xl font-bold text-white">
-                  £{metrics?.projected_commission?.toLocaleString() || 0}
-                </p>
-              </div>
+            </div>
+            <div>
+              <p className="text-sm font-medium text-gray-600 mb-1">Projected Commission</p>
+              <p className="text-2xl font-bold text-gray-900">
+                £{metrics?.projected_commission?.toLocaleString() || 0}
+              </p>
+              <p className="text-xs text-gray-500 mt-1">
+                Including committed deals
+              </p>
             </div>
           </div>
         </div>
 
         {/* Dashboard Grid */}
-        <div className="grid grid-cols-1 lg:grid-cols-5 gap-8">
+        <div className="grid grid-cols-1 lg:grid-cols-5 gap-6">
           {/* Quota Progress */}
           <div className="lg:col-span-2">
-            <div className="bg-white/70 backdrop-blur-sm rounded-3xl p-8 shadow-xl border border-gray-200/50">
+            <div className="bg-white rounded-xl p-6 shadow-sm border border-gray-200">
               <div className="flex items-center justify-between mb-8">
                 <h3 className="text-xl font-bold text-gray-900">Quota Progress</h3>
                 <div className="flex items-center space-x-2">
@@ -377,39 +365,39 @@ const DashboardPage = () => {
 
                 {/* Breakdown */}
                 <div className="space-y-4">
-                  <div className="flex justify-between items-center p-4 bg-gradient-to-r from-green-50 to-emerald-50 rounded-2xl border border-green-200">
+                  <div className="flex justify-between items-center p-3 bg-green-50 rounded-lg border border-green-200">
                     <div className="flex items-center">
-                      <CheckCircle className="w-5 h-5 text-green-600 mr-3" />
-                      <span className="font-semibold text-green-800">Closed</span>
+                      <CheckCircle className="w-4 h-4 text-green-600 mr-2" />
+                      <span className="text-sm font-medium text-gray-700">Closed</span>
                     </div>
-                    <span className="font-bold text-green-900">
+                    <span className="text-sm font-semibold text-gray-900">
                       £{quota_progress?.closed_amount?.toLocaleString() || 0}
                     </span>
                   </div>
-                  <div className="flex justify-between items-center p-4 bg-gradient-to-r from-orange-50 to-amber-50 rounded-2xl border border-orange-200">
+                  <div className="flex justify-between items-center p-3 bg-amber-50 rounded-lg border border-amber-200">
                     <div className="flex items-center">
-                      <Star className="w-5 h-5 text-orange-600 mr-3" />
-                      <span className="font-semibold text-orange-800">Commit</span>
+                      <Star className="w-4 h-4 text-amber-600 mr-2" />
+                      <span className="text-sm font-medium text-gray-700">Commit</span>
                     </div>
-                    <span className="font-bold text-orange-900">
+                    <span className="text-sm font-semibold text-gray-900">
                       £{quota_progress?.commit_amount?.toLocaleString() || 0}
                     </span>
                   </div>
-                  <div className="flex justify-between items-center p-4 bg-gradient-to-r from-purple-50 to-pink-50 rounded-2xl border border-purple-200">
+                  <div className="flex justify-between items-center p-3 bg-blue-50 rounded-lg border border-blue-200">
                     <div className="flex items-center">
-                      <Zap className="w-5 h-5 text-purple-600 mr-3" />
-                      <span className="font-semibold text-purple-800">Best Case</span>
+                      <Zap className="w-4 h-4 text-blue-600 mr-2" />
+                      <span className="text-sm font-medium text-gray-700">Best Case</span>
                     </div>
-                    <span className="font-bold text-purple-900">
+                    <span className="text-sm font-semibold text-gray-900">
                       £{quota_progress?.best_case_amount?.toLocaleString() || 0}
                     </span>
                   </div>
-                  <div className="flex justify-between items-center p-4 bg-gradient-to-r from-gray-50 to-slate-50 rounded-2xl border border-gray-300">
+                  <div className="flex justify-between items-center p-3 bg-gray-50 rounded-lg border border-gray-200">
                     <div className="flex items-center">
-                      <Target className="w-5 h-5 text-gray-600 mr-3" />
-                      <span className="font-semibold text-gray-800">Total Quota</span>
+                      <Target className="w-4 h-4 text-gray-600 mr-2" />
+                      <span className="text-sm font-medium text-gray-700">Total Quota</span>
                     </div>
-                    <span className="font-bold text-gray-900">
+                    <span className="text-sm font-semibold text-gray-900">
                       £{quota_progress?.total_quota?.toLocaleString() || 0}
                     </span>
                   </div>
@@ -420,9 +408,9 @@ const DashboardPage = () => {
 
           {/* Deal Pipeline */}
           <div className="lg:col-span-3">
-            <div className="bg-white/70 backdrop-blur-sm rounded-3xl p-8 shadow-xl border border-gray-200/50">
-              <div className="flex items-center justify-between mb-8">
-                <h3 className="text-xl font-bold text-gray-900">Deal Pipeline</h3>
+            <div className="bg-white rounded-xl p-6 shadow-sm border border-gray-200">
+              <div className="flex items-center justify-between mb-6">
+                <h3 className="text-lg font-semibold text-gray-900">Deal Pipeline</h3>
                 <div className="flex items-center space-x-2">
                   <Users className="w-5 h-5 text-gray-600" />
                   <span className="text-sm font-medium text-gray-600">
@@ -433,79 +421,75 @@ const DashboardPage = () => {
               
               <div className="grid grid-cols-2 gap-6">
                 {/* Closed Deals */}
-                <div className="relative overflow-hidden bg-gradient-to-br from-green-500/10 to-emerald-500/10 rounded-3xl p-6 border border-green-200">
-                  <div className="absolute top-0 right-0 w-20 h-20 bg-green-500/10 rounded-full -mr-10 -mt-10"></div>
-                  <div className="relative z-10">
-                    <div className="flex items-center justify-between mb-4">
-                      <div className="p-3 bg-green-500/20 rounded-2xl">
-                        <CheckCircle className="w-6 h-6 text-green-600" />
+                <div className="bg-green-50 rounded-lg p-4 border border-green-200">
+                  <div className="flex items-center justify-between mb-3">
+                    <div className="flex items-center">
+                      <div className="p-2 bg-green-100 rounded-lg mr-3">
+                        <CheckCircle className="w-4 h-4 text-green-600" />
                       </div>
-                      <span className="bg-green-500 text-white text-sm font-bold px-3 py-1 rounded-full">
-                        {deals?.closed?.length || 0}
-                      </span>
+                      <h4 className="text-sm font-semibold text-gray-900">Closed Won</h4>
                     </div>
-                    <h4 className="text-lg font-bold text-green-800 mb-2">Closed</h4>
-                    <p className="text-sm text-green-700">
-                      {deals?.closed?.length ? 'Deals won this period' : 'No closed deals yet'}
-                    </p>
+                    <span className="text-lg font-bold text-green-600">
+                      {deals?.closed?.length || 0}
+                    </span>
                   </div>
+                  <p className="text-xs text-gray-600">
+                    {deals?.closed?.length ? 'Deals won this period' : 'No closed deals yet'}
+                  </p>
                 </div>
 
                 {/* Commit Deals */}
-                <div className="relative overflow-hidden bg-gradient-to-br from-orange-500/10 to-amber-500/10 rounded-3xl p-6 border border-orange-200">
-                  <div className="absolute top-0 right-0 w-20 h-20 bg-orange-500/10 rounded-full -mr-10 -mt-10"></div>
-                  <div className="relative z-10">
-                    <div className="flex items-center justify-between mb-4">
-                      <div className="p-3 bg-orange-500/20 rounded-2xl">
-                        <Star className="w-6 h-6 text-orange-600" />
+                <div className="bg-amber-50 rounded-lg p-4 border border-amber-200">
+                  <div className="flex items-center justify-between mb-3">
+                    <div className="flex items-center">
+                      <div className="p-2 bg-amber-100 rounded-lg mr-3">
+                        <Star className="w-4 h-4 text-amber-600" />
                       </div>
-                      <span className="bg-orange-500 text-white text-sm font-bold px-3 py-1 rounded-full">
-                        {deals?.commit?.length || 0}
-                      </span>
+                      <h4 className="text-sm font-semibold text-gray-900">Commit</h4>
                     </div>
-                    <h4 className="text-lg font-bold text-orange-800 mb-2">Commit</h4>
-                    <p className="text-sm text-orange-700">
-                      {deals?.commit?.length ? 'High confidence deals' : 'No commit deals'}
-                    </p>
+                    <span className="text-lg font-bold text-amber-600">
+                      {deals?.commit?.length || 0}
+                    </span>
                   </div>
+                  <p className="text-xs text-gray-600">
+                    {deals?.commit?.length ? 'High confidence deals' : 'No commit deals'}
+                  </p>
                 </div>
 
                 {/* Best Case Deals */}
-                <div className="relative overflow-hidden rounded-3xl p-6 border" style={{ background: 'linear-gradient(to bottom right, rgba(56, 64, 49, 0.1), rgba(74, 82, 64, 0.1))', borderColor: 'rgba(56, 64, 49, 0.2)' }}>
-                  <div className="absolute top-0 right-0 w-20 h-20 bg-purple-500/10 rounded-full -mr-10 -mt-10"></div>
-                  <div className="relative z-10">
-                    <div className="flex items-center justify-between mb-4">
-                      <div className="p-3 bg-purple-500/20 rounded-2xl">
-                        <Zap className="w-6 h-6 text-purple-600" />
+                <div className="bg-blue-50 rounded-lg p-4 border border-blue-200">
+                  <div className="flex items-center justify-between mb-3">
+                    <div className="flex items-center">
+                      <div className="p-2 bg-blue-100 rounded-lg mr-3">
+                        <Zap className="w-4 h-4 text-blue-600" />
                       </div>
-                      <span className="bg-purple-500 text-white text-sm font-bold px-3 py-1 rounded-full">
-                        {deals?.best_case?.length || 0}
-                      </span>
+                      <h4 className="text-sm font-semibold text-gray-900">Best Case</h4>
                     </div>
-                    <h4 className="text-lg font-bold text-purple-800 mb-2">Best Case</h4>
-                    <p className="text-sm text-purple-700">
-                      {deals?.best_case?.length ? 'Potential upside opportunities' : 'No best case deals'}
-                    </p>
+                    <span className="text-lg font-bold text-blue-600">
+                      {deals?.best_case?.length || 0}
+                    </span>
                   </div>
+                  <p className="text-xs text-gray-600">
+                    {deals?.best_case?.length ? 'Potential upside' : 'No best case deals'}
+                  </p>
                 </div>
 
                 {/* Pipeline Deals */}
-                <div className="relative overflow-hidden bg-gradient-to-br from-blue-500/10 to-indigo-500/10 rounded-3xl p-6 border border-blue-200">
-                  <div className="absolute top-0 right-0 w-20 h-20 bg-blue-500/10 rounded-full -mr-10 -mt-10"></div>
-                  <div className="relative z-10">
-                    <div className="flex items-center justify-between mb-4">
-                      <div className="p-3 bg-blue-500/20 rounded-2xl">
-                        <Clock className="w-6 h-6" style={{ color: '#82a365' }} />
+                <div className="bg-gray-50 rounded-lg p-4 border border-gray-200">
+                  <div className="flex items-center justify-between mb-3">
+                    <div className="flex items-center">
+                      <div className="p-2 bg-gray-100 rounded-lg mr-3">
+                        <Clock className="w-4 h-4 text-gray-600" />
                       </div>
-                      <span className="bg-blue-500 text-white text-sm font-bold px-3 py-1 rounded-full">
-                        {deals?.pipeline?.length || 0}
-                      </span>
+                      <h4 className="text-sm font-semibold text-gray-900">Pipeline</h4>
                     </div>
-                    <h4 className="text-lg font-bold text-blue-800 mb-2">Pipeline</h4>
-                    <p className="text-sm text-blue-700">
-                      {deals?.pipeline?.length ? 'Active opportunities' : 'No pipeline deals'}
-                    </p>
+                    <span className="text-lg font-bold text-gray-600">
+                      {deals?.pipeline?.length || 0}
+                    </span>
                   </div>
+                  <p className="text-xs text-gray-600">
+                    {deals?.pipeline?.length ? 'Active opportunities' : 'No pipeline deals'}
+                  </p>
                 </div>
               </div>
             </div>
@@ -516,13 +500,13 @@ const DashboardPage = () => {
         {deal_analytics && (
           <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
             {/* Commit Analytics */}
-            <div className="bg-white/70 backdrop-blur-sm rounded-3xl p-6 shadow-xl border border-gray-200/50">
+            <div className="bg-white rounded-xl p-6 shadow-sm border border-gray-200">
               <div className="flex items-center justify-between mb-4">
                 <div className="flex items-center">
-                  <div className="p-3 bg-orange-500/20 rounded-2xl mr-3">
-                    <Star className="w-6 h-6 text-orange-600" />
+                  <div className="p-2 bg-amber-50 rounded-lg mr-3">
+                    <Star className="w-5 h-5 text-amber-600" />
                   </div>
-                  <h3 className="text-lg font-bold text-gray-900">Commit Analytics</h3>
+                  <h3 className="text-base font-semibold text-gray-900">Commit Analytics</h3>
                 </div>
               </div>
               
@@ -546,11 +530,11 @@ const DashboardPage = () => {
             </div>
 
             {/* Best Case Analytics */}
-            <div className="bg-white/70 backdrop-blur-sm rounded-3xl p-6 shadow-xl border border-gray-200/50">
+            <div className="bg-white rounded-xl p-6 shadow-sm border border-gray-200">
               <div className="flex items-center justify-between mb-4">
                 <div className="flex items-center">
-                  <div className="p-3 bg-purple-500/20 rounded-2xl mr-3">
-                    <Zap className="w-6 h-6 text-purple-600" />
+                  <div className="p-2 bg-blue-50 rounded-lg mr-3">
+                    <Zap className="w-5 h-5 text-blue-600" />
                   </div>
                   <h3 className="text-lg font-bold text-gray-900">Best Case Analytics</h3>
                 </div>
@@ -576,13 +560,13 @@ const DashboardPage = () => {
             </div>
 
             {/* Sandbagging Analytics */}
-            <div className="bg-white/70 backdrop-blur-sm rounded-3xl p-6 shadow-xl border border-gray-200/50">
+            <div className="bg-white rounded-xl p-6 shadow-sm border border-gray-200">
               <div className="flex items-center justify-between mb-4">
                 <div className="flex items-center">
-                  <div className="p-3 bg-red-500/20 rounded-2xl mr-3">
-                    <AlertTriangle className="w-6 h-6 text-red-600" />
+                  <div className="p-2 bg-red-50 rounded-lg mr-3">
+                    <AlertTriangle className="w-5 h-5 text-red-600" />
                   </div>
-                  <h3 className="text-lg font-bold text-gray-900">Sandbagging</h3>
+                  <h3 className="text-base font-semibold text-gray-900">Sandbagging</h3>
                 </div>
               </div>
               
@@ -606,23 +590,23 @@ const DashboardPage = () => {
 
         {/* Recent Deal Activity */}
         {recent_movements && recent_movements.length > 0 && (
-          <div className="bg-white/70 backdrop-blur-sm rounded-3xl p-8 shadow-xl border border-gray-200/50">
-            <div className="flex items-center justify-between mb-6">
-              <h3 className="text-xl font-bold text-gray-900">Recent Deal Activity</h3>
+          <div className="bg-white rounded-xl p-6 shadow-sm border border-gray-200">
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="text-lg font-semibold text-gray-900">Recent Deal Activity</h3>
               <div className="flex items-center space-x-2">
                 <Activity className="w-5 h-5 text-gray-600" />
                 <span className="text-sm font-medium text-gray-600">Last 10 movements</span>
               </div>
             </div>
             
-            <div className="space-y-3">
+            <div className="space-y-2">
               {recent_movements.map((movement, index) => (
-                <div key={movement.id} className="flex items-center justify-between p-4 bg-gradient-to-r from-gray-50 to-white rounded-2xl border border-gray-100">
+                <div key={movement.id} className="flex items-center justify-between p-3 bg-gray-50 rounded-lg border border-gray-200">
                   <div className="flex items-center space-x-4">
-                    <div className={`p-2 rounded-xl ${
-                      movement.category === 'commit' ? 'bg-orange-100 text-orange-600' :
-                      movement.category === 'best_case' ? 'bg-purple-100 text-purple-600' :
-                      'bg-blue-100 text-blue-600'
+                    <div className={`p-1.5 rounded-lg ${
+                      movement.category === 'commit' ? 'bg-amber-100 text-amber-600' :
+                      movement.category === 'best_case' ? 'bg-blue-100 text-blue-600' :
+                      'bg-gray-100 text-gray-600'
                     }`}>
                       {movement.category === 'commit' && <Star className="w-4 h-4" />}
                       {movement.category === 'best_case' && <Zap className="w-4 h-4" />}
@@ -649,23 +633,6 @@ const DashboardPage = () => {
           </div>
         )}
 
-        {/* Welcome Message */}
-        <div className="relative overflow-hidden rounded-3xl p-8 text-white shadow-2xl" style={{ background: 'linear-gradient(to right, #82a365, #6b8950, #5a6450)' }}>
-          <div className="absolute top-0 right-0 w-64 h-64 bg-white/10 rounded-full -mr-32 -mt-32"></div>
-          <div className="absolute bottom-0 left-0 w-32 h-32 bg-white/10 rounded-full -ml-16 -mb-16"></div>
-          <div className="relative z-10">
-            <div className="flex items-center mb-4">
-              <div className="p-3 bg-white/20 rounded-2xl mr-4">
-                <Activity className="w-6 h-6 text-white" />
-              </div>
-              <h3 className="text-2xl font-bold text-white">Welcome to your Sales Dashboard!</h3>
-            </div>
-            <p className="text-white/90 text-lg leading-relaxed">
-              This is your central hub for tracking sales performance and managing your commission pipeline. 
-              Set up your targets and start adding deals to see your progress in real-time.
-            </p>
-          </div>
-        </div>
       </div>
     </Layout>
     </ProtectedRoute>

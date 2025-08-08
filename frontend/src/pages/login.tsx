@@ -28,13 +28,6 @@ const LoginPage = () => {
     setPassword(e.target.value);
   };
 
-  const handleTestLogin = () => {
-    setEmail('test@company.com');
-    setPassword('password123');
-    // Clear error when using test account
-    setError('');
-    localStorage.removeItem('loginError');
-  };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -61,31 +54,15 @@ const LoginPage = () => {
       <div className="w-full max-w-md bg-white border border-gray-200 rounded-2xl shadow-md p-8 space-y-6">
         {/* Header */}
         <div className="text-center">
+          <img 
+            src="/commit_logo2.png" 
+            alt="Logo" 
+            className="h-12 mx-auto mb-4"
+          />
           <h1 className="text-2xl font-semibold text-gray-900">Sign in to your account</h1>
-          <p className="mt-1 text-sm text-gray-500">Sales Commission Management Platform</p>
+          <p className="mt-1 text-sm text-gray-500">Sales Performance Platform</p>
         </div>
 
-        {/* Test Account Box */}
-        <div className="rounded-lg border px-4 py-3" style={{ borderColor: '#82a365', backgroundColor: '#f8f9f4' }}>
-          <div className="flex items-center justify-between">
-            <div>
-              <h3 className="text-sm font-medium" style={{ color: '#82a365' }}>Test Account</h3>
-              <p className="text-xs" style={{ color: '#6b8950' }}>Use these credentials to explore the product</p>
-            </div>
-            <button
-              type="button"
-              onClick={handleTestLogin}
-              className="text-xs font-medium text-white px-3 py-1 rounded-md transition hover:opacity-90"
-              style={{ backgroundColor: '#82a365' }}
-            >
-              Use Test Account
-            </button>
-          </div>
-          <div className="mt-2 text-xs space-y-1" style={{ color: '#82a365' }}>
-            <div><strong>Email:</strong> test@company.com</div>
-            <div><strong>Password:</strong> password123</div>
-          </div>
-        </div>
 
         {/* Error message */}
         {error && (
