@@ -812,7 +812,7 @@ router.post('/', requireTargetManagement, async (req, res) => {
           is_active: true,
           role: target_type === 'role' ? role : null,
           team_id: target_type === 'team' ? team_id : null,
-          team_target: target_type === 'team', // true = aggregated team target, false = individual target
+          team_target: false, // Always false for individual user targets, regardless of how they were created
           // Add distribution metadata
           distribution_method: distribution_method || 'even',
           distribution_config: distribution_method !== 'even' && (seasonalData || custom_breakdown) ? {
@@ -866,7 +866,7 @@ router.post('/', requireTargetManagement, async (req, res) => {
               is_active: true,
               role: target_type === 'role' ? role : null,
               team_id: target_type === 'team' ? team_id : null,
-              team_target: target_type === 'team', // true = aggregated team target, false = individual target
+              team_target: false, // Always false for individual user targets, regardless of how they were created
               parent_target_id: parentTarget.id, // Link to parent target
               // Child targets inherit distribution method but are marked as child
               distribution_method: 'child',
@@ -1259,7 +1259,7 @@ router.post('/resolve-conflicts', async (req, res) => {
               commission_payment_schedule: proposed_target.commission_payment_schedule || 'monthly',
               is_active: true,
               role: proposed_target.role || null,
-              team_target: proposed_target.target_type === 'team',
+              team_target: false, // Always false for individual user targets
               team_id: proposed_target.target_type === 'team' ? proposed_target.team_id : null,
               // Add distribution metadata for conflict resolution
               distribution_method: proposed_target.distribution_method || 'even',
@@ -1359,7 +1359,7 @@ router.post('/resolve-conflicts', async (req, res) => {
               commission_payment_schedule: proposed_target.commission_payment_schedule || 'monthly',
               is_active: true,
               role: proposed_target.role || null,
-              team_target: proposed_target.target_type === 'team',
+              team_target: false, // Always false for individual user targets
               team_id: proposed_target.target_type === 'team' ? proposed_target.team_id : null,
               // Add distribution metadata for concurrent targets
               distribution_method: proposed_target.distribution_method || 'even',
