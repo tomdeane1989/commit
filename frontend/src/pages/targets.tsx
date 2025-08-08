@@ -258,7 +258,6 @@ const TargetsPage = () => {
   
   // Get current period's team aggregate
   // Find the aggregate that contains the current date
-  const currentDate = new Date();
   const currentTeamAggregate = teamAggregateData?.team_aggregates?.find(agg => {
     const periodStart = new Date(agg.period_start);
     const periodEnd = new Date(agg.period_end);
