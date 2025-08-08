@@ -291,10 +291,32 @@ app.get('/api/dashboard/sales-rep', authMiddleware, async (req, res) => {
     }
     console.log('Dashboard API: currentTarget =', currentTarget);
 
-    // Get deals with categorizations for target users
+    // Determine the period for filtering based on current target
+    let periodStart = null;
+    let periodEnd = null;
+    
+    if (currentTarget) {
+      periodStart = new Date(currentTarget.period_start);
+      periodEnd = new Date(currentTarget.period_end);
+      console.log('Dashboard API: Using target period:', periodStart.toISOString(), 'to', periodEnd.toISOString());
+    } else {
+      // Default to current quarter if no target
+      const now = new Date();
+      const currentQuarter = Math.floor(now.getMonth() / 3);
+      const currentYear = now.getFullYear();
+      periodStart = new Date(currentYear, currentQuarter * 3, 1);
+      periodEnd = new Date(currentYear, (currentQuarter + 1) * 3, 0, 23, 59, 59, 999);
+      console.log('Dashboard API: No target found, using current quarter:', periodStart.toISOString(), 'to', periodEnd.toISOString());
+    }
+
+    // Get deals with categorizations for target users WITHIN THE PERIOD
     const deals = await prisma.deals.findMany({
       where: { 
-        user_id: { in: targetUserIds }
+        user_id: { in: targetUserIds },
+        close_date: {
+          gte: periodStart,
+          lte: periodEnd
+        }
       },
       include: {
         deal_categorizations: {
@@ -363,22 +385,34 @@ app.get('/api/dashboard/sales-rep', authMiddleware, async (req, res) => {
     const projectedCommission = currentTarget ? (closedAmount + commitAmount) * Number(currentTarget.commission_rate) : 0;
 
     console.log('Dashboard API: Getting commission earned...');
-    // Get commission earned for target users
-    const commissionEarned = await prisma.commissions.aggregate({
+    // Get commission earned from deals table for the SAME PERIOD
+    const commissionEarned = await prisma.deals.aggregate({
       where: { 
-        user_id: { in: targetUserIds }
+        user_id: { in: targetUserIds },
+        status: 'closed_won',
+        commission_amount: { not: null },
+        close_date: {
+          gte: periodStart,
+          lte: periodEnd
+        }
       },
-      _sum: { commission_earned: true }
+      _sum: { commission_amount: true }
     });
     console.log('Dashboard API: Commission earned retrieved:', commissionEarned);
 
     // Calculate deal analytics
     console.log('Dashboard API: Calculating deal analytics...');
     
-    // Get all deal categorizations for target users to analyze behavior
+    // Get all deal categorizations for target users WITHIN THE PERIOD to analyze behavior
     const allCategorizations = await prisma.deal_categorizations.findMany({
       where: { 
-        user_id: { in: targetUserIds }
+        user_id: { in: targetUserIds },
+        deal: {
+          close_date: {
+            gte: periodStart,
+            lte: periodEnd
+          }
+        }
       },
       include: {
         deal: true
@@ -409,10 +443,15 @@ app.get('/api/dashboard/sales-rep', authMiddleware, async (req, res) => {
     const responseData = {
       user: req.user,
       current_target: currentTarget,
+      period: {
+        start: periodStart.toISOString(),
+        end: periodEnd.toISOString(),
+        type: currentTarget ? currentTarget.period_type : 'quarterly'
+      },
       metrics: {
         quota_attainment: quotaAttainment,
         closed_amount: closedAmount,
-        commission_earned: Number(commissionEarned._sum.commission_earned || 0),
+        commission_earned: Number(commissionEarned._sum.commission_amount || 0),
         projected_commission: projectedCommission,
         trend: 'stable'
       },
