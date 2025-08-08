@@ -355,12 +355,14 @@ const DealsPage = () => {
     managerView,
     selectedMemberId,
     targetsCount: targets.length,
+    userIdFromAuth: user?.id,
     targets: targets.map((t: any) => ({
       user_id: t.user_id,
       user_email: t.user?.email,
       quota_amount: t.quota_amount,
       is_active: t.is_active,
-      period_type: t.period_type
+      period_type: t.period_type,
+      matches_filter: managerView === 'team' ? t.user_id !== user?.id : true
     }))
   });
   
@@ -378,6 +380,16 @@ const DealsPage = () => {
     } else if (managerView === 'team') {
       // Team view: sum of all team members' quotas (excluding manager)
       const teamTargets = targets.filter((t: any) => t.is_active && t.user_id !== user?.id);
+      console.log('📊 Team View Calculation:', {
+        allTargets: targets.length,
+        filteredTeamTargets: teamTargets.length,
+        teamTargets: teamTargets.map((t: any) => ({
+          user_id: t.user_id,
+          email: t.user?.email,
+          quota: t.quota_amount,
+          is_active: t.is_active
+        }))
+      });
       quotaAmount = teamTargets.reduce((sum: number, target: any) => sum + Number(target.quota_amount), 0);
     } else if (managerView === 'all') {
       // All view: manager + team quotas combined
