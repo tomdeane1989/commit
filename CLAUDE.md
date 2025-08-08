@@ -274,19 +274,32 @@ git commit -m "Add migration: descriptive_name_here"
 
 ## 🔒 **Security & Permissions**
 
-### **Role System**
-- **sales_rep**: Basic user, can manage own deals and see own targets
-- **manager**: Can see team data, manage team members (requires is_admin: true for full access)
-- **Admin Permission**: is_admin boolean field enables full system access
+### **IMPORTANT: Role Field Deprecation**
+⚠️ **The `role` field on the users table is DEPRECATED as of 2025-08-08**
+- **DO NOT USE**: `role` field for permission checks
+- **USE INSTEAD**: `is_manager` and `is_admin` boolean flags
+- **Reason**: Boolean flags provide clearer, more flexible permission management
+- **Migration**: All existing code should check `is_manager` or `is_admin` flags instead of `role` field
+
+### **Current Permission System**
+- **is_admin**: Boolean flag - grants full system access, can manage teams, users, and all settings
+- **is_manager**: Boolean flag - grants team management capabilities, can view team data
+- **Basic users**: Neither flag set - can only manage own deals and see own targets
 
 ### **Permission Helpers** (middleware/permissions.js & roleHelpers.js)
 ```javascript
-// Centralized permission checks
+// Centralized permission checks - ALWAYS use these helpers
 attachPermissions()      // Middleware to add user permissions to request
-requireAdmin()          // Middleware to require admin access
-requireManager()        // Middleware to require manager role
-canManageTeam(user)     // Check if user can manage team
-isAdmin(user)          // Check if user has admin permissions
+requireAdmin()          // Middleware to require is_admin: true
+requireManager()        // Middleware to require is_manager: true
+canManageTeam(user)     // Check if user can manage team (is_admin || is_manager)
+isAdmin(user)          // Check if user has admin permissions (is_admin: true)
+
+// ❌ WRONG - Do not use role field
+if (user.role === 'manager') { ... }
+
+// ✅ CORRECT - Use boolean flags
+if (user.is_manager || user.is_admin) { ... }
 ```
 
 ## 🛠️ **Known Technical Considerations**

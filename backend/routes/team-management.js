@@ -234,7 +234,7 @@ router.post('/', requireManager, async (req, res) => {
         where: {
           id: team_lead_id,
           company_id: req.user.company_id,
-          role: 'manager'
+          is_manager: true  // Use is_manager flag instead of deprecated role field
         }
       });
 
@@ -248,8 +248,8 @@ router.post('/', requireManager, async (req, res) => {
       await prisma.users.update({
         where: { id: team_lead_id },
         data: { 
-          is_manager: true,
-          role: 'manager' // Ensure role is also set to manager
+          is_manager: true
+          // Note: role field is deprecated, using is_manager flag only
         }
       });
     }
@@ -346,7 +346,7 @@ router.put('/:teamId', requireTeamManagement, async (req, res) => {
         where: {
           id: team_lead_id,
           company_id: req.user.company_id,
-          role: 'manager'
+          is_manager: true  // Use is_manager flag instead of deprecated role field
         }
       });
 
@@ -358,8 +358,8 @@ router.put('/:teamId', requireTeamManagement, async (req, res) => {
       await prisma.users.update({
         where: { id: team_lead_id },
         data: { 
-          is_manager: true,
-          role: 'manager' // Ensure role is also set to manager
+          is_manager: true
+          // Note: role field is deprecated, using is_manager flag only
         }
       });
     }
