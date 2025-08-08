@@ -713,13 +713,62 @@ router.get('/', requireTeamView, async (req, res) => {
               periodType: 'quarterly'
             };
             
-            // Extrapolate annual from quarterly (simplified - multiply by 4)
+            // Calculate annual team quota properly for uneven distribution
+            let annualTeamQuotaTotal = 0;
+            
+            // For each team member, find their true annual quota
+            allTeamMemberIds.forEach(userId => {
+              const userTarget = targetsData.find(t => t.user_id === userId && !t.team_target);
+              
+              if (userTarget) {
+                let annualQuota = 0;
+                
+                if (userTarget.period_type === 'annual') {
+                  // Already annual, use as-is
+                  annualQuota = Number(userTarget.quota_amount);
+                } else if (userTarget.period_type === 'quarterly') {
+                  // Check if this is a child target with uneven distribution
+                  if (userTarget.parent_target_id) {
+                    // Find the parent target to get the true annual amount
+                    const parentTarget = allTargetsData.find(t => t.id === userTarget.parent_target_id);
+                    if (parentTarget) {
+                      annualQuota = Number(parentTarget.quota_amount);
+                      console.log(`📊 Found parent target for ${userId}: Annual quota = £${annualQuota}`);
+                    } else {
+                      // Fallback: multiply by 4 if parent not found
+                      annualQuota = Number(userTarget.quota_amount) * 4;
+                    }
+                  } else if (userTarget.distribution_config && userTarget.distribution_config.parent_id) {
+                    // This is a distributed quarterly target from an annual parent
+                    const parentTarget = allTargetsData.find(t => t.id === userTarget.distribution_config.parent_id);
+                    if (parentTarget) {
+                      annualQuota = Number(parentTarget.quota_amount);
+                      console.log(`📊 Found parent via distribution_config for ${userId}: Annual quota = £${annualQuota}`);
+                    } else {
+                      // Fallback: multiply by 4 if parent not found
+                      annualQuota = Number(userTarget.quota_amount) * 4;
+                    }
+                  } else {
+                    // Standalone quarterly target - multiply by 4
+                    annualQuota = Number(userTarget.quota_amount) * 4;
+                  }
+                } else {
+                  // Other period types - use as-is for now
+                  annualQuota = Number(userTarget.quota_amount);
+                }
+                
+                annualTeamQuotaTotal += annualQuota;
+              }
+            });
+            
+            console.log(`📊 Team annual quota calculated: £${annualTeamQuotaTotal} (quarterly: £${teamQuotaTotal})`);
+            
             annualTeamMetrics = {
               closedAmount: teamClosedAmount, // Would need YTD data for accuracy
               commitAmount: teamCommitAmount,
               bestCaseAmount: teamBestCaseAmount,
               pipelineAmount: teamOpenAmount,
-              quotaAmount: teamQuotaTotal * 4, // Annual is 4x quarterly
+              quotaAmount: annualTeamQuotaTotal, // Use properly calculated annual total
               commissionRate: personalTarget ? Number(personalTarget.commission_rate) : 0.05,
               quotaProgress: teamClosedAmount + teamCommitAmount + teamBestCaseAmount,
               teamMemberCount: allTeamMemberIds.length,
