@@ -588,11 +588,43 @@ router.get('/', requireTeamView, async (req, res) => {
       // Team aggregated metrics (only for managers/admins)
       if (member.is_manager === true || member.is_admin === true) {
         console.log(`🎯 Processing team metrics for manager: ${member.email}`);
-        // Get all team members (including the manager)
-        const allTeamMemberIds = teamMembers.map(tm => tm.id);
+        
+        // Get teams where this user is the team lead
+        const teamsLed = await prisma.teams.findMany({
+          where: {
+            team_lead_id: member.id,
+            is_active: true
+          },
+          include: {
+            team_members: {
+              where: { is_active: true },
+              select: { user_id: true }
+            }
+          }
+        });
+        
+        // Collect all unique team member IDs from teams this manager leads
+        const teamMemberIdsSet = new Set();
+        
+        // Add the manager themselves
+        teamMemberIdsSet.add(member.id);
+        
+        // Add all team members from teams they lead
+        teamsLed.forEach(team => {
+          team.team_members.forEach(tm => {
+            teamMemberIdsSet.add(tm.user_id);
+          });
+        });
+        
+        // If user is admin but not leading any teams, aggregate all users
+        const allTeamMemberIds = teamsLed.length > 0 
+          ? Array.from(teamMemberIdsSet)
+          : (member.is_admin === true ? teamMembers.map(tm => tm.id) : [member.id]);
+        
+        console.log(`🎯 Aggregating targets for ${member.email}: ${allTeamMemberIds.length} team members from ${teamsLed.length} teams`);
         
         if (allTeamMemberIds.length > 0) {
-          // Aggregate team performance data for all team members
+          // Aggregate team performance data for team members only
           const teamClosedAmount = allTeamMemberIds.reduce((sum, userId) => {
             const deals = closedWonDealsMap.get(userId);
             return sum + (deals?._sum?.amount ? Number(deals._sum.amount) : 0);
