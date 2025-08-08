@@ -1423,4 +1423,80 @@ router.post('/resolve-conflicts', async (req, res) => {
   }
 });
 
+// Delete all targets for a team (parent and child targets)
+router.delete('/team/:userId/all', requireTargetManagement, async (req, res) => {
+  try {
+    const { userId } = req.params;
+    
+    // Verify the user exists and belongs to the same company
+    const targetUser = await prisma.users.findUnique({
+      where: { id: userId },
+      select: { 
+        id: true, 
+        email: true, 
+        company_id: true,
+        is_manager: true,
+        is_admin: true
+      }
+    });
+
+    if (!targetUser) {
+      return res.status(404).json({ error: 'User not found' });
+    }
+
+    if (targetUser.company_id !== req.user.company_id) {
+      return res.status(403).json({ error: 'Access denied' });
+    }
+
+    // If this is a manager/admin, get all their team members
+    let userIdsToDelete = [userId];
+    
+    if (targetUser.is_manager || targetUser.is_admin) {
+      // Get teams where this user is the team lead
+      const teamsLed = await prisma.teams.findMany({
+        where: {
+          team_lead_id: userId,
+          is_active: true
+        },
+        include: {
+          team_members: {
+            where: { is_active: true },
+            select: { user_id: true }
+          }
+        }
+      });
+
+      // Collect all team member IDs
+      const teamMemberIds = new Set([userId]); // Include the manager
+      teamsLed.forEach(team => {
+        team.team_members.forEach(member => {
+          teamMemberIds.add(member.user_id);
+        });
+      });
+      
+      userIdsToDelete = Array.from(teamMemberIds);
+    }
+
+    // Delete all targets (parent and child) for these users
+    const deletedTargets = await prisma.targets.deleteMany({
+      where: {
+        user_id: { in: userIdsToDelete }
+      }
+    });
+
+    console.log(`Deleted ${deletedTargets.count} targets for ${userIdsToDelete.length} users (team lead: ${targetUser.email})`);
+
+    res.json({ 
+      success: true, 
+      message: `Successfully deleted ${deletedTargets.count} targets for ${userIdsToDelete.length} team member(s)`,
+      deletedCount: deletedTargets.count,
+      affectedUsers: userIdsToDelete.length
+    });
+
+  } catch (error) {
+    console.error('Delete team targets error:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
 export default router;
