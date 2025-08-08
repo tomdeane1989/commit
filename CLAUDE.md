@@ -471,3 +471,4 @@ npm run seed:unsafe
 - `/backend/seed-data-safe.js` - Safe seeding with checks
 - `/backend/migrate-safe.js` - Protected migration wrapper
 - `/backend/backup-database.js` - Automated backup creation
+- dont ever commit to main without confirming with me first

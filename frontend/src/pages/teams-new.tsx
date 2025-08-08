@@ -368,10 +368,6 @@ export default function TeamsNewPage() {
     updateMemberMutation.mutate({ id, data: { is_active: active } });
   };
 
-  const handleViewTeamTargets = (manager: TeamMember) => {
-    setSelectedManager(manager);
-    setShowTeamAggregationModal(true);
-  };
 
   // Filter team members for search and filters
   const filteredMembers = allMembers.filter((member: TeamMember) => {
@@ -656,7 +652,6 @@ export default function TeamsNewPage() {
                       onEdit={handleMemberEdit}
                       onDelete={handleMemberDelete}
                       onToggleActive={handleToggleActive}
-                      onViewTeamTargets={handleViewTeamTargets}
                     />
                   ))
                 )}

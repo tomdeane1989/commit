@@ -182,6 +182,22 @@ const TargetsPage = () => {
     }
   });
 
+  // Delete all team targets mutation
+  const deleteTeamTargetsMutation = useMutation({
+    mutationFn: async (userId: string) => {
+      const response = await api.delete(`/targets/team/${userId}/all`);
+      return response.data;
+    },
+    onSuccess: (data) => {
+      queryClient.invalidateQueries({ queryKey: ['targets'] });
+      queryClient.invalidateQueries({ queryKey: ['team-aggregates'] });
+      alert(`Successfully deleted ${data.deletedCount} targets for ${data.affectedUsers} team member(s)`);
+    },
+    onError: (error: any) => {
+      alert(error.response?.data?.error || 'Failed to delete team targets');
+    }
+  });
+
   const handleTargetEdit = (target: TargetData) => {
     setEditingTarget(target);
     setShowTargetModal(true);
@@ -348,6 +364,26 @@ const TargetsPage = () => {
                           <div className="text-xs text-gray-500 mr-2">
                             Dynamically calculated
                           </div>
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation(); // Prevent expanding/collapsing
+                              if (confirm(
+                                `⚠️ WARNING: This will delete ALL targets for this team!\n\n` +
+                                `This action will permanently delete:\n` +
+                                `• All parent (annual) targets\n` +
+                                `• All child (quarterly/monthly) targets\n` +
+                                `• Targets for ALL ${teamMembers.length} team members\n\n` +
+                                `This cannot be undone. Are you sure you want to proceed?`
+                              )) {
+                                // Use the current user's ID since this is for their team
+                                deleteTeamTargetsMutation.mutate(user?.id || '');
+                              }
+                            }}
+                            className="p-2 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors"
+                            title="Delete all team targets"
+                          >
+                            <Trash2 className="w-4 h-4" />
+                          </button>
                           <div className="pl-2">
                             {expandedTeamTarget ? (
                               <ChevronUp className="w-5 h-5 text-gray-400" />

@@ -122,15 +122,13 @@ interface TeamMemberCardProps {
   onEdit: (member: TeamMember) => void;
   onDelete: (id: string) => void;
   onToggleActive: (id: string, active: boolean) => void;
-  onViewTeamTargets?: (member: TeamMember) => void;
 }
 
 export const TeamMemberCard: React.FC<TeamMemberCardProps> = ({
   member,
   onEdit,
   onDelete,
-  onToggleActive,
-  onViewTeamTargets
+  onToggleActive
 }) => {
   const [showActions, setShowActions] = useState(false);
   
@@ -412,18 +410,6 @@ export const TeamMemberCard: React.FC<TeamMemberCardProps> = ({
             </button>
             
             {/* Team Aggregation option - only for managers or admins who manage teams */}
-            {(member.is_manager || member.is_admin) && onViewTeamTargets && (
-              <button
-                onClick={() => {
-                  onViewTeamTargets(member);
-                  setShowActions(false);
-                }}
-                className="w-full px-4 py-2 text-left text-sm text-gray-700 hover:bg-gray-50 flex items-center"
-              >
-                <Target className="w-4 h-4 mr-2" />
-                Aggregate Team Sales Target
-              </button>
-            )}
             <button
               onClick={() => {
                 onToggleActive(member.id, !member.is_active);

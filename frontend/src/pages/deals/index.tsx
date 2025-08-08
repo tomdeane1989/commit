@@ -366,17 +366,61 @@ const DealsPage = () => {
     }))
   });
   
+  // Helper function to pro-rate quota based on target period type and viewing period
+  const proRateQuotaIfNeeded = (target: any, viewingPeriod: string) => {
+    if (!target) return 0;
+    
+    const amount = Number(target.quota_amount) || 0;
+    const targetPeriodType = target.period_type;
+    
+    // If target period matches viewing period, no pro-rating needed
+    if (targetPeriodType === viewingPeriod) {
+      return amount;
+    }
+    
+    // Pro-rate annual targets based on viewing period
+    if (targetPeriodType === 'annual') {
+      switch (viewingPeriod) {
+        case 'quarterly':
+          return amount / 4;
+        case 'monthly':
+          return amount / 12;
+        case 'weekly':
+          return amount / 52;
+        default:
+          return amount;
+      }
+    }
+    
+    // Pro-rate quarterly targets for monthly/weekly views
+    if (targetPeriodType === 'quarterly') {
+      switch (viewingPeriod) {
+        case 'monthly':
+          return amount / 3; // 3 months per quarter
+        case 'weekly':
+          return amount / 13; // ~13 weeks per quarter
+        case 'annual':
+          return amount * 4; // 4 quarters per year
+        default:
+          return amount;
+      }
+    }
+    
+    // Default: return the amount as-is
+    return amount;
+  };
+
   // Calculate quota target based on manager view
   let quotaAmount = 0;
   if (isManager && managerView) {
     if (managerView === 'personal') {
       // Personal view: only manager's quota
       const managerTarget = targets.find((t: any) => t.is_active && t.user_id === user?.id);
-      quotaAmount = Number(managerTarget?.quota_amount) || 0;
+      quotaAmount = proRateQuotaIfNeeded(managerTarget, quotaPeriod);
     } else if (managerView === 'member' && selectedMemberId) {
       // Individual member view: selected member's quota  
       const memberTarget = targets.find((t: any) => t.is_active && t.user_id === selectedMemberId);
-      quotaAmount = Number(memberTarget?.quota_amount) || 0;
+      quotaAmount = proRateQuotaIfNeeded(memberTarget, quotaPeriod);
     } else if (managerView === 'team') {
       // Team view: sum of all team members' quotas (excluding manager)
       const teamTargets = targets.filter((t: any) => t.is_active && t.user_id !== user?.id);
@@ -392,18 +436,21 @@ const DealsPage = () => {
           is_active_type: typeof t.is_active
         }))
       });
-      const amounts = teamTargets.map((t: any) => Number(t.quota_amount));
+      // Pro-rate each team member's target based on viewing period
+      const amounts = teamTargets.map((t: any) => proRateQuotaIfNeeded(t, quotaPeriod));
       console.log('💵 Amount conversions:', amounts, 'Has NaN:', amounts.some(isNaN));
       quotaAmount = amounts.reduce((sum: number, amount: number) => sum + amount, 0);
     } else if (managerView === 'all') {
       // All view: manager + team quotas combined
       const allActiveTargets = targets.filter((t: any) => t.is_active);
-      quotaAmount = allActiveTargets.reduce((sum: number, target: any) => sum + Number(target.quota_amount), 0);
+      // Pro-rate each target based on viewing period
+      quotaAmount = allActiveTargets.reduce((sum: number, target: any) => 
+        sum + proRateQuotaIfNeeded(target, quotaPeriod), 0);
     }
   } else {
     // Non-manager: their own quota
     const currentTarget = targets.find((t: any) => t.is_active && t.user_id === user?.id);
-    quotaAmount = Number(currentTarget?.quota_amount) || 0;
+    quotaAmount = proRateQuotaIfNeeded(currentTarget, quotaPeriod);
   }
   
   // Fallback to default if no quota found  
@@ -509,11 +556,8 @@ const DealsPage = () => {
     deals.filter((d: Deal) => d.deal_type === 'best_case').reduce((sum: number, deal: Deal) => sum + Number(deal.amount), 0) :
     dealsByCategory.best_case.reduce((sum: number, deal: Deal) => sum + Number(deal.amount), 0);
     
-  // Since the backend now returns current period targets, use them directly for quarterly view
-  // Only use calculation for other periods (weekly, monthly, annual)
-  const quotaTarget = quotaPeriod === 'quarterly' 
-    ? currentPeriodQuotaTarget 
-    : calculateQuotaForPeriod(currentPeriodQuotaTarget * 4, quotaPeriod); // Multiply by 4 to get estimated annual for other periods
+  // The quota is already pro-rated for the viewing period by proRateQuotaIfNeeded()
+  const quotaTarget = currentPeriodQuotaTarget;
   
   const totalCategorized = closedAmount + commitAmount + bestCaseAmount;
   const closedProgress = (closedAmount / quotaTarget) * 100;

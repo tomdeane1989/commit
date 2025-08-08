@@ -10,7 +10,6 @@ import { TeamMemberCard } from '../components/team/TeamMemberCard';
 import { InviteModal } from '../components/team/InviteModal';
 import { InviteSuccessMessage } from '../components/team/InviteSuccessMessage';
 import EditMemberModal from '../components/team/EditMemberModal';
-import TeamAggregationModal from '../components/team/TeamAggregationModal';
 import { 
   Users, 
   Plus, 
@@ -126,8 +125,6 @@ const TeamPage = () => {
   const [editMemberModalOpen, setEditMemberModalOpen] = useState(false);
   const [editingMember, setEditingMember] = useState<TeamMember | null>(null);
   const [inviteSuccess, setInviteSuccess] = useState<{ email: string; tempPassword: string } | null>(null);
-  const [teamAggregationModalOpen, setTeamAggregationModalOpen] = useState(false);
-  const [selectedManagerForAggregation, setSelectedManagerForAggregation] = useState<TeamMember | null>(null);
 
   // Team management states
   const [expandedTeam, setExpandedTeam] = useState<string | null>(null);
@@ -273,10 +270,6 @@ const TeamPage = () => {
     });
   };
 
-  const handleViewTeamTargets = (member: TeamMember) => {
-    setSelectedManagerForAggregation(member);
-    setTeamAggregationModalOpen(true);
-  };
 
   // Show loading if still checking auth
   if (authLoading) {
@@ -394,7 +387,6 @@ const TeamPage = () => {
                     onEdit={handleMemberEdit}
                     onDelete={handleMemberDelete}
                     onToggleActive={handleToggleActive}
-                    onViewTeamTargets={handleViewTeamTargets}
                   />
                 ))
               )}
@@ -539,17 +531,6 @@ const TeamPage = () => {
         />
       )}
 
-      {/* Team Aggregation Modal */}
-      {teamAggregationModalOpen && selectedManagerForAggregation && (
-        <TeamAggregationModal
-          isOpen={teamAggregationModalOpen}
-          onClose={() => {
-            setTeamAggregationModalOpen(false);
-            setSelectedManagerForAggregation(null);
-          }}
-          manager={selectedManagerForAggregation}
-        />
-      )}
 
       {/* Create Team Modal */}
       {showCreateModal && (

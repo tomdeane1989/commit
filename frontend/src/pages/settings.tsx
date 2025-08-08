@@ -73,27 +73,7 @@ const SettingsPage = () => {
 
   const integrations = integrationsData?.integrations || [];
 
-  // Loading and authentication check
-  if (loading || !user) {
-    return null; // or optionally return a spinner/loading component
-  }
-
-  // Helper function to get integration icons
-  const getIntegrationIcon = (crmType: string) => {
-    switch (crmType) {
-      case 'sheets':
-        return FileSpreadsheet;
-      case 'salesforce':
-        return Database;
-      case 'hubspot':
-        return Database;
-      case 'pipedrive':
-        return Database;
-      default:
-        return Database;
-    }
-  };
-
+  // Define all mutations BEFORE any conditional returns
   const createTargetMutation = useMutation({
     mutationFn: async (target: any) => {
       const response = await api.post('/targets', target);
@@ -132,20 +112,6 @@ const SettingsPage = () => {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['targets', user?.id] });
-    }
-  });
-
-  const deleteTeamTargetsMutation = useMutation({
-    mutationFn: async (userId: string) => {
-      const response = await api.delete(`/targets/team/${userId}/all`);
-      return response.data;
-    },
-    onSuccess: (data) => {
-      queryClient.invalidateQueries({ queryKey: ['targets', user?.id] });
-      alert(`Successfully deleted ${data.deletedCount} targets for ${data.affectedUsers} team member(s)`);
-    },
-    onError: (error: any) => {
-      alert(error.response?.data?.error || 'Failed to delete team targets');
     }
   });
 
@@ -252,6 +218,27 @@ const SettingsPage = () => {
       role: '',
       team_target: false
     });
+  };
+
+  // Loading and authentication check - AFTER all hooks
+  if (loading || !user) {
+    return null; // or optionally return a spinner/loading component
+  }
+
+  // Helper function to get integration icons
+  const getIntegrationIcon = (crmType: string) => {
+    switch (crmType) {
+      case 'sheets':
+        return FileSpreadsheet;
+      case 'salesforce':
+        return Database;
+      case 'hubspot':
+        return Database;
+      case 'pipedrive':
+        return Database;
+      default:
+        return Database;
+    }
   };
 
   const tabs = [
@@ -489,26 +476,9 @@ const SettingsPage = () => {
                   <Edit className="w-4 h-4" />
                 </button>
                 <button
-                  onClick={() => {
-                    if (target.team_target) {
-                      // For team aggregated targets, show warning and delete all team targets
-                      if (confirm(
-                        `⚠️ WARNING: This will delete ALL targets for this team!\n\n` +
-                        `This action will permanently delete:\n` +
-                        `• All parent (annual) targets\n` +
-                        `• All child (quarterly/monthly) targets\n` +
-                        `• Targets for ALL team members\n\n` +
-                        `This cannot be undone. Are you sure you want to proceed?`
-                      )) {
-                        deleteTeamTargetsMutation.mutate(target.user_id);
-                      }
-                    } else {
-                      // For regular targets, just deactivate
-                      deleteTargetMutation.mutate(target.id);
-                    }
-                  }}
+                  onClick={() => deleteTargetMutation.mutate(target.id)}
                   className="p-2 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors"
-                  title={target.team_target ? "Delete all team targets" : "Deactivate target"}
+                  title="Deactivate target"
                 >
                   <Trash2 className="w-4 h-4" />
                 </button>
