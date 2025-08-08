@@ -320,11 +320,6 @@ router.get('/', requireTeamView, async (req, res) => {
       // Create a map to hold the best target for each user (prefer child targets)
       const userTargetMap = new Map();
       
-      console.log(`🔍 DEBUG - Total targets fetched: ${allTargetsData.length}`);
-      allTargetsData.forEach((t, idx) => {
-        console.log(`  Target ${idx + 1}: user_id=${t.user_id}, amount=£${t.quota_amount}, period=${t.period_type}, team_target=${t.team_target}, dates=${new Date(t.period_start).toLocaleDateString()}-${new Date(t.period_end).toLocaleDateString()}`);
-      });
-      
       // First pass: collect all targets by user
       allTargetsData.forEach(target => {
         if (!userTargetMap.has(target.user_id)) {
@@ -443,14 +438,6 @@ router.get('/', requireTeamView, async (req, res) => {
       const bestCaseDeals = bestCaseDealsMap.get(member.id);
       // Get user's personal target
       const personalTarget = targetsData.find(t => t.user_id === member.id && !t.team_target);
-      
-      // Debug logging for all users' targets
-      console.log(`🎯 DEBUG - ${member.email}'s target search:`, {
-        userId: member.id,
-        targetsDataLength: targetsData.length,
-        userTargets: targetsData.filter(t => t.user_id === member.id),
-        personalTargetFound: !!personalTarget
-      });
       
       // Debug logging for Alfie's target
       if (member.name && member.name.includes('Alfie')) {
