@@ -350,6 +350,20 @@ const DealsPage = () => {
   const deals = dealsData?.deals || [];
   const targets = targetsData?.targets || [];
   
+  // Debug logging
+  console.log('🎯 Deals Page Debug:', {
+    managerView,
+    selectedMemberId,
+    targetsCount: targets.length,
+    targets: targets.map((t: any) => ({
+      user_id: t.user_id,
+      user_email: t.user?.email,
+      quota_amount: t.quota_amount,
+      is_active: t.is_active,
+      period_type: t.period_type
+    }))
+  });
+  
   // Calculate quota target based on manager view
   let quotaAmount = 0;
   if (isManager && managerView) {
@@ -379,6 +393,14 @@ const DealsPage = () => {
   // Fallback to default if no quota found  
   // Note: quotaAmount now comes from current period targets (quarterly), not annual
   const currentPeriodQuotaTarget = quotaAmount || 0; // No fallback - show 0 if no quota set
+  
+  console.log('💰 Quota Calculation Result:', {
+    isManager,
+    managerView,
+    selectedMemberId,
+    quotaAmount,
+    currentPeriodQuotaTarget
+  });
   
   // Get commission rate based on current view
   let commissionRate = 0;
