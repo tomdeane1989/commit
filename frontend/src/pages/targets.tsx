@@ -257,12 +257,14 @@ const TargetsPage = () => {
   const individualTargets = currentTargets;
   
   // Get current period's team aggregate
-  // Find the aggregate for the current year
-  const currentYear = new Date().getFullYear();
+  // Find the aggregate that contains the current date
+  const currentDate = new Date();
   const currentTeamAggregate = teamAggregateData?.team_aggregates?.find(agg => {
-    const aggregateYear = new Date(agg.period_start).getFullYear();
-    return aggregateYear === currentYear;
-  }) || teamAggregateData?.team_aggregates?.[0]; // Fallback to first if no current year found
+    const periodStart = new Date(agg.period_start);
+    const periodEnd = new Date(agg.period_end);
+    // Check if current date falls within this period
+    return currentDate >= periodStart && currentDate <= periodEnd;
+  }) || teamAggregateData?.team_aggregates?.[0]; // Fallback to first if no current period found
   
   const teamMembers = currentTeamAggregate?.member_targets || [];
   const teamTotalQuota = currentTeamAggregate?.total_quota || 0;
