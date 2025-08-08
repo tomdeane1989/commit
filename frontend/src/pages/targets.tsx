@@ -270,7 +270,7 @@ const TargetsPage = () => {
   
   // Debug logging
   console.log('🎯 Team Aggregate Data:', teamAggregateData);
-  console.log('🎯 Current Year:', currentYear);
+  console.log('🎯 Current Date:', currentDate);
   console.log('🎯 Current Team Aggregate:', currentTeamAggregate);
   console.log('🎯 Team Members:', teamMembers);
   console.log('🎯 Team Total Quota:', teamTotalQuota);
