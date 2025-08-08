@@ -117,7 +117,12 @@ const TargetsPage = () => {
         return;
       }
       
+      // Invalidate all related queries to ensure fresh data
       queryClient.invalidateQueries({ queryKey: ['targets'] });
+      queryClient.invalidateQueries({ queryKey: ['team-aggregate'] });
+      queryClient.invalidateQueries({ queryKey: ['team'] });
+      queryClient.invalidateQueries({ queryKey: ['team-members'] });
+      queryClient.invalidateQueries({ queryKey: ['dashboard'] });
       setQuotaWizardOpen(false);
       
       // Show warning if some users were skipped or pro-rated
@@ -147,7 +152,12 @@ const TargetsPage = () => {
   const resolveConflictsMutation = useMutation({
     mutationFn: targetsApi.resolveConflicts,
     onSuccess: (data) => {
+      // Invalidate all related queries to ensure fresh data
       queryClient.invalidateQueries({ queryKey: ['targets'] });
+      queryClient.invalidateQueries({ queryKey: ['team-aggregate'] });
+      queryClient.invalidateQueries({ queryKey: ['team'] });
+      queryClient.invalidateQueries({ queryKey: ['team-members'] });
+      queryClient.invalidateQueries({ queryKey: ['dashboard'] });
       setQuotaWizardOpen(false);
       
       let message = data.message;
@@ -168,7 +178,12 @@ const TargetsPage = () => {
   const updateTargetMutation = useMutation({
     mutationFn: ({ id, data }: { id: string; data: any }) => targetsApi.updateTarget(id, data),
     onSuccess: () => {
+      // Invalidate all related queries to ensure fresh data
       queryClient.invalidateQueries({ queryKey: ['targets'] });
+      queryClient.invalidateQueries({ queryKey: ['team-aggregate'] });
+      queryClient.invalidateQueries({ queryKey: ['team'] });
+      queryClient.invalidateQueries({ queryKey: ['team-members'] });
+      queryClient.invalidateQueries({ queryKey: ['dashboard'] });
       setShowTargetModal(false);
       setEditingTarget(null);
     }
@@ -178,7 +193,12 @@ const TargetsPage = () => {
   const deleteTargetMutation = useMutation({
     mutationFn: targetsApi.deactivateTarget,
     onSuccess: () => {
+      // Invalidate all related queries to ensure fresh data
       queryClient.invalidateQueries({ queryKey: ['targets'] });
+      queryClient.invalidateQueries({ queryKey: ['team-aggregate'] });
+      queryClient.invalidateQueries({ queryKey: ['team'] });
+      queryClient.invalidateQueries({ queryKey: ['team-members'] });
+      queryClient.invalidateQueries({ queryKey: ['dashboard'] });
     }
   });
 
@@ -189,8 +209,12 @@ const TargetsPage = () => {
       return response.data;
     },
     onSuccess: (data) => {
+      // Invalidate all related queries to ensure fresh data
       queryClient.invalidateQueries({ queryKey: ['targets'] });
-      queryClient.invalidateQueries({ queryKey: ['team-aggregates'] });
+      queryClient.invalidateQueries({ queryKey: ['team-aggregate'] });
+      queryClient.invalidateQueries({ queryKey: ['team'] });
+      queryClient.invalidateQueries({ queryKey: ['team-members'] });
+      queryClient.invalidateQueries({ queryKey: ['dashboard'] });
       alert(`Successfully deleted ${data.deletedCount} targets for ${data.affectedUsers} team member(s)`);
     },
     onError: (error: any) => {

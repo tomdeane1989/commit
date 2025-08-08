@@ -193,7 +193,12 @@ const TeamPage = () => {
   const inviteMemberMutation = useMutation({
     mutationFn: teamApi.inviteTeamMember,
     onSuccess: (data) => {
-      queryClient.invalidateQueries({ queryKey: ['team', user?.id] });
+      // Invalidate all related queries
+      queryClient.invalidateQueries({ queryKey: ['team'] });
+      queryClient.invalidateQueries({ queryKey: ['targets'] });
+      queryClient.invalidateQueries({ queryKey: ['team-aggregate'] });
+      queryClient.invalidateQueries({ queryKey: ['team-members'] });
+      queryClient.invalidateQueries({ queryKey: ['dashboard'] });
       setInviteModalOpen(false);
       setInviteSuccess({
         email: data.user.email,
@@ -206,8 +211,13 @@ const TeamPage = () => {
   const updateMemberMutation = useMutation({
     mutationFn: ({ id, data }: { id: string; data: any }) => teamApi.updateTeamMember(id, data),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['team', user?.id] });
+      // Invalidate all related queries
+      queryClient.invalidateQueries({ queryKey: ['team'] });
       queryClient.invalidateQueries({ queryKey: ['teams-management'] });
+      queryClient.invalidateQueries({ queryKey: ['targets'] });
+      queryClient.invalidateQueries({ queryKey: ['team-aggregate'] });
+      queryClient.invalidateQueries({ queryKey: ['team-members'] });
+      queryClient.invalidateQueries({ queryKey: ['dashboard'] });
       setEditMemberModalOpen(false);
       setEditingMember(null);
     },
@@ -221,7 +231,12 @@ const TeamPage = () => {
   const deleteMemberMutation = useMutation({
     mutationFn: teamApi.deactivateTeamMember,
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['team', user?.id] });
+      // Invalidate all related queries
+      queryClient.invalidateQueries({ queryKey: ['team'] });
+      queryClient.invalidateQueries({ queryKey: ['targets'] });
+      queryClient.invalidateQueries({ queryKey: ['team-aggregate'] });
+      queryClient.invalidateQueries({ queryKey: ['team-members'] });
+      queryClient.invalidateQueries({ queryKey: ['dashboard'] });
     }
   });
 
