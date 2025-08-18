@@ -952,7 +952,7 @@ router.post('/invite', requireTeamManagement, async (req, res) => {
     console.log('🔍 BACKEND - Body type:', typeof req.body);
     console.log('🔍 BACKEND - Body keys:', Object.keys(req.body || {}));
 
-    const { email, first_name, last_name, is_admin, is_manager, manager_id, team_ids } = req.body;
+    const { email, first_name, last_name, is_admin, is_manager, manager_id, team_ids, employee_id } = req.body;
 
     // Validate required fields
     if (!email || !first_name || !last_name) {
@@ -1006,7 +1006,8 @@ router.post('/invite', requireTeamManagement, async (req, res) => {
         is_admin: is_admin || false,
         is_manager: is_manager || false,
         manager_id: manager_id || null,
-        company_id: req.user.company_id
+        company_id: req.user.company_id,
+        employee_id: employee_id || null
       },
       include: {
         manager: {
@@ -1122,7 +1123,7 @@ router.patch('/:userId', requireTeamManagement, async (req, res) => {
     // Permission already checked by middleware
 
     const { userId } = req.params;
-    const { first_name, last_name, territory, manager_id, is_active, is_admin, is_manager } = req.body;
+    const { first_name, last_name, territory, manager_id, is_active, is_admin, is_manager, employee_id } = req.body;
 
     // Validate user exists and is in same company
     const existingUser = await prisma.users.findUnique({
@@ -1157,6 +1158,7 @@ router.patch('/:userId', requireTeamManagement, async (req, res) => {
         first_name: first_name ? capitalizeName(first_name) : undefined,
         last_name: last_name ? capitalizeName(last_name) : undefined,
         territory,
+        employee_id,
         manager_id,
         is_active,
         is_admin,

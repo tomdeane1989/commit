@@ -270,6 +270,7 @@ export const teamApi = {
     email: string;
     first_name: string;
     last_name: string;
+    employee_id?: string;
     is_admin?: boolean;
     is_manager?: boolean;
     territory?: string;
@@ -289,10 +290,13 @@ export const teamApi = {
   updateTeamMember: async (userId: string, memberData: {
     first_name?: string;
     last_name?: string;
+    employee_id?: string | null;
     role?: string;
     territory?: string;
     manager_id?: string;
     is_active?: boolean;
+    is_admin?: boolean;
+    is_manager?: boolean;
   }): Promise<any> => {
     const response = await api.patch(`/team/${userId}`, memberData);
     return response.data;

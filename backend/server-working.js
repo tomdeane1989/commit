@@ -16,6 +16,10 @@ import targetsRoutes from './routes/targets.js';
 import dealsRoutes from './routes/deals.js';
 import commissionsRoutes from './routes/commissions.js';
 import integrationsRoutes from './routes/integrations.js';
+import commissionApprovalsRoutes from './routes/commission-approvals.js';
+import commissionRulesRoutes from './routes/commission-rules.js';
+import commissionReportsRoutes from './routes/commission-reports.js';
+import commissionExportRoutes from './routes/commission-export.js';
 
 // Import scheduled jobs
 import { scheduleCommissionRecalculation } from './jobs/commissionRecalculationJob.js';
@@ -205,7 +209,11 @@ app.use('/api/teams', authMiddleware, teamManagementRoutes);
 app.use('/api/targets', authMiddleware, targetsRoutes);
 app.use('/api/deals', authMiddleware, dealsRoutes);
 app.use('/api/commissions', authMiddleware, commissionsRoutes);
+app.use('/api/commissions', authMiddleware, commissionExportRoutes); // Export endpoints
 app.use('/api/integrations', authMiddleware, integrationsRoutes);
+app.use('/api/commission-approvals', authMiddleware, commissionApprovalsRoutes);
+app.use('/api/commission-rules', authMiddleware, commissionRulesRoutes);
+app.use('/api/commission-reports', authMiddleware, commissionReportsRoutes);
 
 // Dashboard routes
 app.get('/api/dashboard/sales-rep', authMiddleware, async (req, res) => {

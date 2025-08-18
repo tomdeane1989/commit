@@ -4,7 +4,7 @@ import { PrismaClient } from '@prisma/client';
 import GoogleSheetsService from '../services/googleSheets.js';
 import Joi from 'joi';
 import { requireIntegrationManagement, attachPermissions } from '../middleware/permissions.js';
-import dealCommissionCalculator from '../services/dealCommissionCalculator.js';
+import enhancedCommissionCalculator from '../services/enhancedCommissionCalculator.js';
 
 const router = express.Router();
 const prisma = new PrismaClient();
@@ -358,12 +358,22 @@ async function syncGoogleSheets(integration, user) {
           
           if (owner) {
             deal.user_id = owner.id;
+            // Remove the temporary field
+            delete deal._owner_email;
+            deals.push(deal);
+          } else {
+            // User not found - log error instead of defaulting to sync user
+            console.warn(`⚠️ User not found for email ${deal._owner_email} - skipping deal ${deal.deal_name}`);
+            errors.push({
+              row: row._rowNumber,
+              error: `Owner not found: ${deal._owner_email}. Please ensure this user exists in the system.`,
+              data: row
+            });
           }
-          // Remove the temporary field
-          delete deal._owner_email;
+        } else {
+          // No owner email specified - use sync user as fallback
+          deals.push(deal);
         }
-        
-        deals.push(deal);
       } catch (error) {
         errors.push({
           row: row._rowNumber,
@@ -463,7 +473,10 @@ async function syncGoogleSheets(integration, user) {
       try {
         for (const deal of syncedDeals) {
           if (deal.stage?.toLowerCase() === 'closed won' || deal.stage?.toLowerCase() === 'closed_won') {
-            await dealCommissionCalculator.calculateDealCommission(deal.id);
+            await enhancedCommissionCalculator.calculateDealCommission(deal.id, {
+              createAuditRecord: true,
+              useAdvancedRules: false  // Use simple target-based calculation
+            });
           }
         }
       } catch (calcError) {
