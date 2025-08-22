@@ -2,6 +2,7 @@
 import express from 'express';
 import { PrismaClient } from '@prisma/client';
 import { attachPermissions } from '../middleware/permissions.js';
+import { toDecimal, sumMoney, calculateAttainment, toString, toNumber } from '../utils/money.js';
 
 const router = express.Router();
 const prisma = new PrismaClient();
@@ -203,17 +204,18 @@ router.get('/sales-rep/:userId', async (req, res) => {
     const bestCaseDeals = deals.filter(d => d.deal_type === 'best_case');
     const pipelineDeals = deals.filter(d => d.deal_type === 'pipeline');
 
-    // Calculate totals
-    const closedAmount = closedDeals.reduce((sum, deal) => sum + Number(deal.amount), 0);
-    const commitAmount = commitDeals.reduce((sum, deal) => sum + Number(deal.amount), 0);
-    const bestCaseAmount = bestCaseDeals.reduce((sum, deal) => sum + Number(deal.amount), 0);
+    // Calculate totals with proper decimal precision
+    const closedAmount = sumMoney(closedDeals.map(d => d.amount));
+    const commitAmount = sumMoney(commitDeals.map(d => d.amount));
+    const bestCaseAmount = sumMoney(bestCaseDeals.map(d => d.amount));
 
-    const quotaAttainment = (closedAmount / Number(currentTarget.target_amount)) * 100;
-    const projectedAttainment = ((closedAmount + commitAmount + bestCaseAmount) / Number(currentTarget.target_amount)) * 100;
+    const quotaAttainment = calculateAttainment(closedAmount, currentTarget.target_amount);
+    const projectedTotal = closedAmount.add(commitAmount).add(bestCaseAmount);
+    const projectedAttainment = calculateAttainment(projectedTotal, currentTarget.target_amount);
 
-    // Calculate commissions
-    const earnedCommission = closedAmount * Number(currentTarget.commission_rate);
-    const projectedCommission = (closedAmount + commitAmount + bestCaseAmount) * Number(currentTarget.commission_rate);
+    // Calculate commissions with precision
+    const earnedCommission = closedAmount.mul(toDecimal(currentTarget.commission_rate));
+    const projectedCommission = projectedTotal.mul(toDecimal(currentTarget.commission_rate));
 
     const dashboardData = {
       target: {
@@ -223,11 +225,11 @@ router.get('/sales-rep/:userId', async (req, res) => {
         commission_rate: Number(currentTarget.commission_rate)
       },
       performance: {
-        closed_amount: closedAmount,
-        quota_attainment: quotaAttainment,
-        projected_attainment: projectedAttainment,
-        earned_commission: earnedCommission,
-        projected_commission: projectedCommission
+        closed_amount: toNumber(closedAmount),
+        quota_attainment: toNumber(quotaAttainment),
+        projected_attainment: toNumber(projectedAttainment),
+        earned_commission: toNumber(earnedCommission),
+        projected_commission: toNumber(projectedCommission)
       },
       deals: {
         closed: closedDeals,

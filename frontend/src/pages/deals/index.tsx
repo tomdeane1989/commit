@@ -4,6 +4,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useAuth } from '../../hooks/useAuth';
 import api from '../../lib/api';
 import { Deal } from '../../types';
+import { sumMoney, formatLargeCurrency, formatLargeNumber, roundToPenny } from '../../utils/money';
 import { 
   Star, 
   Zap, 
@@ -550,14 +551,14 @@ const DealsPage = () => {
   // Calculate progress values using API summary data or fallback to calculated values
   const summaryData = dealsData?.summary;
   const closedAmount = summaryData ? 
-    deals.filter((d: Deal) => d.status === 'closed_won').reduce((sum: number, deal: Deal) => sum + Number(deal.amount), 0) :
-    dealsByCategory.closed.reduce((sum: number, deal: Deal) => sum + Number(deal.amount), 0);
+    sumMoney(deals.filter((d: Deal) => d.status === 'closed_won').map(d => d.amount)) :
+    sumMoney(dealsByCategory.closed.map(d => d.amount));
   const commitAmount = summaryData ? 
-    deals.filter((d: Deal) => d.deal_type === 'commit').reduce((sum: number, deal: Deal) => sum + Number(deal.amount), 0) :
-    dealsByCategory.commit.reduce((sum: number, deal: Deal) => sum + Number(deal.amount), 0);
+    sumMoney(deals.filter((d: Deal) => d.deal_type === 'commit').map(d => d.amount)) :
+    sumMoney(dealsByCategory.commit.map(d => d.amount));
   const bestCaseAmount = summaryData ? 
-    deals.filter((d: Deal) => d.deal_type === 'best_case').reduce((sum: number, deal: Deal) => sum + Number(deal.amount), 0) :
-    dealsByCategory.best_case.reduce((sum: number, deal: Deal) => sum + Number(deal.amount), 0);
+    sumMoney(deals.filter((d: Deal) => d.deal_type === 'best_case').map(d => d.amount)) :
+    sumMoney(dealsByCategory.best_case.map(d => d.amount));
     
   // The quota is already pro-rated for the viewing period by proRateQuotaIfNeeded()
   const quotaTarget = currentPeriodQuotaTarget;
@@ -699,7 +700,7 @@ const DealsPage = () => {
           <div className="flex items-center space-x-1">
             <PoundSterling className="w-3 h-3 text-green-600" />
             <span className="font-bold text-green-700">
-              £{Number(deal.amount).toLocaleString()}
+              {formatLargeCurrency(deal.amount)}
             </span>
           </div>
 
@@ -769,7 +770,7 @@ const DealsPage = () => {
                 <div className="flex items-center space-x-1">
                   <Award className="w-3 h-3 text-purple-500" />
                   <span className="text-sm font-semibold text-purple-600">
-                    £{commission.toLocaleString()}
+                    {formatLargeCurrency(commission)}
                   </span>
                 </div>
               </div>
@@ -835,7 +836,7 @@ const DealsPage = () => {
           <div className="grid grid-cols-2 gap-4 text-center">
             <div>
               <div className={`text-xl font-bold ${textColor}`}>
-                £{totalValue.toLocaleString()}
+                {formatLargeCurrency(totalValue)}
               </div>
               <div className="text-xs text-gray-600">Total Value</div>
             </div>
@@ -1140,10 +1141,10 @@ const DealsPage = () => {
                     Actual Closed
                   </div>
                   <div className="text-lg font-bold text-green-800">
-                    £{closedAmount.toLocaleString()}
+                    {formatLargeCurrency(closedAmount)}
                   </div>
                   <div className="text-xs text-green-600 font-semibold">
-                    Commission: £{actualCommission.toLocaleString()}
+                    Commission: {formatLargeCurrency(actualCommission)}
                   </div>
                 </div>
               ) : hoveredSegment === 'commit-outer' ? (
@@ -1155,10 +1156,10 @@ const DealsPage = () => {
                     Commit Pipeline
                   </div>
                   <div className="text-lg font-bold text-amber-800">
-                    £{commitAmount.toLocaleString()}
+                    {formatLargeCurrency(commitAmount)}
                   </div>
                   <div className="text-xs text-amber-600 font-semibold">
-                    Potential: £{dealsByCategory.commit.reduce((sum: number, deal: Deal) => sum + getDealCommission(deal, commissionRate), 0).toLocaleString()}
+                    Potential: {formatLargeCurrency(dealsByCategory.commit.reduce((sum: number, deal: Deal) => sum + getDealCommission(deal, commissionRate), 0))}
                   </div>
                 </div>
               ) : hoveredSegment === 'bestcase-outer' ? (
@@ -1170,10 +1171,10 @@ const DealsPage = () => {
                     Best Case Pipeline
                   </div>
                   <div className="text-lg font-bold text-purple-800">
-                    £{bestCaseAmount.toLocaleString()}
+                    {formatLargeCurrency(bestCaseAmount)}
                   </div>
                   <div className="text-xs text-purple-600 font-semibold">
-                    Potential: £{dealsByCategory.best_case.reduce((sum: number, deal: Deal) => sum + getDealCommission(deal, commissionRate), 0).toLocaleString()}
+                    Potential: {formatLargeCurrency(dealsByCategory.best_case.reduce((sum: number, deal: Deal) => sum + getDealCommission(deal, commissionRate), 0))}
                   </div>
                 </div>
               ) : hoveredSegment === 'projected' ? (
@@ -1182,10 +1183,10 @@ const DealsPage = () => {
                     {totalProjectedAttainment.toFixed(0)}%
                   </div>
                   <div className="text-sm text-blue-700 font-medium">
-                    £{totalProjected.toLocaleString()} total
+                    {formatLargeCurrency(totalProjected)} total
                   </div>
                   <div className="text-xs text-blue-600 font-semibold">
-                    Commission: £{totalCommission.toLocaleString()}
+                    Commission: {formatLargeCurrency(totalCommission)}
                   </div>
                 </div>
               ) : (
@@ -1221,19 +1222,19 @@ const DealsPage = () => {
             <div className="flex justify-between items-center mb-2">
               <span className="text-sm font-medium text-gray-700">Actual Closed</span>
               <span className="text-lg font-bold text-gray-900">
-                £{closedAmount.toLocaleString()}
+                {formatLargeCurrency(closedAmount)}
               </span>
             </div>
             <div className="flex justify-between items-center mb-2">
               <span className="text-sm font-medium text-gray-700">Projected Total</span>
               <span className="text-lg font-bold text-gray-900">
-                £{totalProjected.toLocaleString()}
+                {formatLargeCurrency(totalProjected)}
               </span>
             </div>
             <div className="flex justify-between items-center mb-2">
               <span className="text-sm font-medium text-gray-700">Quota Target</span>
               <span className="text-lg font-bold text-gray-900">
-                £{quotaTarget.toLocaleString()}
+                {formatLargeCurrency(quotaTarget)}
               </span>
             </div>
             <div className="flex justify-between items-center">
@@ -1260,7 +1261,7 @@ const DealsPage = () => {
               ) : (
                 <>
                   <div className="text-sm font-bold text-green-800">
-                    £{(quotaTarget - closedAmount).toLocaleString()} needed
+                    {formatLargeCurrency(quotaTarget - closedAmount)} needed
                   </div>
                   <div className="text-xs text-green-600">
                     to reach quota
@@ -1278,12 +1279,12 @@ const DealsPage = () => {
             <div className="text-right">
               {quotaTarget - totalProjected <= 0 ? (
                 <div className="text-sm font-bold text-blue-800">
-                  {totalProjected > quotaTarget ? `£${(totalProjected - quotaTarget).toLocaleString()} over` : 'On target! 🎯'}
+                  {totalProjected > quotaTarget ? `${formatLargeCurrency(totalProjected - quotaTarget)} over` : 'On target! 🎯'}
                 </div>
               ) : (
                 <>
                   <div className="text-sm font-bold text-blue-800">
-                    £{(quotaTarget - totalProjected).toLocaleString()} at risk
+                    {formatLargeCurrency(quotaTarget - totalProjected)} at risk
                   </div>
                   <div className="text-xs text-blue-600">
                     additional pipe needed to meet quota
@@ -1549,10 +1550,10 @@ const DealsPage = () => {
                 <span className="text-sm font-medium text-gray-600">Actual Closed</span>
               </div>
               <div className="text-2xl font-bold text-gray-900">
-                £{closedAmount.toLocaleString()}
+                {formatLargeCurrency(closedAmount)}
               </div>
               <div className="text-xs text-gray-500">
-                Commission: £{dealsByCategory.closed.reduce((sum: number, deal: Deal) => sum + getDealCommission(deal, commissionRate), 0).toLocaleString()}
+                Commission: {formatLargeCurrency(dealsByCategory.closed.reduce((sum: number, deal: Deal) => sum + getDealCommission(deal, commissionRate), 0))}
               </div>
             </div>
 
@@ -1565,10 +1566,10 @@ const DealsPage = () => {
                 <span className="text-sm font-medium text-gray-600">Projected</span>
               </div>
               <div className="text-2xl font-bold text-gray-900">
-                £{(commitAmount + bestCaseAmount).toLocaleString()}
+                {formatLargeCurrency(commitAmount + bestCaseAmount)}
               </div>
               <div className="text-xs text-gray-500">
-                Commission: £{[...dealsByCategory.commit, ...dealsByCategory.best_case].reduce((sum: number, deal: Deal) => sum + getDealCommission(deal, commissionRate), 0).toLocaleString()}
+                Commission: {formatLargeCurrency([...dealsByCategory.commit, ...dealsByCategory.best_case].reduce((sum: number, deal: Deal) => sum + getDealCommission(deal, commissionRate), 0))}
               </div>
             </div>
 
@@ -1583,7 +1584,7 @@ const DealsPage = () => {
                 </span>
               </div>
               <div className="text-2xl font-bold text-gray-900">
-                £{quotaTarget.toLocaleString()}
+                {formatLargeCurrency(quotaTarget)}
               </div>
               <div className="text-xs text-gray-500">
                 Attainment: {((closedAmount / quotaTarget) * 100).toFixed(0)}%
@@ -1714,7 +1715,7 @@ const DealsPage = () => {
                       </div>
                       <div className="flex justify-between text-sm">
                         <span className="text-gray-600">Total Value:</span>
-                        <span className="font-medium text-green-600">£{memberStats.total_amount.toLocaleString()}</span>
+                        <span className="font-medium text-green-600">{formatLargeCurrency(memberStats.total_amount)}</span>
                       </div>
                       
                       {/* Category breakdown */}
@@ -1776,7 +1777,7 @@ const DealsPage = () => {
                   <strong>{pendingCategorization.deal.deal_name}</strong> - {pendingCategorization.deal.account_name}
                 </p>
                 <p className="text-sm text-gray-600">
-                  £{Number(pendingCategorization.deal.amount).toLocaleString()}
+                  {formatLargeCurrency(pendingCategorization.deal.amount)}
                 </p>
               </div>
               

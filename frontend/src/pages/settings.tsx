@@ -3,6 +3,7 @@ import Layout from '../components/layout';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useAuth } from '../hooks/useAuth';
 import api, { integrationsApi } from '../lib/api';
+import { formatLargeCurrency } from '../utils/money';
 import { 
   Target, 
   Calendar, 
@@ -323,7 +324,7 @@ const SettingsPage = () => {
                 <span className="text-sm text-gray-600">Total Team Quota</span>
               </div>
               <span className="text-lg font-bold text-gray-900">
-                £{totalQuota.toLocaleString()}
+                {formatLargeCurrency(totalQuota)}
               </span>
             </div>
 
@@ -351,8 +352,8 @@ const SettingsPage = () => {
                 ></div>
               </div>
               <div className="flex items-center justify-between mt-2 text-xs text-gray-500">
-                <span>£{totalAchievement.toLocaleString()}</span>
-                <span>£{totalQuota.toLocaleString()}</span>
+                <span>{formatLargeCurrency(totalAchievement)}</span>
+                <span>{formatLargeCurrency(totalQuota)}</span>
               </div>
             </div>
           </div>
@@ -371,12 +372,12 @@ const SettingsPage = () => {
                         {target.user ? `${target.user.first_name} ${target.user.last_name}` : 'Team Member'}
                       </h5>
                       <p className="text-sm text-gray-600">
-                        Individual quota: £{target.quota_amount.toLocaleString()}
+                        Individual quota: {formatLargeCurrency(target.quota_amount)}
                       </p>
                     </div>
                     <div className="text-right">
                       <div className="text-sm font-semibold text-gray-900">
-                        {target.current_achievement ? `£${target.current_achievement.toLocaleString()}` : '£0'}
+                        {formatLargeCurrency(target.current_achievement || 0)}
                       </div>
                       <div className="text-xs text-gray-500">
                         {target.quota_amount > 0 ? ((target.current_achievement || 0) / target.quota_amount * 100).toFixed(1) : '0.0'}% achieved
@@ -494,7 +495,7 @@ const SettingsPage = () => {
               <span className="text-sm text-gray-600">Quota Amount</span>
             </div>
             <span className="text-lg font-bold text-gray-900">
-              £{target.quota_amount.toLocaleString()}
+              {formatLargeCurrency(target.quota_amount)}
             </span>
           </div>
 
@@ -522,8 +523,8 @@ const SettingsPage = () => {
               ></div>
             </div>
             <div className="flex items-center justify-between mt-2 text-xs text-gray-500">
-              <span>£{target.current_achievement?.toLocaleString() || 0}</span>
-              <span>£{target.quota_amount.toLocaleString()}</span>
+              <span>{formatLargeCurrency(target.current_achievement || 0)}</span>
+              <span>{formatLargeCurrency(target.quota_amount)}</span>
             </div>
           </div>
         </div>

@@ -3,6 +3,7 @@ import { useQuery } from '@tanstack/react-query';
 import Layout from '../components/layout';
 import ProtectedRoute from '../components/ProtectedRoute';
 import { useAuth } from '../hooks/useAuth';
+import { formatLargeCurrency } from '../utils/money';
 import { 
   DollarSign, 
   TrendingUp, 
@@ -261,7 +262,7 @@ const DashboardPage = () => {
             <div>
               <p className="text-sm font-medium text-gray-600 mb-1">Closed Amount</p>
               <p className="text-2xl font-bold text-gray-900">
-                £{metrics?.closed_amount?.toLocaleString() || 0}
+                {formatLargeCurrency(metrics?.closed_amount || 0)}
               </p>
               <p className="text-xs text-gray-500 mt-1">
                 {dashboardData?.period ? `${new Date(dashboardData.period.start).toLocaleDateString('en-GB', { month: 'short' })} - ${new Date(dashboardData.period.end).toLocaleDateString('en-GB', { month: 'short', year: 'numeric' })}` : 'This Period'}
@@ -279,7 +280,7 @@ const DashboardPage = () => {
             <div>
               <p className="text-sm font-medium text-gray-600 mb-1">Commission Earned</p>
               <p className="text-2xl font-bold text-gray-900">
-                £{metrics?.commission_earned?.toLocaleString() || 0}
+                {formatLargeCurrency(metrics?.commission_earned || 0)}
               </p>
               <p className="text-xs text-gray-500 mt-1">
                 {dashboardData?.current_target && `${(dashboardData.current_target.commission_rate * 100).toFixed(1)}% rate`}
@@ -297,7 +298,7 @@ const DashboardPage = () => {
             <div>
               <p className="text-sm font-medium text-gray-600 mb-1">Projected Commission</p>
               <p className="text-2xl font-bold text-gray-900">
-                £{metrics?.projected_commission?.toLocaleString() || 0}
+                {formatLargeCurrency(metrics?.projected_commission || 0)}
               </p>
               <p className="text-xs text-gray-500 mt-1">
                 Including committed deals
@@ -371,7 +372,7 @@ const DashboardPage = () => {
                       <span className="text-sm font-medium text-gray-700">Closed</span>
                     </div>
                     <span className="text-sm font-semibold text-gray-900">
-                      £{quota_progress?.closed_amount?.toLocaleString() || 0}
+                      {formatLargeCurrency(quota_progress?.closed_amount || 0)}
                     </span>
                   </div>
                   <div className="flex justify-between items-center p-3 bg-amber-50 rounded-lg border border-amber-200">
@@ -380,7 +381,7 @@ const DashboardPage = () => {
                       <span className="text-sm font-medium text-gray-700">Commit</span>
                     </div>
                     <span className="text-sm font-semibold text-gray-900">
-                      £{quota_progress?.commit_amount?.toLocaleString() || 0}
+                      {formatLargeCurrency(quota_progress?.commit_amount || 0)}
                     </span>
                   </div>
                   <div className="flex justify-between items-center p-3 bg-blue-50 rounded-lg border border-blue-200">
@@ -389,7 +390,7 @@ const DashboardPage = () => {
                       <span className="text-sm font-medium text-gray-700">Best Case</span>
                     </div>
                     <span className="text-sm font-semibold text-gray-900">
-                      £{quota_progress?.best_case_amount?.toLocaleString() || 0}
+                      {formatLargeCurrency(quota_progress?.best_case_amount || 0)}
                     </span>
                   </div>
                   <div className="flex justify-between items-center p-3 bg-gray-50 rounded-lg border border-gray-200">
@@ -398,7 +399,7 @@ const DashboardPage = () => {
                       <span className="text-sm font-medium text-gray-700">Total Quota</span>
                     </div>
                     <span className="text-sm font-semibold text-gray-900">
-                      £{quota_progress?.total_quota?.toLocaleString() || 0}
+                      {formatLargeCurrency(quota_progress?.total_quota || 0)}
                     </span>
                   </div>
                 </div>
@@ -621,7 +622,7 @@ const DashboardPage = () => {
                   </div>
                   <div className="text-right">
                     <p className="font-bold text-gray-900">
-                      £{movement.deal_amount?.toLocaleString()}
+                      {formatLargeCurrency(movement.deal_amount)}
                     </p>
                     <p className="text-xs text-gray-500">
                       {new Date(movement.timestamp).toLocaleDateString('en-GB')}

@@ -6,6 +6,7 @@ import { useAuth } from '../hooks/useAuth';
 import api, { commissionsApi } from '../lib/api';
 import { commissionApprovalsApi, commissionRulesApi } from '../lib/commissionApprovals';
 import type { CommissionRecord, CommissionFilters } from '../lib/commissionApprovals';
+import { formatLargeCurrency, formatLargeNumber } from '../utils/money';
 import { 
   PoundSterling, 
   TrendingUp, 
@@ -963,7 +964,7 @@ const CommissionsPage = () => {
               <div className="ml-4">
                 <p className="text-sm font-medium text-gray-600">Total Earned (12M)</p>
                 <p className="text-2xl font-bold text-gray-900">
-                  £{totalEarned.toLocaleString()}
+                  {formatLargeCurrency(totalEarned)}
                 </p>
               </div>
             </div>
@@ -1032,7 +1033,7 @@ const CommissionsPage = () => {
                   <div className="text-center">
                     <p className="text-sm font-medium text-gray-600">Commission Earned</p>
                     <p className="text-3xl font-bold text-green-600">
-                      £{Number(currentCommission.commission_earned).toLocaleString()}
+                      {formatLargeCurrency(currentCommission.commission_earned)}
                     </p>
                   </div>
                   <div className="text-center">
@@ -1067,7 +1068,7 @@ const CommissionsPage = () => {
                               </div>
                               <div className="text-right">
                                 <p className="font-medium text-gray-900">
-                                  £{Number(deal.commission_amount || 0).toLocaleString()}
+                                  {formatLargeCurrency(deal.commission_amount || 0)}
                                 </p>
                                 <p className="text-sm text-gray-600">
                                   {new Date(deal.close_date).toLocaleDateString('en-GB')}
@@ -1140,7 +1141,7 @@ const CommissionsPage = () => {
                       </div>
                       <div className="text-right">
                         <p className="text-lg font-bold text-green-600">
-                          £{member.total_commission_earned.toLocaleString()}
+                          {formatLargeCurrency(member.total_commission_earned)}
                         </p>
                         <p className="text-xs text-gray-500">Total earned</p>
                       </div>
@@ -1156,7 +1157,7 @@ const CommissionsPage = () => {
                       </div>
                       <div>
                         <p className="text-gray-600">Total Sales</p>
-                        <p className="font-medium">£{member.total_actual.toLocaleString()}</p>
+                        <p className="font-medium">{formatLargeCurrency(member.total_actual)}</p>
                       </div>
                     </div>
                   </div>
@@ -1605,11 +1606,11 @@ const CommissionsPage = () => {
                         {commission.deal?.close_date ? new Date(commission.deal.close_date).toLocaleDateString('en-GB') : '-'}
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                        £{Number(commission.deal_amount).toLocaleString()}
+                        {formatLargeCurrency(commission.deal_amount)}
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap">
                         <div className="text-sm font-medium text-gray-900">
-                          £{Number(commission.commission_amount).toLocaleString()}
+                          {formatLargeCurrency(commission.commission_amount)}
                         </div>
                         <div className="text-xs text-gray-500">
                           {(Number(commission.commission_rate) * 100).toFixed(2)}%
@@ -1801,7 +1802,7 @@ const CommissionsPage = () => {
               
               <div>
                 <p className="text-sm text-gray-600">Original Commission Amount</p>
-                <p className="font-medium text-gray-500 line-through">£{Number(selectedCommission.commission_amount).toLocaleString()}</p>
+                <p className="font-medium text-gray-500 line-through">{formatLargeCurrency(selectedCommission.commission_amount)}</p>
               </div>
               
               <div>
@@ -1822,7 +1823,7 @@ const CommissionsPage = () => {
                 </div>
                 {adjustmentAmount && (
                   <p className="text-sm text-gray-500 mt-1">
-                    Difference: £{(Number(adjustmentAmount) - Number(selectedCommission.commission_amount)).toLocaleString()}
+                    Difference: {formatLargeCurrency(Number(adjustmentAmount) - Number(selectedCommission.commission_amount))}
                   </p>
                 )}
               </div>
@@ -1924,7 +1925,7 @@ const CommissionsPage = () => {
               </div>
               <div>
                 <p className="text-sm text-gray-600">Commission Amount</p>
-                <p className="font-medium">£{Number(selectedCommission.commission_amount).toLocaleString()}</p>
+                <p className="font-medium">{formatLargeCurrency(selectedCommission.commission_amount)}</p>
               </div>
               {approvalAction === 'pay' && (
                 <div>
@@ -2006,11 +2007,11 @@ const CommissionsPage = () => {
                 </div>
                 <div>
                   <p className="text-sm text-gray-600">Deal Amount</p>
-                  <p className="font-medium">£{Number(selectedCommission.deal_amount).toLocaleString()}</p>
+                  <p className="font-medium">{formatLargeCurrency(selectedCommission.deal_amount)}</p>
                 </div>
                 <div>
                   <p className="text-sm text-gray-600">Commission</p>
-                  <p className="font-medium">£{Number(selectedCommission.commission_amount).toLocaleString()}</p>
+                  <p className="font-medium">{formatLargeCurrency(selectedCommission.commission_amount)}</p>
                   <p className="text-sm">{(Number(selectedCommission.commission_rate) * 100).toFixed(2)}% rate</p>
                 </div>
                 <div>
@@ -2130,7 +2131,7 @@ const CommissionsPage = () => {
                           {userGroup.count} {userGroup.count === 1 ? 'deal' : 'deals'}
                         </p>
                         <p className="text-sm text-gray-500">
-                          Total: £{userGroup.total_amount.toLocaleString()}
+                          Total: {formatLargeCurrency(userGroup.total_amount)}
                         </p>
                       </div>
                     </div>
@@ -2164,7 +2165,7 @@ const CommissionsPage = () => {
                             <span className="text-gray-500 ml-2">- {deal.deal_name}</span>
                           </div>
                           <div className="text-gray-600">
-                            £{Number(deal.amount).toLocaleString()}
+                            {formatLargeCurrency(deal.amount)}
                             <span className="text-gray-400 ml-2">
                               {new Date(deal.close_date).toLocaleDateString('en-GB')}
                             </span>
