@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 import Layout from '../components/layout';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useAuth } from '../hooks/useAuth';
-import api, { integrationsApi } from '../lib/api';
+import api, { integrationsApi, gdprApi } from '../lib/api';
 import { formatLargeCurrency } from '../utils/money';
 import { 
   Target, 
@@ -31,7 +31,11 @@ import {
   X,
   Download,
   ChevronUp,
-  ChevronDown
+  ChevronDown,
+  Lock,
+  UserX,
+  FileDown,
+  Info
 } from 'lucide-react';
 
 const SettingsPage = () => {
@@ -42,6 +46,20 @@ const SettingsPage = () => {
   const [showSetupModal, setShowSetupModal] = useState(false);
   const [selectedIntegration, setSelectedIntegration] = useState<any>(null);
   const [expandedTeamTarget, setExpandedTeamTarget] = useState(false);
+  
+  // GDPR/Privacy state
+  const [exportFormat, setExportFormat] = useState<'json' | 'csv' | 'excel'>('json');
+  const [exportOptions, setExportOptions] = useState({
+    include_deals: true,
+    include_commissions: true,
+    include_targets: true,
+    include_team: false
+  });
+  const [deleteAccountPassword, setDeleteAccountPassword] = useState('');
+  const [deleteAccountConfirmation, setDeleteAccountConfirmation] = useState('');
+  const [showDeleteModal, setShowDeleteModal] = useState(false);
+  const [isExporting, setIsExporting] = useState(false);
+  
   const queryClient = useQueryClient();
 
   const [targetForm, setTargetForm] = useState({
@@ -248,6 +266,7 @@ const SettingsPage = () => {
     { id: 'profile', name: 'Profile', icon: User },
     { id: 'notifications', name: 'Notifications', icon: Bell },
     { id: 'security', name: 'Security', icon: Shield },
+    { id: 'privacy', name: 'Privacy & Data', icon: Lock },
     { id: 'appearance', name: 'Appearance', icon: Palette }
   ];
 
@@ -898,7 +917,158 @@ const SettingsPage = () => {
               </div>
             )}
 
-            {activeTab !== 'targets' && activeTab !== 'integrations' && (
+            {activeTab === 'privacy' && (
+              <div className="space-y-6">
+                {/* Privacy Header */}
+                <div>
+                  <h2 className="text-2xl font-bold text-gray-900">Privacy & Data Management</h2>
+                  <p className="text-gray-600">Manage your personal data and privacy settings in compliance with GDPR</p>
+                </div>
+
+                {/* Data Export Section */}
+                <div className="bg-white rounded-3xl border border-gray-200 p-8 shadow-xl">
+                  <div className="flex items-center mb-6">
+                    <FileDown className="w-6 h-6 text-blue-600 mr-3" />
+                    <h3 className="text-xl font-semibold text-gray-900">Export Your Data</h3>
+                  </div>
+                  
+                  <p className="text-gray-600 mb-6">
+                    Download all your personal data stored in our system. You can choose the format and what data to include.
+                  </p>
+
+                  <div className="space-y-4">
+                    {/* Format Selection */}
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-2">Export Format</label>
+                      <div className="flex space-x-4">
+                        {(['json', 'csv', 'excel'] as const).map(format => (
+                          <label key={format} className="flex items-center">
+                            <input
+                              type="radio"
+                              value={format}
+                              checked={exportFormat === format}
+                              onChange={(e) => setExportFormat(e.target.value as 'json' | 'csv' | 'excel')}
+                              className="mr-2 text-blue-600 focus:ring-blue-500"
+                            />
+                            <span className="text-sm text-gray-700">{format.toUpperCase()}</span>
+                          </label>
+                        ))}
+                      </div>
+                    </div>
+
+                    {/* Data Selection */}
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-2">Include Data</label>
+                      <div className="space-y-2">
+                        {Object.entries({
+                          include_deals: 'Deals',
+                          include_commissions: 'Commissions',
+                          include_targets: 'Targets',
+                          include_team: 'Team Data (if manager)'
+                        }).map(([key, label]) => (
+                          <label key={key} className="flex items-center">
+                            <input
+                              type="checkbox"
+                              checked={exportOptions[key as keyof typeof exportOptions]}
+                              onChange={(e) => setExportOptions({
+                                ...exportOptions,
+                                [key]: e.target.checked
+                              })}
+                              className="mr-2 text-blue-600 rounded focus:ring-blue-500"
+                            />
+                            <span className="text-sm text-gray-700">{label}</span>
+                          </label>
+                        ))}
+                      </div>
+                    </div>
+
+                    <button
+                      onClick={async () => {
+                        setIsExporting(true);
+                        try {
+                          await gdprApi.exportData({
+                            format: exportFormat,
+                            ...exportOptions
+                          });
+                        } catch (error) {
+                          console.error('Export failed:', error);
+                          alert('Failed to export data. Please try again.');
+                        } finally {
+                          setIsExporting(false);
+                        }
+                      }}
+                      disabled={isExporting}
+                      className="inline-flex items-center px-6 py-3 bg-gradient-to-r from-blue-600 to-indigo-600 text-white font-medium rounded-xl hover:from-blue-700 hover:to-indigo-700 transition-all duration-300 shadow-lg disabled:opacity-50"
+                    >
+                      {isExporting ? (
+                        <>
+                          <RefreshCw className="w-4 h-4 mr-2 animate-spin" />
+                          Exporting...
+                        </>
+                      ) : (
+                        <>
+                          <Download className="w-4 h-4 mr-2" />
+                          Export My Data
+                        </>
+                      )}
+                    </button>
+                  </div>
+                </div>
+
+                {/* Delete Account Section */}
+                <div className="bg-white rounded-3xl border border-red-200 p-8 shadow-xl">
+                  <div className="flex items-center mb-6">
+                    <UserX className="w-6 h-6 text-red-600 mr-3" />
+                    <h3 className="text-xl font-semibold text-gray-900">Delete Account</h3>
+                  </div>
+                  
+                  <div className="bg-red-50 border border-red-200 rounded-lg p-4 mb-6">
+                    <div className="flex">
+                      <AlertTriangle className="w-5 h-5 text-red-600 mr-2 flex-shrink-0 mt-0.5" />
+                      <div>
+                        <p className="text-sm text-red-800 font-medium">Warning: This action cannot be undone</p>
+                        <p className="text-sm text-red-700 mt-1">
+                          Deleting your account will permanently remove all your data from our system. 
+                          Your data will be anonymized to maintain system integrity, but cannot be recovered.
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+
+                  <button
+                    onClick={() => setShowDeleteModal(true)}
+                    className="inline-flex items-center px-6 py-3 bg-red-600 text-white font-medium rounded-xl hover:bg-red-700 transition-all duration-300 shadow-lg"
+                  >
+                    <UserX className="w-4 h-4 mr-2" />
+                    Delete My Account
+                  </button>
+                </div>
+
+                {/* GDPR Information */}
+                <div className="bg-blue-50 rounded-3xl border border-blue-200 p-8">
+                  <div className="flex items-center mb-4">
+                    <Info className="w-6 h-6 text-blue-600 mr-3" />
+                    <h3 className="text-lg font-semibold text-gray-900">Your Privacy Rights</h3>
+                  </div>
+                  <div className="text-sm text-gray-700 space-y-2">
+                    <p>Under GDPR, you have the following rights:</p>
+                    <ul className="list-disc list-inside space-y-1 ml-4">
+                      <li>Right to access your personal data</li>
+                      <li>Right to rectification of inaccurate data</li>
+                      <li>Right to erasure ("right to be forgotten")</li>
+                      <li>Right to data portability</li>
+                      <li>Right to restrict processing</li>
+                      <li>Right to object to processing</li>
+                    </ul>
+                    <p className="mt-4">
+                      For any privacy concerns or to exercise your rights, please contact our data protection officer at privacy@salescommission.app
+                    </p>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {activeTab !== 'targets' && activeTab !== 'integrations' && activeTab !== 'privacy' && (
               <div className="bg-white rounded-3xl border border-gray-200 p-8 shadow-xl">
                 <div className="text-center py-12">
                   <div className="w-16 h-16 bg-gray-100 rounded-full flex items-center justify-center mx-auto mb-4">
@@ -983,6 +1153,107 @@ const SettingsPage = () => {
                 className="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700"
               >
                 Sync Now
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Delete Account Confirmation Modal */}
+      {showDeleteModal && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+          <div className="bg-white rounded-2xl p-8 w-full max-w-md">
+            <div className="flex items-center justify-between mb-6">
+              <h3 className="text-xl font-bold text-gray-900">Delete Account</h3>
+              <button 
+                onClick={() => {
+                  setShowDeleteModal(false);
+                  setDeleteAccountPassword('');
+                  setDeleteAccountConfirmation('');
+                }}
+                className="text-gray-400 hover:text-gray-600"
+              >
+                <X className="w-6 h-6" />
+              </button>
+            </div>
+            
+            <div className="bg-red-50 border border-red-200 rounded-lg p-4 mb-6">
+              <div className="flex">
+                <AlertTriangle className="w-5 h-5 text-red-600 mr-2 flex-shrink-0 mt-0.5" />
+                <div>
+                  <p className="text-sm text-red-800 font-medium">This action is permanent</p>
+                  <p className="text-sm text-red-700 mt-1">
+                    All your data will be permanently deleted and cannot be recovered.
+                  </p>
+                </div>
+              </div>
+            </div>
+
+            <div className="space-y-4">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Enter your password
+                </label>
+                <input
+                  type="password"
+                  value={deleteAccountPassword}
+                  onChange={(e) => setDeleteAccountPassword(e.target.value)}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-red-500 focus:border-red-500"
+                  placeholder="Password"
+                />
+              </div>
+              
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Type "DELETE MY ACCOUNT" to confirm
+                </label>
+                <input
+                  type="text"
+                  value={deleteAccountConfirmation}
+                  onChange={(e) => setDeleteAccountConfirmation(e.target.value)}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-red-500 focus:border-red-500"
+                  placeholder="DELETE MY ACCOUNT"
+                />
+              </div>
+            </div>
+
+            <div className="flex justify-end space-x-3 mt-6">
+              <button
+                onClick={() => {
+                  setShowDeleteModal(false);
+                  setDeleteAccountPassword('');
+                  setDeleteAccountConfirmation('');
+                }}
+                className="px-4 py-2 text-gray-600 hover:text-gray-800 font-medium"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={async () => {
+                  if (deleteAccountConfirmation !== 'DELETE MY ACCOUNT') {
+                    alert('Please type "DELETE MY ACCOUNT" exactly to confirm');
+                    return;
+                  }
+                  
+                  if (!deleteAccountPassword) {
+                    alert('Please enter your password');
+                    return;
+                  }
+                  
+                  try {
+                    await gdprApi.deleteAccount(deleteAccountPassword, deleteAccountConfirmation);
+                    alert('Your account has been deleted. You will be redirected to the login page.');
+                    localStorage.removeItem('token');
+                    localStorage.removeItem('refreshToken');
+                    window.location.href = '/login';
+                  } catch (error: any) {
+                    alert(error.response?.data?.error || 'Failed to delete account. Please check your password and try again.');
+                  }
+                }}
+                disabled={deleteAccountConfirmation !== 'DELETE MY ACCOUNT' || !deleteAccountPassword}
+                className="px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 disabled:opacity-50 disabled:cursor-not-allowed font-medium"
+              >
+                Permanently Delete Account
               </button>
             </div>
           </div>

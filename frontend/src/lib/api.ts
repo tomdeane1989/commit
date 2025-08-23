@@ -45,16 +45,152 @@ const addAuthInterceptor = (axiosInstance: any) => {
   );
 };
 
-// Response interceptor to handle auth errors
+// Token refresh function
+let isRefreshing = false;
+let failedQueue: any[] = [];
+
+const processQueue = (error: any, token: string | null = null) => {
+  failedQueue.forEach(prom => {
+    if (error) {
+      prom.reject(error);
+    } else {
+      prom.resolve(token);
+    }
+  });
+  failedQueue = [];
+};
+
+// Response interceptor to handle auth errors and token refresh
 const addResponseInterceptor = (axiosInstance: any) => {
   axiosInstance.interceptors.response.use(
     (response: any) => response,
-    (error: any) => {
-      if (error.response?.status === 401) {
-        // Clear token and redirect to login
+    async (error: any) => {
+      const originalRequest = error.config;
+
+      // Check if error is token expired
+      if (error.response?.status === 401 && error.response?.data?.code === 'TOKEN_EXPIRED' && !originalRequest._retry) {
+        if (isRefreshing) {
+          // If already refreshing, queue this request
+          return new Promise((resolve, reject) => {
+            failedQueue.push({ resolve, reject });
+          }).then(token => {
+            originalRequest.headers.Authorization = `Bearer ${token}`;
+            return axiosInstance(originalRequest);
+          }).catch(err => {
+            return Promise.reject(err);
+          });
+        }
+
+        originalRequest._retry = true;
+        isRefreshing = true;
+
+        const refreshToken = localStorage.getItem('refreshToken');
+        
+        if (!refreshToken) {
+          // No refresh token, redirect to login
+          localStorage.removeItem('token');
+          localStorage.removeItem('refreshToken');
+          window.location.href = '/login';
+          return Promise.reject(error);
+        }
+
+        try {
+          // Call refresh endpoint
+          const response = await axios.post(`${API_BASE_URL}/api/auth/refresh`, {
+            refreshToken
+          });
+
+          const { accessToken, refreshToken: newRefreshToken } = response.data;
+          
+          // Store new tokens
+          localStorage.setItem('token', accessToken);
+          if (newRefreshToken) {
+            localStorage.setItem('refreshToken', newRefreshToken);
+          }
+
+          // Process queued requests
+          processQueue(null, accessToken);
+          
+          // Retry original request
+          originalRequest.headers.Authorization = `Bearer ${accessToken}`;
+          return axiosInstance(originalRequest);
+          
+        } catch (refreshError) {
+          // Refresh failed, clear tokens and redirect to login
+          processQueue(refreshError, null);
+          localStorage.removeItem('token');
+          localStorage.removeItem('refreshToken');
+          window.location.href = '/login';
+          return Promise.reject(refreshError);
+        } finally {
+          isRefreshing = false;
+        }
+      }
+
+      // Handle other 401 errors (invalid token, user inactive, etc.)
+      if (error.response?.status === 401 && error.response?.data?.code !== 'TOKEN_EXPIRED') {
         localStorage.removeItem('token');
+        localStorage.removeItem('refreshToken');
         window.location.href = '/login';
       }
+
+      // Handle rate limiting
+      if (error.response?.status === 429) {
+        const retryAfter = error.response?.data?.retryAfter || error.response?.headers?.['retry-after'] || 60;
+        const message = error.response?.data?.error || 'Too many requests. Please slow down.';
+        
+        // Show user-friendly rate limit message
+        if (typeof window !== 'undefined') {
+          // Create or update rate limit notification
+          const existingNotification = document.getElementById('rate-limit-notification');
+          if (existingNotification) {
+            existingNotification.remove();
+          }
+          
+          const notification = document.createElement('div');
+          notification.id = 'rate-limit-notification';
+          notification.className = 'fixed top-4 right-4 z-50 max-w-md';
+          notification.innerHTML = `
+            <div class="bg-red-50 border border-red-200 rounded-lg p-4 shadow-lg">
+              <div class="flex">
+                <div class="flex-shrink-0">
+                  <svg class="h-5 w-5 text-red-400" viewBox="0 0 20 20" fill="currentColor">
+                    <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z" clip-rule="evenodd" />
+                  </svg>
+                </div>
+                <div class="ml-3">
+                  <h3 class="text-sm font-medium text-red-800">Rate Limit Exceeded</h3>
+                  <div class="mt-1 text-sm text-red-700">
+                    <p>${message}</p>
+                    <p class="mt-1">Please wait ${retryAfter} seconds before trying again.</p>
+                  </div>
+                </div>
+                <button onclick="this.parentElement.parentElement.remove()" class="ml-4 text-red-400 hover:text-red-600">
+                  <svg class="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
+                    <path fill-rule="evenodd" d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z" clip-rule="evenodd" />
+                  </svg>
+                </button>
+              </div>
+            </div>
+          `;
+          document.body.appendChild(notification);
+          
+          // Auto-remove after retry period
+          setTimeout(() => {
+            notification.remove();
+          }, retryAfter * 1000);
+        }
+      }
+
+      // Handle validation errors
+      if (error.response?.status === 400 && error.response?.data?.code === 'VALIDATION_ERROR') {
+        const errors = error.response.data.errors;
+        if (errors && Array.isArray(errors)) {
+          const errorMessage = errors.map((e: any) => `${e.field}: ${e.message}`).join('\n');
+          console.error('Validation errors:', errorMessage);
+        }
+      }
+
       return Promise.reject(error);
     }
   );
@@ -70,11 +206,25 @@ addResponseInterceptor(longRunningApi);
 export const authApi = {
   login: async (credentials: LoginCredentials): Promise<AuthResponse> => {
     const response = await api.post('/auth/login', credentials);
+    // Store both tokens
+    if (response.data.token) {
+      localStorage.setItem('token', response.data.token);
+    }
+    if (response.data.refreshToken) {
+      localStorage.setItem('refreshToken', response.data.refreshToken);
+    }
     return response.data;
   },
 
   register: async (data: RegisterData): Promise<AuthResponse> => {
     const response = await api.post('/auth/register', data);
+    // Store both tokens
+    if (response.data.token) {
+      localStorage.setItem('token', response.data.token);
+    }
+    if (response.data.refreshToken) {
+      localStorage.setItem('refreshToken', response.data.refreshToken);
+    }
     return response.data;
   },
 
@@ -84,7 +234,20 @@ export const authApi = {
   },
 
   logout: async (): Promise<void> => {
-    const response = await api.post('/auth/logout');
+    try {
+      const response = await api.post('/auth/logout');
+      return response.data;
+    } finally {
+      // Always clear tokens on logout
+      localStorage.removeItem('token');
+      localStorage.removeItem('refreshToken');
+    }
+  },
+
+  refresh: async (refreshToken: string): Promise<any> => {
+    const response = await axios.post(`${API_BASE_URL}/api/auth/refresh`, {
+      refreshToken
+    });
     return response.data;
   },
 };
@@ -340,6 +503,74 @@ export const integrationsApi = {
     const response = await api.delete(`/integrations/${integrationId}`);
     return response.data;
   },
+};
+
+// GDPR API for data privacy
+export const gdprApi = {
+  exportData: async (options: {
+    format?: 'json' | 'csv' | 'excel';
+    include_deals?: boolean;
+    include_commissions?: boolean;
+    include_targets?: boolean;
+    include_team?: boolean;
+    date_from?: string;
+    date_to?: string;
+  } = {}): Promise<void> => {
+    const response = await api.post('/gdpr/export', {
+      format: options.format || 'json',
+      include_deals: options.include_deals !== false,
+      include_commissions: options.include_commissions !== false,
+      include_targets: options.include_targets !== false,
+      include_team: options.include_team || false,
+      date_from: options.date_from,
+      date_to: options.date_to
+    }, {
+      responseType: 'blob'
+    });
+    
+    // Determine file extension based on format
+    const format = options.format || 'json';
+    const extensions: Record<string, string> = {
+      json: 'json',
+      csv: 'csv',
+      excel: 'xlsx'
+    };
+    
+    // Create download link
+    const url = window.URL.createObjectURL(new Blob([response.data]));
+    const link = document.createElement('a');
+    link.href = url;
+    link.setAttribute('download', `my-data-export-${new Date().toISOString().split('T')[0]}.${extensions[format]}`);
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    window.URL.revokeObjectURL(url);
+  },
+
+  deleteAccount: async (password: string, confirmation: string): Promise<any> => {
+    const response = await api.delete('/gdpr/delete-account', {
+      data: {
+        password,
+        confirmation
+      }
+    });
+    return response.data;
+  },
+
+  getPortableData: async (): Promise<any> => {
+    const response = await api.get('/gdpr/portability');
+    return response.data;
+  },
+
+  updatePrivacySettings: async (settings: {
+    allow_performance_tracking?: boolean;
+    allow_ai_analysis?: boolean;
+    allow_benchmarking?: boolean;
+    data_retention_days?: number;
+  }): Promise<any> => {
+    const response = await api.put('/gdpr/privacy-settings', settings);
+    return response.data;
+  }
 };
 
 export default api;
