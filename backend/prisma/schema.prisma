@@ -48,6 +48,11 @@ model users {
   prediction_accuracy  Decimal?               @db.Decimal(5, 2)
   company_id           String
   is_manager           Boolean                @default(false)
+  last_activity        DateTime?
+  password_reset_token String?
+  password_reset_expires DateTime?
+  two_factor_enabled   Boolean                @default(false)
+  two_factor_secret    String?
   activity_log         activity_log[]
   deal_categorizations deal_categorizations[]
   deals                deals[]
@@ -65,6 +70,7 @@ model users {
   reviewed_commissions commissions[]          @relation("ReviewedByUser")
   approved_commissions commissions[]          @relation("ApprovedByUser")
   commission_approvals commission_approvals[]
+  refresh_tokens       refresh_tokens[]
 
   @@index([company_id])
   @@index([manager_id])
@@ -431,4 +437,23 @@ model commission_tiers {
   
   @@unique([rule_id, tier_number])
   @@index([rule_id])
+}
+
+model refresh_tokens {
+  id         String    @id @default(cuid())
+  token_id   String    @unique
+  user_id    String
+  expires_at DateTime
+  created_at DateTime  @default(now())
+  revoked    Boolean   @default(false)
+  revoked_at DateTime?
+  user_agent String?
+  ip_address String?
+  
+  // Relations
+  user       users     @relation(fields: [user_id], references: [id], onDelete: Cascade)
+  
+  @@index([user_id])
+  @@index([expires_at])
+  @@index([revoked])
 }
