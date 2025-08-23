@@ -5,6 +5,7 @@ import Joi from 'joi';
 import { attachPermissions, requireOwnerOrManager } from '../middleware/permissions.js';
 import { canManageTeam } from '../middleware/roleHelpers.js';
 import dealCommissionCalculator from '../services/dealCommissionCalculator.js';
+import enhancedCommissionCalculator from '../services/enhancedCommissionCalculator.js';
 
 const router = express.Router();
 const prisma = new PrismaClient();
@@ -25,6 +26,122 @@ const dealSchema = Joi.object({
   crm_id: Joi.string().optional(),
   crm_type: Joi.string().valid('salesforce', 'hubspot', 'pipedrive', 'sheets', 'manual').default('manual'),
   crm_url: Joi.string().optional()
+});
+
+// Get deals without commissions
+router.get('/missing-commissions', async (req, res) => {
+  try {
+    const { period_start, period_end } = req.query;
+    
+    console.log('🔍 Fetching deals without commissions for period:', { period_start, period_end });
+    
+    // Build where clause based on user permissions
+    let where = {
+      company_id: req.user.company_id,
+      status: 'closed_won'
+    };
+    
+    // Add date filter if provided
+    if (period_start && period_end) {
+      where.close_date = {
+        gte: new Date(period_start),
+        lte: new Date(period_end)
+      };
+    }
+    
+    // For managers, get all team deals; for regular users, just their own
+    if (!canManageTeam(req.user)) {
+      where.user_id = req.user.id;
+    }
+    
+    // Fetch deals without commissions - using raw query for OR condition
+    const dealsWithoutCommissions = await prisma.deals.findMany({
+      where: {
+        ...where,
+        OR: [
+          { commission_amount: null },
+          { commission_amount: 0 }
+        ]
+      },
+      include: {
+        user: {
+          select: {
+            id: true,
+            first_name: true,
+            last_name: true,
+            email: true
+          }
+        }
+      },
+      orderBy: {
+        close_date: 'desc'
+      }
+    });
+    
+    // Group by user to show breakdown
+    const byUser = {};
+    let total = 0;
+    
+    dealsWithoutCommissions.forEach(deal => {
+      const userId = deal.user_id;
+      if (!byUser[userId]) {
+        byUser[userId] = {
+          user: deal.user,
+          deals: [],
+          total_amount: 0,
+          count: 0
+        };
+      }
+      byUser[userId].deals.push({
+        id: deal.id,
+        deal_name: deal.deal_name,
+        account_name: deal.account_name,
+        amount: deal.amount,
+        close_date: deal.close_date
+      });
+      byUser[userId].total_amount += Number(deal.amount);
+      byUser[userId].count += 1;
+      total += 1;
+    });
+    
+    // Check for users without targets
+    const userIds = Object.keys(byUser);
+    for (const userId of userIds) {
+      // Check if user has active target for the period
+      const hasTarget = await prisma.targets.findFirst({
+        where: {
+          user_id: userId,
+          is_active: true,
+          period_start: {
+            lte: period_end ? new Date(period_end) : new Date()
+          },
+          period_end: {
+            gte: period_start ? new Date(period_start) : new Date()
+          }
+        }
+      });
+      
+      byUser[userId].has_target = !!hasTarget;
+      byUser[userId].missing_reason = hasTarget ? 'Commission not calculated' : 'No target set for period';
+    }
+    
+    res.json({
+      success: true,
+      total,
+      breakdown: Object.values(byUser),
+      period: {
+        start: period_start,
+        end: period_end
+      }
+    });
+    
+  } catch (error) {
+    console.error('Error fetching deals without commissions:', error);
+    res.status(500).json({ 
+      success: false, 
+      error: 'Failed to fetch deals without commissions' 
+    });
+  }
 });
 
 // Get all deals for user with manager filtering support
@@ -330,8 +447,23 @@ router.post('/', async (req, res) => {
     });
 
     // If deal is created as closed_won, calculate commission
-    if (deal.stage === 'closed_won') {
-      await dealCommissionCalculator.calculateDealCommission(deal.id);
+    if (deal.stage === 'closed_won' || deal.stage === 'Closed Won') {
+      try {
+        // Use enhanced calculator for new audit trail
+        await enhancedCommissionCalculator.calculateDealCommission(deal.id, {
+          createAuditRecord: true,
+          useAdvancedRules: true
+        });
+      } catch (commissionError) {
+        // Log error but don't fail the deal creation
+        console.error('Commission calculation error:', commissionError);
+        // Fall back to simple calculation
+        try {
+          await dealCommissionCalculator.calculateDealCommission(deal.id);
+        } catch (fallbackError) {
+          console.error('Fallback commission calculation also failed:', fallbackError);
+        }
+      }
     }
 
 
@@ -383,7 +515,8 @@ router.put('/:id', async (req, res) => {
 
     // Check if stage changed and calculate commission
     if (existingDeal.stage !== deal.stage) {
-      await dealCommissionCalculator.handleDealUpdate(deal.id, existingDeal.stage, deal.stage);
+      // Use enhanced calculator for audit trail
+      await enhancedCommissionCalculator.handleDealUpdate(deal.id, existingDeal.stage, deal.stage);
     }
 
 

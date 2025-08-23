@@ -1,4 +1,5 @@
 import { PrismaClient } from '@prisma/client';
+import { toDecimal, calculateCommission, toNumber, toString } from '../utils/money.js';
 
 const prisma = new PrismaClient();
 
@@ -43,16 +44,16 @@ class DealCommissionCalculator {
     });
 
     if (activeTarget) {
-      // Calculate and store commission
-      const commissionAmount = Number(deal.amount) * Number(activeTarget.commission_rate);
+      // Calculate commission with proper decimal precision
+      const commissionAmount = calculateCommission(deal.amount, activeTarget.commission_rate);
       
-      console.log(`💰 Calculating commission for deal ${deal.deal_name}: £${deal.amount} × ${activeTarget.commission_rate} = £${commissionAmount.toFixed(2)}`);
+      console.log(`💰 Calculating commission for deal ${deal.deal_name}: £${toString(deal.amount)} × ${activeTarget.commission_rate} = £${toString(commissionAmount)}`);
       
       return await prisma.deals.update({
         where: { id: dealId },
         data: {
           commission_rate: activeTarget.commission_rate,
-          commission_amount: commissionAmount,
+          commission_amount: toNumber(commissionAmount), // Convert to number for Prisma storage
           commission_calculated_at: new Date()
         }
       });

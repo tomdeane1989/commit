@@ -14,6 +14,12 @@ import {
   clearAuthCookies,
   authenticateToken
 } from '../middleware/secureAuth.js';
+import { 
+  generateAccessToken,
+  generateRefreshToken as generateEnhancedRefreshToken,
+  handleTokenRefresh
+} from '../middleware/auth-enhanced.js';
+import { refreshTokenRateLimit } from '../middleware/rate-limiter.js';
 
 const router = express.Router();
 const prisma = new PrismaClient();
@@ -91,24 +97,51 @@ router.post('/register', async (req, res) => {
       }
     });
 
-    // Generate JWT token for localStorage
-    const token = jwt.sign(
-      { 
-        id: user.id, 
-        email: user.email,
-        role: user.role,
-        is_admin: user.is_admin,
-        is_manager: user.is_manager,
-        company_id: user.company_id
-      }, 
-      process.env.JWT_SECRET, 
-      { expiresIn: '7d' }
-    );
+    // Generate tokens - use enhanced auth if configured
+    let token, refreshToken;
+    
+    if (process.env.JWT_ACCESS_TOKEN_EXPIRES_IN) {
+      // Use enhanced auth with refresh tokens
+      try {
+        token = generateAccessToken(user);
+        refreshToken = await generateEnhancedRefreshToken(user);
+      } catch (err) {
+        console.error('Error generating enhanced tokens:', err);
+        // Fallback to simple token
+        token = jwt.sign(
+          { 
+            id: user.id, 
+            email: user.email,
+            role: user.role,
+            is_admin: user.is_admin,
+            is_manager: user.is_manager,
+            company_id: user.company_id
+          }, 
+          process.env.JWT_SECRET, 
+          { expiresIn: '7d' }
+        );
+      }
+    } else {
+      // Use simple token
+      token = jwt.sign(
+        { 
+          id: user.id, 
+          email: user.email,
+          role: user.role,
+          is_admin: user.is_admin,
+          is_manager: user.is_manager,
+          company_id: user.company_id
+        }, 
+        process.env.JWT_SECRET, 
+        { expiresIn: '7d' }
+      );
+    }
 
     res.status(201).json({
       success: true,
       message: 'User created successfully',
       token,
+      refreshToken,
       user: {
         id: user.id,
         email: user.email,
@@ -156,23 +189,51 @@ router.post('/login', async (req, res) => {
     }
 
     // Generate JWT token for localStorage
-    const token = jwt.sign(
-      { 
-        id: user.id, 
-        email: user.email,
-        role: user.role,
-        is_admin: user.is_admin,
-        is_manager: user.is_manager,
-        company_id: user.company_id
-      }, 
-      process.env.JWT_SECRET, 
-      { expiresIn: '7d' }
-    );
+    // Generate tokens - use enhanced auth if configured
+    let token, refreshToken;
+    
+    if (process.env.JWT_ACCESS_TOKEN_EXPIRES_IN) {
+      // Use enhanced auth with refresh tokens
+      try {
+        token = generateAccessToken(user);
+        refreshToken = await generateEnhancedRefreshToken(user);
+      } catch (err) {
+        console.error('Error generating enhanced tokens:', err);
+        // Fallback to simple token
+        token = jwt.sign(
+          { 
+            id: user.id, 
+            email: user.email,
+            role: user.role,
+            is_admin: user.is_admin,
+            is_manager: user.is_manager,
+            company_id: user.company_id
+          }, 
+          process.env.JWT_SECRET, 
+          { expiresIn: '7d' }
+        );
+      }
+    } else {
+      // Use simple token
+      token = jwt.sign(
+        { 
+          id: user.id, 
+          email: user.email,
+          role: user.role,
+          is_admin: user.is_admin,
+          is_manager: user.is_manager,
+          company_id: user.company_id
+        }, 
+        process.env.JWT_SECRET, 
+        { expiresIn: '7d' }
+      );
+    }
 
     res.json({
       success: true,
       message: 'Login successful',
       token,
+      refreshToken,
       user: {
         id: user.id,
         email: user.email,
@@ -250,5 +311,8 @@ router.post('/logout', authenticateToken, async (req, res) => {
     });
   }
 });
+
+// Token refresh endpoint
+router.post('/refresh', refreshTokenRateLimit, handleTokenRefresh);
 
 export default router;

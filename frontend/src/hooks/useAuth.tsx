@@ -75,7 +75,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         
         localStorage.setItem('token', response.token);
         setUser(response.user);
-        router.push('/deals');
+        router.push('/commissions');
       } else {
         throw new Error('Login failed - invalid response format');
       }

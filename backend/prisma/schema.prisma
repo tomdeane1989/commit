@@ -25,6 +25,8 @@ model companies {
   targets                 targets[]
   teams                   teams[]
   users                   users[]
+  commissions             commissions[]
+  commission_rules        commission_rules[]
 }
 
 model users {
@@ -39,12 +41,18 @@ model users {
   hire_date            DateTime?
   territory            String?
   manager_id           String?
+  employee_id          String?
   created_at           DateTime               @default(now())
   updated_at           DateTime               @updatedAt
   performance_profile  Json?
   prediction_accuracy  Decimal?               @db.Decimal(5, 2)
   company_id           String
   is_manager           Boolean                @default(false)
+  last_activity        DateTime?
+  password_reset_token String?
+  password_reset_expires DateTime?
+  two_factor_enabled   Boolean                @default(false)
+  two_factor_secret    String?
   activity_log         activity_log[]
   deal_categorizations deal_categorizations[]
   deals                deals[]
@@ -57,6 +65,12 @@ model users {
   company              companies              @relation(fields: [company_id], references: [id])
   manager              users?                 @relation("UserManager", fields: [manager_id], references: [id])
   reports              users[]                @relation("UserManager")
+  commissions          commissions[]          @relation("UserCommissions")
+  calculated_commissions commissions[]        @relation("CalculatedByUser")
+  reviewed_commissions commissions[]          @relation("ReviewedByUser")
+  approved_commissions commissions[]          @relation("ApprovedByUser")
+  commission_approvals commission_approvals[]
+  refresh_tokens       refresh_tokens[]
 
   @@index([company_id])
   @@index([manager_id])
@@ -97,6 +111,7 @@ model deals {
   deal_categorizations deal_categorizations[]
   company              companies              @relation(fields: [company_id], references: [id])
   user                 users                  @relation(fields: [user_id], references: [id])
+  commission           commissions?
 
   @@unique([crm_id, company_id], name: "unique_crm_deal_per_company")
   @@index([user_id])
@@ -159,6 +174,7 @@ model targets {
   company                     companies     @relation(fields: [company_id], references: [id])
   team                        teams?        @relation(fields: [team_id], references: [id])
   user                        users         @relation(fields: [user_id], references: [id])
+  commissions                 commissions[]
 
   @@index([user_id])
   @@index([period_start, period_end])
@@ -291,4 +307,153 @@ model team_members {
   @@index([team_id])
   @@index([user_id])
   @@index([is_active])
+}
+
+model commissions {
+  id                    String                 @id @default(cuid())
+  deal_id              String                 @unique
+  user_id              String
+  company_id           String
+  
+  // Snapshot data at time of calculation
+  deal_amount          Decimal                @db.Decimal(12, 2)
+  commission_rate      Decimal                @db.Decimal(5, 4)
+  commission_amount    Decimal                @db.Decimal(12, 2)
+  target_id            String?
+  target_name          String?
+  period_start         DateTime
+  period_end           DateTime
+  
+  // Workflow fields
+  status               String                 @default("calculated") // calculated, pending_review, approved, rejected, paid
+  calculated_at        DateTime               @default(now())
+  calculated_by        String?
+  reviewed_at          DateTime?
+  reviewed_by          String?
+  approved_at          DateTime?
+  approved_by          String?
+  paid_at              DateTime?
+  payment_reference    String?
+  
+  // Audit fields
+  notes                String?
+  rejection_reason     String?
+  adjustment_amount    Decimal?               @db.Decimal(12, 2)
+  adjustment_reason    String?
+  original_amount      Decimal?               @db.Decimal(12, 2)
+  adjusted_by          String?
+  adjusted_at          DateTime?
+  
+  created_at           DateTime               @default(now())
+  updated_at           DateTime               @updatedAt
+  
+  // Relations
+  deal                 deals                  @relation(fields: [deal_id], references: [id])
+  user                 users                  @relation("UserCommissions", fields: [user_id], references: [id])
+  company              companies              @relation(fields: [company_id], references: [id])
+  target               targets?               @relation(fields: [target_id], references: [id])
+  calculated_by_user   users?                 @relation("CalculatedByUser", fields: [calculated_by], references: [id])
+  reviewed_by_user     users?                 @relation("ReviewedByUser", fields: [reviewed_by], references: [id])
+  approved_by_user     users?                 @relation("ApprovedByUser", fields: [approved_by], references: [id])
+  approvals            commission_approvals[]
+  
+  @@index([user_id])
+  @@index([company_id])
+  @@index([status])
+  @@index([period_start, period_end])
+  @@index([calculated_at])
+  @@index([approved_at])
+  @@index([deal_id])
+}
+
+model commission_approvals {
+  id               String      @id @default(cuid())
+  commission_id    String
+  action           String      // review, approve, reject, adjust, request_change
+  performed_by     String
+  performed_at     DateTime    @default(now())
+  notes            String?
+  previous_status  String
+  new_status       String
+  metadata         Json?       // Store any additional context
+  
+  // Relations
+  commission       commissions @relation(fields: [commission_id], references: [id])
+  performed_by_user users      @relation(fields: [performed_by], references: [id])
+  
+  @@index([commission_id])
+  @@index([performed_by])
+  @@index([performed_at])
+}
+
+model commission_rules {
+  id                String    @id @default(cuid())
+  company_id        String
+  name              String
+  description       String?
+  rule_type         String    // base_rate, tier, bonus, spiff, accelerator, override, clawback
+  priority          Int       @default(100)
+  
+  // Flexible configuration
+  config            Json      // Store rule-specific configuration
+  conditions        Json?     // When does this rule apply?
+  
+  // Modular calculation
+  calculation_type  String    // percentage, fixed, cumulative, graduated
+  calculation_config Json     // Parameters for calculation
+  
+  // Temporal
+  effective_from    DateTime
+  effective_to      DateTime?
+  is_active        Boolean   @default(true)
+  
+  created_at        DateTime  @default(now())
+  updated_at        DateTime  @updatedAt
+  
+  // Relations
+  company           companies @relation(fields: [company_id], references: [id])
+  tiers             commission_tiers[]
+  
+  @@index([company_id])
+  @@index([rule_type])
+  @@index([is_active])
+  @@index([effective_from, effective_to])
+}
+
+model commission_tiers {
+  id               String           @id @default(cuid())
+  rule_id          String
+  tier_number      Int
+  threshold_min    Decimal          @db.Decimal(12, 2)
+  threshold_max    Decimal?         @db.Decimal(12, 2)
+  rate            Decimal          @db.Decimal(5, 4)
+  type            String           @default("graduated") // graduated, cliff, cumulative
+  
+  created_at       DateTime         @default(now())
+  updated_at       DateTime         @updatedAt
+  
+  // Relations
+  rule             commission_rules @relation(fields: [rule_id], references: [id], onDelete: Cascade)
+  
+  @@unique([rule_id, tier_number])
+  @@index([rule_id])
+}
+
+model refresh_tokens {
+  id         String    @id @default(cuid())
+  token_id   String    @unique
+  user_id    String
+  expires_at DateTime
+  created_at DateTime  @default(now())
+  revoked    Boolean   @default(false)
+  revoked_at DateTime?
+  user_agent String?
+  ip_address String?
+  
+  // Relations
+  user       users     @relation(fields: [user_id], references: [id], onDelete: Cascade)
+  
+  @@index([user_id])
+  @@index([expires_at])
+  @@index([revoked])
 }

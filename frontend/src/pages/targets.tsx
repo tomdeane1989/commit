@@ -4,6 +4,7 @@ import Layout from '../components/layout';
 import { useAuth } from '../hooks/useAuth';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import api, { targetsApi, teamApi } from '../lib/api';
+import { formatLargeCurrency } from '../utils/money';
 import { QuotaWizard } from '../components/team/QuotaWizard';
 // import { TargetModal } from '../components/team/TargetModal'; // Replaced with QuotaWizard edit mode
 import { TargetDistributionModal } from '../components/team/TargetDistributionModal';
@@ -376,7 +377,7 @@ const TargetsPage = () => {
                               </p>
                               <p className="text-sm text-gray-500">
                                 {currentTeamAggregate.period_type.charAt(0).toUpperCase() + currentTeamAggregate.period_type.slice(1)} • 
-                                £{teamTotalQuota.toLocaleString()} • 
+                                {formatLargeCurrency(teamTotalQuota)} • 
                                 {(currentTeamAggregate.commission_rate * 100).toFixed(1)}% commission
                               </p>
                               <p className="text-xs text-gray-400">
@@ -435,7 +436,7 @@ const TargetsPage = () => {
                                       {member.user ? `${member.user.first_name} ${member.user.last_name}` : 'Team Member'}
                                     </p>
                                     <p className="text-xs text-gray-600">
-                                      Individual quota: £{member.quota_amount.toLocaleString()}
+                                      Individual quota: {formatLargeCurrency(member.quota_amount)}
                                     </p>
                                   </div>
                                   {memberTarget && (
@@ -481,7 +482,7 @@ const TargetsPage = () => {
                                 </p>
                                 <p className="text-sm text-gray-500">
                                   {target.period_type.charAt(0).toUpperCase() + target.period_type.slice(1)} • 
-                                  £{target.quota_amount.toLocaleString()} • 
+                                  {formatLargeCurrency(target.quota_amount)} • 
                                   {(target.commission_rate * 100).toFixed(1)}% commission
                                 </p>
                                 <p className="text-xs text-gray-400">
@@ -549,7 +550,7 @@ const TargetsPage = () => {
                                   </p>
                                   <p className="text-sm text-gray-400">
                                     {target.period_type.charAt(0).toUpperCase() + target.period_type.slice(1)} • 
-                                    £{target.quota_amount.toLocaleString()} • 
+                                    {formatLargeCurrency(target.quota_amount)} • 
                                     {(target.commission_rate * 100).toFixed(1)}% commission
                                   </p>
                                   <p className="text-xs text-gray-400">

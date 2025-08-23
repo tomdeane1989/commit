@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { X, Users, Target, TrendingUp, PoundSterling, Calendar, User, Save } from 'lucide-react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import api from '../../lib/api';
+import { formatLargeCurrency } from '../../utils/money';
 
 interface TeamAggregationModalProps {
   manager: {
@@ -214,7 +215,7 @@ const TeamAggregationModal: React.FC<TeamAggregationModalProps> = ({
                   <div className="ml-3">
                     <p className="text-sm font-medium text-gray-600">Total Quota</p>
                     <p className="text-xl font-bold text-gray-900">
-                      £{aggregatedData.totalQuota.toLocaleString()}
+                      {formatLargeCurrency(aggregatedData.totalQuota)}
                     </p>
                   </div>
                 </div>
@@ -228,7 +229,7 @@ const TeamAggregationModal: React.FC<TeamAggregationModalProps> = ({
                   <div className="ml-3">
                     <p className="text-sm font-medium text-gray-600">Team Progress</p>
                     <p className="text-xl font-bold text-gray-900">
-                      £{totalProgress.toLocaleString()}
+                      {formatLargeCurrency(totalProgress)}
                     </p>
                   </div>
                 </div>
@@ -288,15 +289,15 @@ const TeamAggregationModal: React.FC<TeamAggregationModalProps> = ({
               <div className="flex justify-between text-sm text-gray-600">
                 <div className="flex items-center">
                   <div className="w-3 h-3 bg-green-500 rounded mr-2"></div>
-                  Closed Won: £{aggregatedData.totalClosedWon.toLocaleString()}
+                  Closed Won: {formatLargeCurrency(aggregatedData.totalClosedWon)}
                 </div>
                 <div className="flex items-center">
                   <div className="w-3 h-3 bg-blue-500 rounded mr-2"></div>
-                  Commit: £{aggregatedData.totalCommit.toLocaleString()}
+                  Commit: {formatLargeCurrency(aggregatedData.totalCommit)}
                 </div>
                 <div className="flex items-center">
                   <div className="w-3 h-3 bg-orange-500 rounded mr-2"></div>
-                  Best Case: £{aggregatedData.totalBestCase.toLocaleString()}
+                  Best Case: {formatLargeCurrency(aggregatedData.totalBestCase)}
                 </div>
               </div>
             </div>
@@ -355,10 +356,10 @@ const TeamAggregationModal: React.FC<TeamAggregationModalProps> = ({
                               </div>
                             </td>
                             <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                              £{Number(target.quota_amount).toLocaleString()}
+                              {formatLargeCurrency(target.quota_amount)}
                             </td>
                             <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                              £{memberProgress.toLocaleString()}
+                              {formatLargeCurrency(memberProgress)}
                             </td>
                             <td className="px-6 py-4 whitespace-nowrap">
                               <span className={`inline-flex px-2 py-1 text-xs font-semibold rounded-full ${

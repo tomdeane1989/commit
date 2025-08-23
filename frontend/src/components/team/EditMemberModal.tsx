@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { X, User, Mail, Users, UserCheck, Save, Shield } from 'lucide-react';
+import { X, User, Mail, Users, UserCheck, Save, Shield, Hash } from 'lucide-react';
 import { teamApi } from '../../lib/api';
 import api from '../../lib/api';
 import { useQuery } from '@tanstack/react-query';
@@ -14,6 +14,7 @@ interface EditMemberModalProps {
     is_admin: boolean;
     is_manager?: boolean;
     territory: string | null;
+    employee_id?: string | null;
     manager: {
       first_name: string;
       last_name: string;
@@ -36,6 +37,7 @@ interface EditMemberModalProps {
     is_admin: boolean;
     is_manager: boolean;
     manager_id: string | null;
+    employee_id?: string | null;
   }) => void;
   managers?: any[];
   loading?: boolean;
@@ -52,6 +54,7 @@ const EditMemberModal: React.FC<EditMemberModalProps> = ({
   const [formData, setFormData] = useState({
     first_name: '',
     last_name: '',
+    employee_id: null as string | null,
     is_admin: false,
     is_manager: false,
     manager_id: null as string | null,
@@ -80,6 +83,7 @@ const EditMemberModal: React.FC<EditMemberModalProps> = ({
       setFormData({
         first_name: member.first_name || '',
         last_name: member.last_name || '',
+        employee_id: member.employee_id || null,
         is_admin: member.is_admin || false,
         is_manager: member.is_manager || member.role === 'manager' || false,
         manager_id: member.manager ? 
@@ -98,6 +102,7 @@ const EditMemberModal: React.FC<EditMemberModalProps> = ({
       id: member.id,
       first_name: formData.first_name,
       last_name: formData.last_name,
+      employee_id: formData.employee_id,
       is_admin: formData.is_admin,
       is_manager: formData.is_manager,
       manager_id: formData.manager_id,
@@ -197,6 +202,24 @@ const EditMemberModal: React.FC<EditMemberModalProps> = ({
               />
             </div>
             <p className="text-xs text-gray-500 mt-1">Email cannot be changed</p>
+          </div>
+
+          {/* Employee ID */}
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">
+              Employee ID (Optional)
+            </label>
+            <div className="relative">
+              <Hash className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-4 h-4" />
+              <input
+                type="text"
+                value={formData.employee_id || ''}
+                onChange={(e) => setFormData({ ...formData, employee_id: e.target.value || null })}
+                className="w-full pl-10 pr-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                placeholder="EMP123"
+              />
+            </div>
+            <p className="text-xs text-gray-500 mt-1">For payroll system integration</p>
           </div>
 
           {/* Permissions */}

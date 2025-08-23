@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { X, User, Mail, Building, MapPin, Users, Shield, UserCheck } from 'lucide-react';
+import { X, User, Mail, Building, MapPin, Users, Shield, UserCheck, Hash } from 'lucide-react';
 import { useQuery } from '@tanstack/react-query';
 import api from '../../lib/api';
 
@@ -41,6 +41,7 @@ export const InviteModal: React.FC<InviteModalProps> = ({
     email: '',
     first_name: '',
     last_name: '',
+    employee_id: '',
     is_admin: false,
     is_manager: false,
     manager_id: '',
@@ -73,6 +74,7 @@ export const InviteModal: React.FC<InviteModalProps> = ({
       email: '',
       first_name: '',
       last_name: '',
+      employee_id: '',
       is_admin: false,
       is_manager: false,
       manager_id: '',
@@ -85,6 +87,7 @@ export const InviteModal: React.FC<InviteModalProps> = ({
       email: '',
       first_name: '',
       last_name: '',
+      employee_id: '',
       is_admin: false,
       is_manager: false,
       manager_id: '',
@@ -170,6 +173,26 @@ export const InviteModal: React.FC<InviteModalProps> = ({
                 disabled={loading}
               />
             </div>
+          </div>
+
+          {/* Employee ID (Optional) */}
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">
+              Employee ID (Optional)
+            </label>
+            <div className="relative">
+              <Hash className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-4 h-4" />
+              <input
+                type="text"
+                value={formData.employee_id}
+                onChange={(e) => setFormData({ ...formData, employee_id: e.target.value })}
+                className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:border-transparent"
+                style={{ '--tw-ring-color': '#82a365' } as any}
+                placeholder="EMP123"
+                disabled={loading}
+              />
+            </div>
+            <p className="text-xs text-gray-500 mt-1">For payroll system integration</p>
           </div>
 
           {/* Permissions */}

@@ -1,5 +1,6 @@
 import React from 'react';
 import { X, Calendar, DollarSign, TrendingUp, BarChart3 } from 'lucide-react';
+import { formatLargeCurrency } from '../../utils/money';
 
 interface Target {
   id: string;
@@ -333,7 +334,7 @@ export const TargetDistributionModal: React.FC<TargetDistributionModalProps> = (
                               <span className="text-gray-900 text-xs font-bold bg-white/90 px-1 rounded">
                                 {period.quota_amount > 10000 
                                   ? `£${(period.quota_amount / 1000).toFixed(0)}K`
-                                  : `£${period.quota_amount.toLocaleString()}`
+                                  : formatLargeCurrency(period.quota_amount)
                                 }
                               </span>
                             )}

@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { X, ChevronRight, ChevronLeft, Calendar, Users, Target, CheckCircle, AlertCircle } from 'lucide-react';
 import { ConflictResolutionModal } from './ConflictResolutionModal';
+import { formatLargeCurrency } from '../../utils/money';
 
 interface TeamMember {
   id: string;
@@ -259,7 +260,7 @@ export const QuotaWizard: React.FC<QuotaWizardProps> = ({
         } else if (wizardData.seasonal_allocation_method === 'revenue') {
           const totalRevenue = values.reduce((sum, v) => sum + v, 0);
           if (Math.abs(totalRevenue - wizardData.annual_quota) > 1) {
-            errors.push(`Seasonal revenue allocations must total annual quota (currently £${totalRevenue.toLocaleString()} vs £${wizardData.annual_quota.toLocaleString()})`);
+            errors.push(`Seasonal revenue allocations must total annual quota (currently ${formatLargeCurrency(totalRevenue)} vs ${formatLargeCurrency(wizardData.annual_quota)})`);
           }
         }
       }
@@ -290,7 +291,7 @@ export const QuotaWizard: React.FC<QuotaWizardProps> = ({
         // Check that total matches annual quota (allow for small rounding differences)
         const totalCustomAmount = breakdown.reduce((sum, period) => sum + period.quota_amount, 0);
         if (Math.abs(totalCustomAmount - wizardData.annual_quota) > 1) {
-          errors.push(`Custom breakdown total (£${totalCustomAmount.toLocaleString()}) must equal annual quota (£${wizardData.annual_quota.toLocaleString()})`);
+          errors.push(`Custom breakdown total (${formatLargeCurrency(totalCustomAmount)}) must equal annual quota (${formatLargeCurrency(wizardData.annual_quota)})`);
         }
       }
     }

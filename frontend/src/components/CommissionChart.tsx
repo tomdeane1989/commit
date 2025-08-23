@@ -1,5 +1,6 @@
 import React from 'react';
 import { BarChart3, Calendar } from 'lucide-react';
+import { formatLargeCurrency } from '../utils/money';
 
 interface Commission {
   period_key: string;
@@ -288,7 +289,7 @@ const CommissionChart: React.FC<CommissionChartProps> = ({
                     <h4 className="text-sm font-semibold text-gray-800">{displayLabel}</h4>
                     <div className="text-sm text-gray-600">
                       {hasData ? 
-                        `Total: £${totalCommission.toLocaleString()} (${group.commissions.length}${teamMemberCount ? ` of ${teamMemberCount}` : ''} members)` :
+                        `Total: ${formatLargeCurrency(totalCommission)} (${group.commissions.length}${teamMemberCount ? ` of ${teamMemberCount}` : ''} members)` :
                         'No targets defined for this period'
                       }
                     </div>
@@ -347,7 +348,7 @@ const CommissionChart: React.FC<CommissionChartProps> = ({
                       
                       {/* Team Total Amount */}
                       <div className="w-20 text-xs font-bold text-gray-900 text-right">
-                        {hasData ? `£${totalCommission.toLocaleString()}` : '-'}
+                        {hasData ? formatLargeCurrency(totalCommission) : '-'}
                       </div>
                     </div>
                   </div>
@@ -417,7 +418,7 @@ const CommissionChart: React.FC<CommissionChartProps> = ({
                             
                             {/* Commission Amount */}
                             <div className="w-20 text-xs font-medium text-gray-900 text-right">
-                              £{commissionAmount.toLocaleString()}
+                              {formatLargeCurrency(commissionAmount)}
                             </div>
                           </div>
                         </div>
@@ -495,7 +496,7 @@ const CommissionChart: React.FC<CommissionChartProps> = ({
                     
                     {/* Commission Amount */}
                     <div className="w-24 text-sm font-bold text-gray-900 text-right">
-                      {hasData ? `£${commissionAmount.toLocaleString()}` : '-'}
+                      {hasData ? formatLargeCurrency(commissionAmount) : '-'}
                     </div>
                     
                     {/* User badge for manager views */}
@@ -568,7 +569,7 @@ const CommissionChart: React.FC<CommissionChartProps> = ({
         </div>
         <div className="text-center">
           <div className="text-2xl font-bold text-green-600">
-            £{commissions.reduce((sum, c) => sum + Number(c.commission_earned), 0).toLocaleString()}
+            {formatLargeCurrency(commissions.reduce((sum, c) => sum + Number(c.commission_earned), 0))}
           </div>
           <div className="text-sm text-gray-600">Total Earned</div>
         </div>
@@ -674,7 +675,7 @@ const CommissionChart: React.FC<CommissionChartProps> = ({
                     <div>
                       <span className="font-medium text-gray-700">Total Base Commission:</span>
                       <div className="text-gray-900">
-                        £{modalData.teamCommissions?.reduce((sum, c) => sum + Number(c.base_commission || c.commission_earned), 0).toLocaleString() || '0'}
+                        {formatLargeCurrency(modalData.teamCommissions?.reduce((sum, c) => sum + Number(c.base_commission || c.commission_earned), 0) || 0)}
                       </div>
                     </div>
                   </div>
@@ -695,7 +696,7 @@ const CommissionChart: React.FC<CommissionChartProps> = ({
                     <div>
                       <span className="font-medium text-gray-700">Base Commission:</span>
                       <div className="text-gray-900">
-                        £{Number(modalData.commission.base_commission || modalData.commission.commission_earned).toLocaleString()}
+                        {formatLargeCurrency(modalData.commission.base_commission || modalData.commission.commission_earned)}
                       </div>
                     </div>
                   </div>
@@ -760,10 +761,10 @@ const CommissionChart: React.FC<CommissionChartProps> = ({
                                   </td>
                                 )}
                                 <td className="px-4 py-3 text-sm font-medium text-gray-900">
-                                  £{Number(detail.deal.amount).toLocaleString()}
+                                  {formatLargeCurrency(detail.deal.amount)}
                                 </td>
                                 <td className="px-4 py-3 text-sm font-medium text-green-600">
-                                  £{Number(detail.commission_amount).toLocaleString()}
+                                  {formatLargeCurrency(detail.commission_amount)}
                                 </td>
                                 <td className="px-4 py-3 text-sm text-gray-900">
                                   {new Date(detail.deal.close_date || detail.deal.closed_date).toLocaleDateString('en-GB')}

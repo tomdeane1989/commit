@@ -4,7 +4,7 @@ import { PrismaClient } from '@prisma/client';
 import Joi from 'joi';
 import { isAdmin, isManager, canManageTeam } from '../middleware/roleHelpers.js';
 import { requireTargetManagement, requireOwnerOrManager, attachPermissions } from '../middleware/permissions.js';
-import dealCommissionCalculator from '../services/dealCommissionCalculator.js';
+import enhancedCommissionCalculator from '../services/enhancedCommissionCalculator.js';
 
 const router = express.Router();
 const prisma = new PrismaClient();
@@ -951,7 +951,7 @@ router.post('/', requireTargetManagement, async (req, res) => {
       // Only backfill for parent targets or single targets (not child targets)
       if (!target.parent_target_id) {
         try {
-          const result = await dealCommissionCalculator.recalculateForTarget(target.id);
+          const result = await enhancedCommissionCalculator.recalculateForTarget(target.id);
           if (result.updated > 0) {
             backfillResults.push({
               target_id: target.id,

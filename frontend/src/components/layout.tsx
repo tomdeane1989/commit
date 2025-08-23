@@ -56,10 +56,10 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
   }, [router.pathname]);
 
   const navigation = [
-    { name: 'Forecasting', href: '/deals', icon: BarChart3 },
-    { name: 'Performance', href: '/commissions', icon: PoundSterling },
-    { name: 'Targets & Quotas', href: '/targets', icon: BarChart3, adminOnly: true },
+    { name: 'Commissions', href: '/commissions', icon: PoundSterling },
+    { name: 'Targets', href: '/targets', icon: BarChart3, adminOnly: true },
     { name: 'Team', href: '/team', icon: Users, adminOnly: true },
+    { name: 'Forecasting', href: '/deals', icon: BarChart3 },
     { name: 'Dashboard', href: '/dashboard', icon: Home },
     { name: 'Settings', href: '/settings', icon: Settings },
   ];
