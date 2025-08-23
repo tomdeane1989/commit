@@ -79,38 +79,36 @@ router.post('/export',
             status: true,
             stage: true,
             close_date: true,
-            closed_date: true,
             created_date: true,
-            deal_type: true,
-            commission_rate: true,
             commission_amount: true,
-            commission_calculated_at: true
+            commission_calculated_at: true,
+            crm_id: true,
+            created_at: true,
+            updated_at: true
           }
         });
       }
 
-      // Include commissions if requested
+      // Include commissions if requested (from deals table)
       if (include_commissions) {
-        userData.commissions = await prisma.commissions.findMany({
+        userData.commissions = await prisma.deals.findMany({
           where: {
             user_id: userId,
+            status: 'closed_won',
+            commission_amount: { not: null },
             ...(Object.keys(dateFilter).length > 0 && {
-              calculated_at: dateFilter
+              commission_calculated_at: dateFilter
             })
           },
           select: {
             id: true,
-            deal_amount: true,
-            commission_rate: true,
+            deal_name: true,
+            account_name: true,
+            amount: true,
             commission_amount: true,
-            status: true,
-            period_start: true,
-            period_end: true,
-            calculated_at: true,
-            approved_at: true,
-            paid_at: true,
-            payment_reference: true,
-            notes: true
+            commission_calculated_at: true,
+            close_date: true,
+            created_at: true
           }
         });
       }
@@ -137,26 +135,24 @@ router.post('/export',
         });
       }
 
-      // Include team memberships if requested and user is a manager
+      // Include team members if requested and user is a manager
       if (include_team && (req.user.is_manager || req.user.is_admin)) {
-        userData.team_members = await prisma.team_members.findMany({
+        userData.team_members = await prisma.users.findMany({
           where: {
-            OR: [
-              { user_id: userId },
-              { added_by_user_id: userId }
-            ]
+            company_id: req.user.company_id,
+            id: { not: userId } // Exclude self
           },
           select: {
             id: true,
-            team: {
-              select: {
-                team_name: true,
-                description: true
-              }
-            },
+            email: true,
+            first_name: true,
+            last_name: true,
             role: true,
-            joined_at: true,
-            is_active: true
+            is_manager: true,
+            is_admin: true,
+            territory: true,
+            is_active: true,
+            created_at: true
           }
         });
       }
@@ -172,8 +168,10 @@ router.post('/export',
         select: {
           action: true,
           entity_type: true,
+          entity_id: true,
           created_at: true,
-          details: true
+          context: true,
+          success: true
         },
         orderBy: { created_at: 'desc' },
         take: 1000 // Limit to last 1000 activities
@@ -280,7 +278,7 @@ router.post('/export',
           action: 'data_export',
           entity_type: 'user',
           entity_id: userId,
-          details: {
+          context: {
             format,
             include_deals,
             include_commissions,
@@ -288,7 +286,8 @@ router.post('/export',
             include_team,
             date_from,
             date_to
-          }
+          },
+          success: true
         }
       });
 
@@ -353,10 +352,11 @@ router.delete('/delete-account',
             action: 'account_deletion_requested',
             entity_type: 'user',
             entity_id: userId,
-            details: {
+            context: {
               email: user.email,
               requested_at: new Date()
-            }
+            },
+            success: true
           }
         });
 
@@ -384,13 +384,8 @@ router.delete('/delete-account',
           }
         });
 
-        // Anonymize deals
-        await tx.deals.updateMany({
-          where: { user_id: userId },
-          data: {
-            owner_email: anonymizedEmail
-          }
-        });
+        // Note: Deals remain linked to anonymized user for audit trail
+        // No need to update deals as they reference user by ID
 
         // Delete refresh tokens
         await tx.refresh_tokens.deleteMany({

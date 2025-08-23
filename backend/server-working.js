@@ -20,6 +20,7 @@ import commissionApprovalsRoutes from './routes/commission-approvals.js';
 import commissionRulesRoutes from './routes/commission-rules.js';
 import commissionReportsRoutes from './routes/commission-reports.js';
 import commissionExportRoutes from './routes/commission-export.js';
+import gdprRoutes from './routes/gdpr.js';
 
 // Import scheduled jobs
 import { scheduleCommissionRecalculation } from './jobs/commissionRecalculationJob.js';
@@ -214,6 +215,7 @@ app.use('/api/integrations', authMiddleware, integrationsRoutes);
 app.use('/api/commission-approvals', authMiddleware, commissionApprovalsRoutes);
 app.use('/api/commission-rules', authMiddleware, commissionRulesRoutes);
 app.use('/api/commission-reports', authMiddleware, commissionReportsRoutes);
+app.use('/api/gdpr', authMiddleware, gdprRoutes);
 
 // Dashboard routes
 app.get('/api/dashboard/sales-rep', authMiddleware, async (req, res) => {

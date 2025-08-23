@@ -1,18 +1,40 @@
 // middleware/rate-limiter.js - Enhanced rate limiting middleware
 import rateLimit from 'express-rate-limit';
-import RedisStore from 'rate-limit-redis';
-import { createClient } from 'redis';
+// import RedisStore from 'rate-limit-redis';
+// import { createClient } from 'redis';
 
-// Redis client for rate limiting
-let redisClient;
-if (process.env.REDIS_URL) {
-  redisClient = createClient({
-    url: process.env.REDIS_URL
-  });
-  
-  redisClient.on('error', (err) => console.log('Redis Client Error', err));
-  redisClient.connect().catch(console.error);
-}
+// Redis client for rate limiting (optional)
+let redisClient = null;
+let redisConnected = false;
+
+// Temporarily disabled - Redis not configured
+// if (process.env.REDIS_URL) {
+//   try {
+//     redisClient = createClient({
+//       url: process.env.REDIS_URL
+//     });
+//     
+//     redisClient.on('error', (err) => {
+//       console.log('Redis Client Error:', err);
+//       redisConnected = false;
+//     });
+//     
+//     redisClient.on('ready', () => {
+//       console.log('Redis connected for rate limiting');
+//       redisConnected = true;
+//     });
+//     
+//     redisClient.connect().catch(err => {
+//       console.log('Redis connection failed, using memory store for rate limiting');
+//       redisClient = null;
+//       redisConnected = false;
+//     });
+//   } catch (err) {
+//     console.log('Redis initialization failed, using memory store for rate limiting');
+//     redisClient = null;
+//     redisConnected = false;
+//   }
+// }
 
 // Helper to create rate limiter with Redis store if available
 const createRateLimiter = (options) => {
@@ -22,13 +44,17 @@ const createRateLimiter = (options) => {
     ...options
   };
   
-  // Use Redis store if available for distributed rate limiting
-  if (redisClient && redisClient.isOpen) {
-    config.store = new RedisStore({
-      client: redisClient,
-      prefix: 'rate-limit:',
-    });
-  }
+  // Use Redis store if available and connected
+  // if (redisClient && redisConnected) {
+  //   try {
+  //     config.store = new RedisStore({
+  //       client: redisClient,
+  //       prefix: 'rate-limit:',
+  //     });
+  //   } catch (err) {
+  //     console.log('Failed to create Redis store, using memory store:', err.message);
+  //   }
+  // }
   
   return rateLimit(config);
 };

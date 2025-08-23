@@ -210,7 +210,7 @@ export const authenticateTokenEnhanced = async (req, res, next) => {
         is_manager: true,
         company_id: true,
         is_active: true,
-        last_login: true
+        last_activity: true
       }
     });
 
@@ -317,7 +317,6 @@ export const handleTokenRefresh = async (req, res) => {
     await prisma.users.update({
       where: { id: user.id },
       data: { 
-        last_login: new Date(),
         last_activity: new Date()
       }
     });

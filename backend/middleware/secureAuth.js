@@ -81,8 +81,18 @@ export const authenticateToken = async (req, res, next) => {
 
     const token = authHeader.split(' ')[1];
 
-    // Verify token
-    const decoded = jwt.verify(token, process.env.JWT_SECRET);
+    // Verify token - check for audience if enhanced auth is configured
+    let decoded;
+    if (process.env.JWT_ACCESS_TOKEN_EXPIRES_IN) {
+      // Enhanced auth with audience validation
+      decoded = jwt.verify(token, process.env.JWT_SECRET, {
+        audience: 'api',
+        issuer: 'sales-commission-saas'
+      });
+    } else {
+      // Basic auth without audience
+      decoded = jwt.verify(token, process.env.JWT_SECRET);
+    }
 
     // Fetch user from database to ensure they still exist and are active
     const user = await prisma.users.findUnique({
