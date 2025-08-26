@@ -1,6 +1,6 @@
 {
   "name": "sales-commission-api",
-  "version": "1.2.5",
+  "version": "1.2.6",
   "type": "module",
   "scripts": {
     "start": "npx prisma migrate deploy && npx prisma generate && node server-working.js",
@@ -51,5 +51,8 @@
   },
   "devDependencies": {
     "nodemon": "^3.0.2"
+  },
+  "engines": {
+    "node": ">=18.0.0"
   }
 }

@@ -1,4 +1,5 @@
 // Commission Approval Workflow Routes
+// v1.2.6 - Fixed ES module syntax
 import express from 'express';
 import { PrismaClient } from '@prisma/client';
 import Joi from 'joi';
