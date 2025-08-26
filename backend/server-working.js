@@ -18,6 +18,8 @@ import commissionsRoutes from './routes/commissions.js';
 import integrationsRoutes from './routes/integrations.js';
 // Temporarily disabled due to production deployment issues
 // import commissionApprovalsRoutes from './routes/commission-approvals.js';
+// DEBUG: Testing module loading
+import commissionApprovalsDebug from './routes/commission-approvals-debug.js';
 import commissionRulesRoutes from './routes/commission-rules.js';
 import commissionReportsRoutes from './routes/commission-reports.js';
 import commissionExportRoutes from './routes/commission-export.js';
@@ -215,6 +217,9 @@ app.use('/api/commissions', authMiddleware, commissionExportRoutes); // Export e
 app.use('/api/integrations', authMiddleware, integrationsRoutes);
 // Temporarily disabled due to production deployment issues
 // app.use('/api/commission-approvals', authMiddleware, commissionApprovalsRoutes);
+
+// DEBUG: Mount debug route to test module loading
+app.use('/api/commission-approvals-debug', authMiddleware, commissionApprovalsDebug);
 
 // Stub implementation to prevent frontend errors
 app.use('/api/commission-approvals', authMiddleware, (req, res) => {
