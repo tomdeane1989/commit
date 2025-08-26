@@ -16,11 +16,8 @@ import targetsRoutes from './routes/targets.js';
 import dealsRoutes from './routes/deals.js';
 import commissionsRoutes from './routes/commissions.js';
 import integrationsRoutes from './routes/integrations.js';
-// Temporarily disabled due to production deployment issues
-// import commissionApprovalsRoutes from './routes/commission-approvals.js';
-// DEBUG: Testing module loading
-// import commissionApprovalsDebug from './routes/commission-approvals-debug.js';
-import testModule from './routes/test-module.js';
+// Fixed version that avoids circular dependency issue
+import commissionApprovalsRoutes from './routes/commission-approvals-working.js';
 import commissionRulesRoutes from './routes/commission-rules.js';
 import commissionReportsRoutes from './routes/commission-reports.js';
 import commissionExportRoutes from './routes/commission-export.js';
@@ -216,26 +213,8 @@ app.use('/api/deals', authMiddleware, dealsRoutes);
 app.use('/api/commissions', authMiddleware, commissionsRoutes);
 app.use('/api/commissions', authMiddleware, commissionExportRoutes); // Export endpoints
 app.use('/api/integrations', authMiddleware, integrationsRoutes);
-// Temporarily disabled due to production deployment issues
-// app.use('/api/commission-approvals', authMiddleware, commissionApprovalsRoutes);
-
-// DEBUG: Mount test route to test module loading
-app.use('/api/test-module', authMiddleware, testModule);
-
-// Stub implementation to prevent frontend errors
-app.use('/api/commission-approvals', authMiddleware, (req, res) => {
-  if (req.path === '/' && req.method === 'GET') {
-    return res.json({
-      commissions: [],
-      pagination: { page: 1, limit: 20, total: 0, pages: 0 },
-      summary: { total_count: 0, total_amount: 0, status_breakdown: [] }
-    });
-  }
-  if (req.path === '/pending-count' && req.method === 'GET') {
-    return res.json({ count: 0, requires_action: false });
-  }
-  return res.status(501).json({ error: 'Commission approvals feature temporarily disabled for maintenance' });
-});
+// Commission approvals - using working version that avoids circular dependency
+app.use('/api/commission-approvals', authMiddleware, commissionApprovalsRoutes);
 app.use('/api/commission-rules', authMiddleware, commissionRulesRoutes);
 app.use('/api/commission-reports', authMiddleware, commissionReportsRoutes);
 app.use('/api/gdpr', authMiddleware, gdprRoutes);
