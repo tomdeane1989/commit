@@ -28,5 +28,14 @@ try {
   console.log('FAILED: commission-approvals-minimal.js import error:', error.message);
 }
 
+// Test progressive version (with most imports but not services)
+try {
+  console.log('\nTest 4: Attempting to import commission-approvals-progressive.js...');
+  await import('./routes/commission-approvals-progressive.js');
+  console.log('SUCCESS: commission-approvals-progressive.js imported successfully!');
+} catch (error) {
+  console.log('FAILED: commission-approvals-progressive.js import error:', error.message);
+}
+
 console.log('\nImport test complete.');
 process.exit(0);

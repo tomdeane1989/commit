@@ -5,6 +5,7 @@
   "scripts": {
     "test-import": "node test-import.js",
     "diagnose": "node diagnose-file.js",
+    "test-services": "node test-service-imports.js",
     "start": "npx prisma migrate deploy && npx prisma generate && node server-working.js",
     "build": "npx prisma generate",
     "postinstall": "npx prisma generate",
