@@ -37,5 +37,23 @@ try {
   console.log('FAILED: commission-approvals-progressive.js import error:', error.message);
 }
 
+// Test with CommissionEngine only
+try {
+  console.log('\nTest 5: Attempting to import commission-approvals-with-services.js...');
+  await import('./routes/commission-approvals-with-services.js');
+  console.log('SUCCESS: commission-approvals-with-services.js imported successfully!');
+} catch (error) {
+  console.log('FAILED: commission-approvals-with-services.js import error:', error.message);
+}
+
+// Test with enhancedCommissionCalculator only
+try {
+  console.log('\nTest 6: Attempting to import commission-approvals-with-calculator.js...');
+  await import('./routes/commission-approvals-with-calculator.js');
+  console.log('SUCCESS: commission-approvals-with-calculator.js imported successfully!');
+} catch (error) {
+  console.log('FAILED: commission-approvals-with-calculator.js import error:', error.message);
+}
+
 console.log('\nImport test complete.');
 process.exit(0);
