@@ -417,4 +417,6 @@ class EnhancedCommissionCalculator {
   }
 }
 
-export default new EnhancedCommissionCalculator();
+const calculator = new EnhancedCommissionCalculator();
+calculator.CommissionEngine = CommissionEngine; // Expose CommissionEngine for commission-approvals route
+export default calculator;
