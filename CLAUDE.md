@@ -182,22 +182,66 @@ git push origin main        # Triggers auto-deploy
 ### **Core Tables**
 - **companies**: Multi-tenant company data
 - **users**: Sales reps with roles (sales_rep, manager) + is_admin flag
-- **deals**: CRM-synced deals with commission fields (commission_amount, commission_rate, commission_calculated_at)
+- **deals**: CRM-synced deals with live commission calculations
 - **deal_categorizations**: ML training data for rep decisions
 - **targets**: Individual quota/commission settings (team_target field deprecated - see Team Target Architecture)
-- **crm_integrations**: Integration configurations (Google Sheets, etc.)
-- **activity_log**: Audit trail for all system actions
+- **commissions**: Historical audit records for closed deals (separate from live calculations)
+- **commission_approvals**: Approval workflow history and audit trail
+- **crm_integrations**: Integration configurations (Google Sheets, HubSpot, Salesforce, etc.)
+- **activity_log**: General system audit trail
 
-### **Commission Architecture**
-- Commissions are calculated and stored directly on deals (no separate commission table)
-- Commission calculation triggers:
-  - When a deal moves to closed_won status
-  - When new targets are created (backfill for existing closed deals)
-  - Daily scheduled job at 2 AM UTC (catches any missed calculations)
-- Commission fields on deals:
+### **🔄 Commission Architecture - Three-Layer System**
+
+#### **Layer 1: Live Commission Calculations (deals table)**
+- **Purpose**: Real-time commission projections and calculations
+- **Location**: Directly on the `deals` table
+- **Fields**:
   - `commission_amount`: Calculated commission value
   - `commission_rate`: Rate used for calculation
   - `commission_calculated_at`: Timestamp of calculation
+- **When Updated**:
+  - When deal amount changes
+  - When deal stage/status changes
+  - When commission rules change
+  - Daily recalculation job (2 AM UTC)
+
+#### **Layer 2: Commission Audit Records (commissions table)**
+- **Purpose**: Immutable historical record for closed deals
+- **Location**: Separate `commissions` table
+- **Created When**: Deal moves to `closed_won` status
+- **Contains**:
+  - Snapshot of deal amount at time of closing
+  - Applied commission rate and rules
+  - Calculated commission amount
+  - Target/quota information at time of calculation
+  - Approval workflow status
+- **Key Feature**: Once created, serves as permanent audit trail
+
+#### **Layer 3: Approval Workflow (commission_approvals table)**
+- **Purpose**: Track all approval actions and adjustments
+- **Location**: `commission_approvals` table
+- **Records**:
+  - Review, approve, reject, adjust actions
+  - Who performed each action and when
+  - Notes and adjustment reasons
+  - Previous and new status for each action
+- **Relationship**: Links to records in `commissions` table
+
+### **How They Work Together**
+```
+1. Deal Created → Live commission calculated on deals table
+2. Deal Updated → Commission recalculated in real-time
+3. Deal Closed → Commission record created in commissions table
+4. Manager Reviews → Actions logged in commission_approvals table
+5. Commission Approved → Status updated in commissions table
+6. Commission Paid → Final status recorded with payment reference
+```
+
+### **Important Notes**
+- **Deals table**: Always has the most current commission calculation
+- **Commissions table**: Has the official, auditable commission record for closed deals
+- **Commission_approvals**: Has the complete history of all actions taken
+- **Why separate?**: Compliance, audit trail, and ability to adjust commissions post-closing
 
 ### **Team Target Architecture**
 - All targets are individual targets (no separate team aggregation records)
@@ -256,9 +300,38 @@ git commit -m "Add migration: descriptive_name_here"
 
 ## 🎯 **Current Development Priorities**
 
-### **1. CRM Integration Enhancement**
+### **🚧 IN PROGRESS: HubSpot Integration (feature/hubspot-integration branch)**
+
+#### **Objective**
+Build a robust HubSpot CRM integration to automatically sync deals and enable real-time commission tracking.
+
+#### **Key Features to Implement**
+1. **OAuth 2.0 Authentication**: Secure connection to HubSpot accounts
+2. **Deal Synchronization**: 
+   - Initial bulk import of existing deals
+   - Real-time webhook updates for deal changes
+   - Bi-directional sync capabilities
+3. **Field Mapping**:
+   - Map HubSpot deal properties to our deal fields
+   - Support custom HubSpot properties
+   - Handle HubSpot pipelines and deal stages
+4. **Commission Integration**:
+   - Automatically calculate commissions when deals close
+   - Push commission data back to HubSpot as custom properties
+   - Support HubSpot's multiple pipelines
+5. **User Mapping**:
+   - Link HubSpot deal owners to system users
+   - Support team hierarchies from HubSpot
+
+#### **Technical Implementation**
+- **API**: HubSpot API v3 (REST)
+- **Authentication**: OAuth 2.0 with refresh tokens
+- **Webhooks**: HubSpot webhook subscriptions for real-time updates
+- **Rate Limiting**: Respect HubSpot's API limits (100 requests/10 seconds)
+- **Error Handling**: Retry logic with exponential backoff
+
+### **2. Other Planned CRM Integrations**
 - **Salesforce OAuth**: Real-time deal sync
-- **HubSpot Integration**: Webhook-based updates  
 - **Pipedrive Support**: API integration
 - **Deal ID Management**: Automatic unique ID generation for CRMs without Deal IDs
 
@@ -415,10 +488,11 @@ docker-compose up -d        # Start all services
 
 ---
 
-**Last Updated**: 2025-08-06  
+**Last Updated**: 2025-08-26  
 **Production Status**: ✅ Fully deployed and operational  
 **Development Status**: ✅ Local environment fully functional  
-**Next Session Priority**: Enhanced CRM integrations (Salesforce, HubSpot, Pipedrive)
+**Current Work**: 🚧 HubSpot Integration (feature/hubspot-integration branch)  
+**Next Session Priority**: Complete HubSpot OAuth flow and deal sync
 
 ## 🚨 DATABASE PROTECTION RULES (CRITICAL)
 
