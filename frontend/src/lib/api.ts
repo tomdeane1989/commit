@@ -474,8 +474,14 @@ export const teamApi = {
 // Integrations API - separate from CRM API for clarity
 export const integrationsApi = {
   getIntegrations: async (): Promise<ApiResponse<any[]>> => {
-    const response = await api.get('/integrations');
-    return response.data;
+    try {
+      const response = await api.get('/integrations');
+      return response?.data || { success: false, integrations: [] };
+    } catch (error) {
+      console.error('Error fetching integrations:', error);
+      // Return empty integrations list on error
+      return { success: false, integrations: [], error: 'Failed to fetch integrations' };
+    }
   },
 
   testConnection: async (data: { crm_type: string; spreadsheet_url: string }): Promise<any> => {

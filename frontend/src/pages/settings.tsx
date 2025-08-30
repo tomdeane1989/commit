@@ -4,6 +4,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useAuth } from '../hooks/useAuth';
 import api, { integrationsApi, gdprApi } from '../lib/api';
 import { formatLargeCurrency } from '../utils/money';
+import DealsViewerModal from '../components/DealsViewerModal';
 import { 
   Target, 
   Calendar, 
@@ -46,6 +47,7 @@ const SettingsPage = () => {
   const [showSetupModal, setShowSetupModal] = useState(false);
   const [selectedIntegration, setSelectedIntegration] = useState<any>(null);
   const [expandedTeamTarget, setExpandedTeamTarget] = useState(false);
+  const [showDealsModal, setShowDealsModal] = useState<{ integration: any } | null>(null);
   
   // GDPR/Privacy state
   const [exportFormat, setExportFormat] = useState<'json' | 'csv' | 'excel'>('json');
@@ -151,6 +153,11 @@ const SettingsPage = () => {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['integrations'] });
+      alert('Integration removed successfully');
+    },
+    onError: (error: any) => {
+      console.error('Failed to delete integration:', error);
+      alert(`Failed to remove integration: ${error.response?.data?.error || error.message || 'Unknown error'}`);
     }
   });
 
@@ -197,8 +204,13 @@ const SettingsPage = () => {
   };
 
   const handleDeleteIntegration = (integration: any) => {
+    console.log('Attempting to delete integration:', integration);
+    console.log('Integration ID:', integration.id);
     if (confirm(`Are you sure you want to delete the ${getIntegrationName(integration.crm_type)} integration?`)) {
+      console.log('User confirmed deletion, calling mutation with ID:', integration.id);
       deleteIntegrationMutation.mutate(integration.id);
+    } else {
+      console.log('User cancelled deletion');
     }
   };
 
@@ -854,10 +866,20 @@ const SettingsPage = () => {
                                 {integration.summary.total_deals}
                               </p>
                             </div>
-                            <div className="bg-gray-50 rounded-xl p-3">
-                              <p className="text-xs font-medium text-gray-600 mb-1">Last Sync</p>
-                              <p className="text-sm font-semibold text-gray-700">
+                            <div 
+                              className="bg-gray-50 rounded-xl p-3 cursor-pointer hover:bg-blue-50 hover:border-blue-200 border border-transparent transition-all duration-300 group"
+                              onClick={() => setShowDealsModal({ integration })}
+                              title="Click to view synced deals"
+                            >
+                              <div className="flex items-center justify-between">
+                                <p className="text-xs font-medium text-gray-600 mb-1">Last Sync</p>
+                                <Eye className="w-3 h-3 text-blue-500 opacity-0 group-hover:opacity-100 transition-opacity" />
+                              </div>
+                              <p className="text-sm font-semibold text-gray-700 group-hover:text-blue-600 transition-colors">
                                 {integration.summary.last_sync_count} deals
+                              </p>
+                              <p className="text-xs text-blue-600 mt-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                                View details
                               </p>
                             </div>
                           </div>
@@ -1258,6 +1280,15 @@ const SettingsPage = () => {
             </div>
           </div>
         </div>
+      )}
+
+      {/* Deals Viewer Modal */}
+      {showDealsModal && (
+        <DealsViewerModal
+          integrationId={showDealsModal.integration.id}
+          integrationName={getIntegrationName(showDealsModal.integration.crm_type)}
+          onClose={() => setShowDealsModal(null)}
+        />
       )}
     </Layout>
   );

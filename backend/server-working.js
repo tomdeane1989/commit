@@ -16,6 +16,7 @@ import targetsRoutes from './routes/targets.js';
 import dealsRoutes from './routes/deals.js';
 import commissionsRoutes from './routes/commissions.js';
 import integrationsRoutes from './routes/integrations.js';
+import hubspotRoutes from './routes/hubspot.js';
 // Fixed version that avoids circular dependency issue
 import commissionApprovalsRoutes from './routes/commission-approvals-working.js';
 import commissionRulesRoutes from './routes/commission-rules.js';
@@ -24,7 +25,7 @@ import commissionExportRoutes from './routes/commission-export.js';
 import gdprRoutes from './routes/gdpr.js';
 
 // Import scheduled jobs
-import { scheduleCommissionRecalculation } from './jobs/commissionRecalculationJob.js';
+import { scheduleCommissionRecalculation, scheduleHubSpotSync, runHubSpotSync } from './jobs/commissionRecalculationJob.js';
 
 
 
@@ -212,6 +213,9 @@ app.use('/api/targets', authMiddleware, targetsRoutes);
 app.use('/api/deals', authMiddleware, dealsRoutes);
 app.use('/api/commissions', authMiddleware, commissionsRoutes);
 app.use('/api/commissions', authMiddleware, commissionExportRoutes); // Export endpoints
+// HubSpot routes - MUST come before general integrations route
+// The callback endpoint doesn't need auth
+app.use('/api/integrations/hubspot', hubspotRoutes);
 app.use('/api/integrations', authMiddleware, integrationsRoutes);
 // Commission approvals - using working version that avoids circular dependency
 app.use('/api/commission-approvals', authMiddleware, commissionApprovalsRoutes);
@@ -609,6 +613,7 @@ app.listen(PORT, '0.0.0.0', () => {
   
   // Start scheduled jobs
   scheduleCommissionRecalculation();
+  scheduleHubSpotSync();
   
   // Run commission recalculation on startup
   console.log('🚀 Running commission recalculation on server startup...');
@@ -617,6 +622,13 @@ app.listen(PORT, '0.0.0.0', () => {
       console.error('Error running startup commission recalculation:', error);
     });
   });
+  
+  // Optionally run HubSpot sync on startup (disabled by default to avoid API rate limits)
+  // Uncomment the following lines to enable startup sync:
+  // console.log('🔄 Running HubSpot sync on server startup...');
+  // runHubSpotSync().catch(error => {
+  //   console.error('Error running startup HubSpot sync:', error);
+  // });
 });// Force rebuild at Thu  7 Aug 2025 14:54:15 BST
 // Rebuild trigger: Thu  7 Aug 2025 17:05:07 BST
 // Manual deploy trigger: Thu  7 Aug 2025 17:18:57 BST

@@ -2,6 +2,7 @@
 import express from 'express';
 import { PrismaClient } from '@prisma/client';
 import GoogleSheetsService from '../services/googleSheets.js';
+import HubSpotService from '../services/hubspot.js';
 import Joi from 'joi';
 import { requireIntegrationManagement, attachPermissions } from '../middleware/permissions.js';
 import enhancedCommissionCalculator from '../services/enhancedCommissionCalculator.js';
@@ -9,9 +10,6 @@ import enhancedCommissionCalculator from '../services/enhancedCommissionCalculat
 const router = express.Router();
 const prisma = new PrismaClient();
 const sheetsService = new GoogleSheetsService();
-
-// All integration routes require admin access
-router.use(requireIntegrationManagement);
 
 // Validation schemas
 const createIntegrationSchema = Joi.object({
@@ -31,7 +29,7 @@ const createIntegrationSchema = Joi.object({
 });
 
 // GET /api/integrations - List all integrations for the user's company
-router.get('/', async (req, res) => {
+router.get('/', requireIntegrationManagement, async (req, res) => {
   try {
     const integrations = await prisma.crm_integrations.findMany({
       where: {
@@ -66,7 +64,7 @@ router.get('/', async (req, res) => {
 });
 
 // POST /api/integrations/test-connection - Test connection to external system
-router.post('/test-connection', async (req, res) => {
+router.post('/test-connection', requireIntegrationManagement, async (req, res) => {
   try {
     const { crm_type, spreadsheet_url } = req.body;
 
@@ -111,7 +109,7 @@ router.post('/test-connection', async (req, res) => {
 });
 
 // POST /api/integrations/preview-data - Preview data from external system
-router.post('/preview-data', async (req, res) => {
+router.post('/preview-data', requireIntegrationManagement, async (req, res) => {
   try {
     const { crm_type, spreadsheet_url, sheet_name = 'Sheet1' } = req.body;
 
@@ -147,7 +145,7 @@ router.post('/preview-data', async (req, res) => {
 });
 
 // POST /api/integrations - Create new integration
-router.post('/', async (req, res) => {
+router.post('/', requireIntegrationManagement, async (req, res) => {
   try {
     // Validate input
     const { error, value } = createIntegrationSchema.validate(req.body);
@@ -229,7 +227,7 @@ router.post('/', async (req, res) => {
 });
 
 // POST /api/integrations/:id/sync - Manually trigger sync
-router.post('/:id/sync', async (req, res) => {
+router.post('/:id/sync', requireIntegrationManagement, async (req, res) => {
   try {
     const integrationId = req.params.id;
 
@@ -261,6 +259,9 @@ router.post('/:id/sync', async (req, res) => {
     switch (integration.crm_type) {
       case 'sheets':
         syncResult = await syncGoogleSheets(integration, req.user);
+        break;
+      case 'hubspot':
+        syncResult = await syncHubSpot(integration, req.user);
         break;
       default:
         return res.status(400).json({
@@ -550,7 +551,7 @@ async function syncGoogleSheets(integration, user) {
 }
 
 // DELETE /api/integrations/:id - Delete integration
-router.delete('/:id', async (req, res) => {
+router.delete('/:id', requireIntegrationManagement, async (req, res) => {
   try {
     const integrationId = req.params.id;
 
@@ -568,10 +569,15 @@ router.delete('/:id', async (req, res) => {
       });
     }
 
-    // Soft delete by deactivating
+    // Soft delete by deactivating and clearing sensitive data
     await prisma.crm_integrations.update({
       where: { id: integrationId },
-      data: { is_active: false }
+      data: { 
+        is_active: false,
+        access_token: null,  // Clear the access token
+        refresh_token: null, // Clear the refresh token
+        updated_at: new Date()
+      }
     });
 
     // Log activity
@@ -598,6 +604,140 @@ router.delete('/:id', async (req, res) => {
     res.status(500).json({
       success: false,
       error: 'Failed to delete integration'
+    });
+  }
+});
+
+// Sync function for HubSpot
+async function syncHubSpot(integration, user) {
+  try {
+    console.log(`Starting HubSpot sync for integration ${integration.id}`);
+    
+    // Get HubSpot client
+    const client = await HubSpotService.getClient(integration.company_id);
+    
+    if (!client) {
+      throw new Error('HubSpot not connected or authentication failed');
+    }
+    
+    // Sync deals
+    const syncResult = await HubSpotService.syncDeals(integration.company_id, { limit: 100 });
+    
+    // Update integration last sync
+    await prisma.crm_integrations.update({
+      where: { id: integration.id },
+      data: {
+        last_sync: new Date(),
+        last_sync_deals_count: syncResult.deals_synced || 0,
+        total_deals_synced: (integration.total_deals_synced || 0) + (syncResult.deals_created || 0),
+        updated_at: new Date()
+      }
+    });
+    
+    // Log activity
+    await prisma.activity_log.create({
+      data: {
+        user_id: user.id,
+        company_id: user.company_id,
+        action: 'hubspot_sync',
+        entity_type: 'integration',
+        entity_id: integration.id,
+        context: {
+          deals_synced: syncResult.deals_synced,
+          deals_created: syncResult.deals_created,
+          deals_updated: syncResult.deals_updated,
+          errors: syncResult.errors
+        },
+        success: true
+      }
+    });
+    
+    return {
+      message: 'HubSpot sync completed successfully',
+      deals_synced: syncResult.deals_synced,
+      deals_created: syncResult.deals_created,
+      deals_updated: syncResult.deals_updated,
+      errors: syncResult.errors
+    };
+    
+  } catch (error) {
+    console.error('HubSpot sync error:', error);
+    
+    // Update integration with error
+    await prisma.crm_integrations.update({
+      where: { id: integration.id },
+      data: {
+        sync_errors: {
+          error: error.message,
+          timestamp: new Date().toISOString()
+        },
+        updated_at: new Date()
+      }
+    });
+    
+    throw error;
+  }
+}
+
+// GET /api/integrations/:id/deals - Get deals for a specific integration
+router.get('/:id/deals', requireIntegrationManagement, async (req, res) => {
+  try {
+    const integrationId = req.params.id;
+    
+    // Verify integration belongs to user's company
+    const integration = await prisma.crm_integrations.findFirst({
+      where: {
+        id: integrationId,
+        company_id: req.user.company_id
+      }
+    });
+    
+    if (!integration) {
+      return res.status(404).json({
+        success: false,
+        error: 'Integration not found'
+      });
+    }
+    
+    // Fetch deals based on integration source
+    // For now, we'll return all deals from the company
+    // In production, you'd filter by source_integration_id
+    const deals = await prisma.deals.findMany({
+      where: {
+        company_id: req.user.company_id,
+        // Optional: filter by CRM type if stored
+        ...(integration.crm_type === 'hubspot' ? { crm_type: 'hubspot' } : {})
+      },
+      include: {
+        user: {
+          select: {
+            id: true,
+            first_name: true,
+            last_name: true,
+            email: true
+          }
+        }
+      },
+      orderBy: {
+        created_at: 'desc'
+      }
+    });
+    
+    res.json({
+      success: true,
+      deals,
+      integration: {
+        id: integration.id,
+        type: integration.crm_type,
+        name: integration.name || integration.crm_type
+      }
+    });
+    
+  } catch (error) {
+    console.error('Get integration deals error:', error);
+    res.status(500).json({
+      success: false,
+      error: 'Failed to retrieve deals'
     });
   }
 });

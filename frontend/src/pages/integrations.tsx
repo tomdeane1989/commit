@@ -3,6 +3,8 @@ import Layout from '../components/layout';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useAuth } from '../hooks/useAuth';
 import api, { integrationsApi } from '../lib/api';
+import HubSpotIntegration from '../components/HubSpotIntegration';
+import DealsViewerModal from '../components/DealsViewerModal';
 import { 
   Plus, 
   Link2, 
@@ -44,6 +46,8 @@ const IntegrationsPage = () => {
   const queryClient = useQueryClient();
   const [showSetupModal, setShowSetupModal] = useState(false);
   const [selectedIntegration, setSelectedIntegration] = useState<Integration | null>(null);
+  const [showHubSpotIntegration, setShowHubSpotIntegration] = useState(false);
+  const [showDealsModal, setShowDealsModal] = useState<{ integration: Integration } | null>(null);
 
   // Fetch integrations
   const { data: integrationsData, isLoading } = useQuery({
@@ -156,9 +160,22 @@ const IntegrationsPage = () => {
           </button>
         </div>
 
-        {/* Integration Cards */}
+        {/* HubSpot Integration Card */}
+        <div className="mb-6">
+          <HubSpotIntegration 
+            onViewDeals={(integrationId) => {
+              // Find the HubSpot integration from integrations list
+              const hubspotIntegration = integrations.find((i: Integration) => i.id === integrationId);
+              if (hubspotIntegration) {
+                setShowDealsModal({ integration: hubspotIntegration });
+              }
+            }}
+          />
+        </div>
+
+        {/* Other Integration Cards */}
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-          {integrations.map((integration: Integration) => {
+          {integrations.filter((integration: Integration) => integration.crm_type !== 'hubspot').map((integration: Integration) => {
             const Icon = getIntegrationIcon(integration.crm_type);
             const isActive = integration.status === 'active';
             const hasErrors = integration.summary.has_errors;
@@ -166,7 +183,7 @@ const IntegrationsPage = () => {
             return (
               <div
                 key={integration.id}
-                className="bg-white rounded-lg shadow border border-gray-200 p-6 hover:shadow-md transition-shadow"
+                className="bg-white rounded-lg shadow border border-gray-200 p-6 hover:shadow-md transition-shadow group"
               >
                 {/* Header */}
                 <div className="flex items-start justify-between mb-4">
@@ -235,10 +252,20 @@ const IntegrationsPage = () => {
                       {integration.summary.total_deals}
                     </p>
                   </div>
-                  <div>
-                    <p className="text-xs font-medium text-gray-600">Last Sync</p>
-                    <p className="text-sm text-gray-700">
+                  <div 
+                    className="cursor-pointer hover:bg-blue-50 rounded-lg p-2 -m-1 transition-all hover:shadow-sm border border-transparent hover:border-blue-200"
+                    onClick={() => setShowDealsModal({ integration })}
+                    title="Click to view synced deals"
+                  >
+                    <div className="flex items-center justify-between">
+                      <p className="text-xs font-medium text-gray-600">Last Sync</p>
+                      <Eye className="w-3 h-3 text-blue-500 opacity-0 group-hover:opacity-100 transition-opacity" />
+                    </div>
+                    <p className="text-sm font-semibold text-gray-700 group-hover:text-blue-600 transition-colors">
                       {integration.summary.last_sync_count} deals
+                    </p>
+                    <p className="text-xs text-blue-600 mt-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                      Click to view details
                     </p>
                   </div>
                 </div>
@@ -270,7 +297,7 @@ const IntegrationsPage = () => {
                 Add Integration
               </h3>
               <p className="text-sm text-gray-600">
-                Connect Google Sheets, Salesforce, HubSpot, or other CRMs
+                Connect Google Sheets, Salesforce, or other CRMs
               </p>
             </div>
           </div>
@@ -316,6 +343,15 @@ const IntegrationsPage = () => {
           onSync={() => handleSync(selectedIntegration)}
         />
       )}
+
+      {/* Deals Viewer Modal */}
+      {showDealsModal && (
+        <DealsViewerModal
+          integrationId={showDealsModal.integration.id}
+          integrationName={getIntegrationName(showDealsModal.integration.crm_type)}
+          onClose={() => setShowDealsModal(null)}
+        />
+      )}
     </Layout>
   );
 };
@@ -346,13 +382,6 @@ const SetupModal = ({ onClose, onSuccess }: { onClose: () => void; onSuccess: ()
       id: 'salesforce',
       name: 'Salesforce',
       description: 'Connect to your Salesforce CRM',
-      icon: Database,
-      available: false
-    },
-    {
-      id: 'hubspot',
-      name: 'HubSpot',
-      description: 'Connect to your HubSpot CRM',
       icon: Database,
       available: false
     },

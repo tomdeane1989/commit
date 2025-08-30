@@ -19,6 +19,7 @@
     "backup:before:migrate": "node backup-database.js && npm run migrate"
   },
   "dependencies": {
+    "@hubspot/api-client": "^13.1.0",
     "@prisma/client": "^5.7.0",
     "axios": "^1.6.2",
     "bcrypt": "^5.1.1",

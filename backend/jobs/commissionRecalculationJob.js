@@ -1,6 +1,7 @@
 import cron from 'node-cron';
 import { PrismaClient } from '@prisma/client';
 import dealCommissionCalculator from '../services/dealCommissionCalculator.js';
+import HubSpotService from '../services/hubspot.js';
 
 const prisma = new PrismaClient();
 
@@ -154,6 +155,65 @@ export async function runCommissionRecalculation() {
 }
 
 /**
+ * HubSpot sync job
+ * Syncs deals from HubSpot for all active integrations
+ */
+export async function runHubSpotSync() {
+  const startTime = new Date();
+  console.log(`🔄 [${startTime.toISOString()}] Starting HubSpot sync job...`);
+  
+  try {
+    // Find all active HubSpot integrations
+    const activeIntegrations = await prisma.crm_integrations.findMany({
+      where: {
+        crm_type: 'hubspot',
+        is_active: true
+      }
+    });
+    
+    console.log(`📊 Found ${activeIntegrations.length} active HubSpot integrations to sync`);
+    
+    let totalSynced = 0;
+    let totalErrors = 0;
+    
+    for (const integration of activeIntegrations) {
+      try {
+        console.log(`  Syncing HubSpot for company: ${integration.company_id}`);
+        
+        // Perform sync with default options (limit 100 deals per sync)
+        const result = await HubSpotService.syncDeals(integration.company_id, {
+          limit: 100
+        });
+        
+        totalSynced += result.deals_synced || 0;
+        
+        console.log(`  ✅ Synced ${result.deals_synced} deals for company ${integration.company_id}`);
+        
+        // Log the sync activity (skip if no valid user)
+        // Activity logs require a valid user_id, so we skip logging for system jobs
+        
+      } catch (error) {
+        totalErrors++;
+        console.error(`  ❌ Error syncing company ${integration.company_id}:`, error.message);
+        
+        // Skip error logging for system jobs (no valid user_id)
+      }
+    }
+    
+    const endTime = new Date();
+    const duration = ((endTime.getTime() - startTime.getTime()) / 1000).toFixed(2);
+    
+    console.log(`✅ HubSpot sync completed in ${duration}s`);
+    console.log(`   - Total integrations: ${activeIntegrations.length}`);
+    console.log(`   - Total deals synced: ${totalSynced}`);
+    console.log(`   - Errors: ${totalErrors}`);
+    
+  } catch (error) {
+    console.error('❌ Error in HubSpot sync job:', error);
+  }
+}
+
+/**
  * Schedule the job to run daily at 2 AM
  */
 export function scheduleCommissionRecalculation() {
@@ -168,8 +228,55 @@ export function scheduleCommissionRecalculation() {
   console.log('📅 Commission recalculation job scheduled to run daily at 2:00 AM UTC');
 }
 
+/**
+ * Schedule HubSpot sync based on integration settings
+ */
+export function scheduleHubSpotSync() {
+  // Check for active HubSpot integrations and their sync frequencies
+  prisma.crm_integrations.findMany({
+    where: {
+      crm_type: 'hubspot',
+      is_active: true
+    }
+  }).then(integrations => {
+    if (integrations.length === 0) {
+      console.log('📊 No active HubSpot integrations found for scheduling');
+      return;
+    }
+    
+    // Determine the most frequent sync requirement
+    const frequencies = integrations.map(i => i.sync_frequency || 'daily');
+    const hasHourly = frequencies.includes('hourly');
+    const hasDaily = frequencies.includes('daily');
+    
+    if (hasHourly) {
+      // Run every hour at minute 15
+      cron.schedule('15 * * * *', async () => {
+        await runHubSpotSync();
+      }, {
+        scheduled: true,
+        timezone: "UTC"
+      });
+      console.log('🔄 HubSpot sync scheduled to run hourly at 15 minutes past the hour');
+    } else if (hasDaily) {
+      // Run daily at 3 AM UTC (1 hour after commission recalculation)
+      cron.schedule('0 3 * * *', async () => {
+        await runHubSpotSync();
+      }, {
+        scheduled: true,
+        timezone: "UTC"
+      });
+      console.log('🔄 HubSpot sync scheduled to run daily at 3:00 AM UTC');
+    }
+  }).catch(error => {
+    console.error('Error setting up HubSpot sync schedule:', error);
+  });
+}
+
 // Export for manual execution
 export default {
   runCommissionRecalculation,
-  scheduleCommissionRecalculation
+  scheduleCommissionRecalculation,
+  runHubSpotSync,
+  scheduleHubSpotSync
 };

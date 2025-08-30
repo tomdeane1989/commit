@@ -1,7 +1,7 @@
 import express from 'express';
 import { PrismaClient } from '@prisma/client';
 import { requireAdmin } from '../middleware/permissions.js';
-import { runCommissionRecalculation } from '../jobs/commissionRecalculationJob.js';
+import { runCommissionRecalculation, runHubSpotSync } from '../jobs/commissionRecalculationJob.js';
 // Removed seed-data.js import to prevent auto-execution on server start
 
 const router = express.Router();
@@ -44,6 +44,27 @@ router.post('/recalculate-commissions', requireAdmin, async (req, res) => {
     });
   } catch (error) {
     console.error('Error triggering commission recalculation:', error);
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+// Manual trigger for HubSpot sync job
+router.post('/trigger-hubspot-sync', requireAdmin, async (req, res) => {
+  try {
+    console.log('Manual HubSpot sync triggered by:', req.user.email);
+    
+    // Run the sync asynchronously
+    runHubSpotSync().catch(error => {
+      console.error('Error in manual HubSpot sync:', error);
+    });
+    
+    res.json({
+      success: true,
+      message: 'HubSpot sync started. Check server logs for progress.',
+      note: 'This job runs asynchronously and may take a few seconds to complete.'
+    });
+  } catch (error) {
+    console.error('Error triggering HubSpot sync:', error);
     res.status(500).json({ success: false, error: error.message });
   }
 });

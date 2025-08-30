@@ -226,6 +226,7 @@ model crm_integrations {
   header_row            Int       @default(1)
   data_start_row        Int       @default(2)
   column_mapping        Json?
+  sync_config           Json?
   ai_enabled            Boolean   @default(false)
   ai_model_version      String?
   total_deals_synced    Int       @default(0)
