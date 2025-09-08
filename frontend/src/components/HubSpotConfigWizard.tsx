@@ -232,7 +232,7 @@ const HubSpotConfigWizard: React.FC<HubSpotConfigWizardProps> = ({ onClose, onCo
               <Users className="w-12 h-12 text-blue-600 mx-auto mb-4" />
               <h3 className="text-lg font-semibold text-gray-900">Select Users to Import</h3>
               <p className="text-sm text-gray-600 mt-2">
-                Choose which HubSpot users should be imported to Upsales
+                Choose which HubSpot users should be imported to Commit
               </p>
             </div>
 
@@ -250,7 +250,7 @@ const HubSpotConfigWizard: React.FC<HubSpotConfigWizardProps> = ({ onClose, onCo
                 <div>
                   <span className="font-medium text-blue-900">Auto-create missing users</span>
                   <p className="text-sm text-blue-700 mt-1">
-                    Automatically create Upsales accounts for HubSpot users not in the system
+                    Automatically create Commit accounts for HubSpot users not in the system
                   </p>
                 </div>
               </label>
@@ -314,7 +314,7 @@ const HubSpotConfigWizard: React.FC<HubSpotConfigWizardProps> = ({ onClose, onCo
               <UserPlus className="w-12 h-12 text-blue-600 mx-auto mb-4" />
               <h3 className="text-lg font-semibold text-gray-900">Team Configuration</h3>
               <p className="text-sm text-gray-600 mt-2">
-                Configure how HubSpot teams map to Upsales groups
+                Configure how HubSpot teams map to Commit teams
               </p>
             </div>
 
@@ -330,9 +330,9 @@ const HubSpotConfigWizard: React.FC<HubSpotConfigWizardProps> = ({ onClose, onCo
                   className="mr-3 text-blue-600 rounded focus:ring-blue-500"
                 />
                 <div>
-                  <span className="font-medium text-blue-900">Map teams to groups</span>
+                  <span className="font-medium text-blue-900">Map HubSpot teams to Commit teams</span>
                   <p className="text-sm text-blue-700 mt-1">
-                    Automatically assign users to Upsales groups based on HubSpot teams
+                    Automatically assign users to Commit teams based on their HubSpot team membership
                   </p>
                 </div>
               </label>
@@ -409,7 +409,7 @@ const HubSpotConfigWizard: React.FC<HubSpotConfigWizardProps> = ({ onClose, onCo
                     ) : (
                       <X className="w-4 h-4 text-red-600 mr-2" />
                     )}
-                    <span>Map teams to groups</span>
+                    <span>Map teams</span>
                   </div>
                 </div>
               </div>

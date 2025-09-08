@@ -41,6 +41,8 @@ router.get('/status', authenticateToken, attachPermissions, async (req, res) => 
       last_sync: integration.last_sync,
       total_deals_synced: integration.total_deals_synced,
       last_sync_deals_count: integration.last_sync_deals_count,
+      last_sync_created: integration.last_sync_created || 0,
+      last_sync_updated: integration.last_sync_updated || 0,
       instance_url: integration.instance_url
     });
 

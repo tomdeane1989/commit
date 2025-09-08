@@ -228,7 +228,9 @@ class HubSpotService {
       });
 
       if (!response.ok) {
-        throw new Error('Failed to refresh access token');
+        const errorBody = await response.text();
+        console.error('Token refresh failed:', response.status, errorBody);
+        throw new Error(`Failed to refresh access token: ${response.status} - ${errorBody}`);
       }
 
       const tokenData = await response.json();
@@ -382,21 +384,26 @@ class HubSpotService {
       const syncConfig = integration?.sync_config || {};
       const syncOptions = syncConfig.syncOptions || {};
       
-      // Fetch HubSpot user data if auto-create is enabled and users are selected
+      // Fetch HubSpot user data if auto-create is enabled
       let hubspotUsers = [];
-      if (syncOptions.autoCreateUsers && syncConfig.users && syncConfig.users.length > 0) {
-        console.log(`Fetching data for ${syncConfig.users.length} selected HubSpot users...`);
+      if (syncOptions.autoCreateUsers) {
         try {
-          // Fetch all users once
+          // Fetch all users from HubSpot
           const allUsers = await this.getUsers(companyId);
           
-          // Filter to only the selected users
-          hubspotUsers = allUsers.filter(user => 
-            syncConfig.users.includes(user.id) || 
-            syncConfig.users.includes(user.id.toString())
-          );
-          
-          console.log(`Found ${hubspotUsers.length} matching users from HubSpot`);
+          // If specific users are selected, filter to only those users
+          if (syncConfig.users && syncConfig.users.length > 0) {
+            console.log(`Filtering to ${syncConfig.users.length} selected HubSpot users...`);
+            hubspotUsers = allUsers.filter(user => 
+              syncConfig.users.includes(user.id) || 
+              syncConfig.users.includes(user.id.toString())
+            );
+            console.log(`Found ${hubspotUsers.length} matching users from HubSpot`);
+          } else {
+            // No specific users selected - use all HubSpot users for auto-creation
+            console.log(`Auto-creating users: fetched ${allUsers.length} users from HubSpot`);
+            hubspotUsers = allUsers;
+          }
           
           // Add the fetched users to syncConfig for use in mapDealOwner
           syncConfig.hubspotUsers = hubspotUsers;
@@ -435,13 +442,138 @@ class HubSpotService {
       const deals = response.results || [];
       const syncedDeals = [];
       const skippedDeals = [];
+      let dealsCreated = 0;
+      let dealsUpdated = 0;
 
+      // Pre-fetch all company associations in batch to avoid rate limiting
+      const dealCompanyMap = new Map();
+      
+      // Filter deals that should be synced first
+      const dealsToSync = deals.filter(deal => this.shouldSyncDeal(deal, syncConfig));
+      
+      if (dealsToSync.length > 0) {
+        console.log(`Pre-fetching company associations for ${dealsToSync.length} deals...`);
+        
+        try {
+          // Batch fetch associations for all deals at once
+          // Filter out any deals without valid IDs and ensure IDs are strings
+          const dealIds = dealsToSync
+            .filter(deal => deal.id || deal.properties?.hs_object_id)
+            .map(deal => ({ id: String(deal.id || deal.properties.hs_object_id) }));
+          
+          if (dealIds.length === 0) {
+            console.log('Warning: No valid deal IDs found for association fetching');
+          }
+          
+          // HubSpot batch API can handle up to 100 items at once
+          const batchSize = 100;
+          for (let i = 0; i < dealIds.length; i += batchSize) {
+            const batch = dealIds.slice(i, i + batchSize);
+            
+            try {
+              console.log(`  Fetching associations for batch of ${batch.length} deals...`);
+              // HubSpot batch associations API expects fromObjectType, toObjectType, and batch
+              const associations = await client.crm.associations.batchApi.read(
+                'deals',
+                'companies', 
+                { inputs: batch }
+              );
+              
+              // Log what we got back
+              if (associations.results) {
+                console.log(`  Got ${associations.results.length} association results`);
+              }
+              if (associations.errors && associations.errors.length > 0) {
+                // Filter out "no association" errors which are expected
+                const realErrors = associations.errors.filter(e => 
+                  !e.message?.includes('No company is associated')
+                );
+                const noAssocCount = associations.errors.length - realErrors.length;
+                if (noAssocCount > 0) {
+                  console.log(`  ${noAssocCount} deals have no company associations`);
+                }
+                if (realErrors.length > 0) {
+                  console.log(`  ${realErrors.length} actual errors in batch`);
+                }
+              }
+              
+              // Process association results
+              for (const result of associations.results || []) {
+                // HubSpot returns _from with underscore
+                const fromObj = result._from || result.from;
+                if (result && fromObj && result.to && result.to.length > 0) {
+                  // Store the first associated company ID
+                  dealCompanyMap.set(fromObj.id, result.to[0].id);
+                  console.log(`    Mapped deal ${fromObj.id} to company ${result.to[0].id}`);
+                }
+              }
+            } catch (batchError) {
+              console.error(`Failed to fetch associations for batch ${i / batchSize + 1}:`, batchError.message);
+              console.error('Error stack:', batchError.stack);
+              // Skip batch fetching on error and fall back to individual fetching
+            }
+          }
+          
+          // Now fetch all company details in batch
+          const companyIds = Array.from(dealCompanyMap.values());
+          if (companyIds.length > 0) {
+            console.log(`Fetching details for ${companyIds.length} companies...`);
+            
+            const companyDetailsMap = new Map();
+            
+            // Fetch companies in batches
+            for (let i = 0; i < companyIds.length; i += batchSize) {
+              const batch = companyIds.slice(i, i + batchSize);
+              
+              try {
+                const companiesResponse = await client.crm.companies.batchApi.read({
+                  inputs: batch.map(id => ({ id })),
+                  properties: ['name']
+                });
+                
+                for (const company of companiesResponse.results || []) {
+                  companyDetailsMap.set(company.id, company.properties.name || 'Unknown Company');
+                }
+              } catch (batchError) {
+                console.error(`Failed to fetch companies for batch ${i / batchSize + 1}:`, batchError.message);
+              }
+            }
+            
+            // Map deal IDs to company names
+            for (const [dealId, companyId] of dealCompanyMap.entries()) {
+              const companyName = companyDetailsMap.get(companyId);
+              if (companyName) {
+                dealCompanyMap.set(dealId, companyName);
+              }
+            }
+          }
+          
+          console.log(`Successfully pre-fetched ${dealCompanyMap.size} company associations`);
+        } catch (error) {
+          console.error('Error pre-fetching company associations:', error.message);
+          // Continue with sync even if pre-fetch fails
+        }
+      }
+
+      // Process all deals
       for (const hubspotDeal of deals) {
         // Apply filters based on configuration
         const shouldSync = this.shouldSyncDeal(hubspotDeal, syncConfig);
         
         if (shouldSync) {
-          const syncedDeal = await this.upsertDeal(companyId, hubspotDeal, syncConfig);
+          // Pass the pre-fetched company name if available
+          const preloadedCompanyName = dealCompanyMap.get(hubspotDeal.id);
+          const syncedDeal = await this.upsertDeal(companyId, hubspotDeal, syncConfig, preloadedCompanyName);
+          
+          // Track creates vs updates
+          if (syncedDeal._isNew) {
+            dealsCreated++;
+          } else {
+            dealsUpdated++;
+          }
+          
+          // Remove the temporary flag before adding to results
+          delete syncedDeal._isNew;
           syncedDeals.push(syncedDeal);
         } else {
           skippedDeals.push({
@@ -452,7 +584,7 @@ class HubSpotService {
         }
       }
 
-      // Update last sync time
+      // Update last sync time with detailed tracking
       await prisma.crm_integrations.updateMany({
         where: {
           company_id: companyId,
@@ -462,17 +594,21 @@ class HubSpotService {
         data: {
           last_sync: new Date(),
           last_sync_deals_count: syncedDeals.length,
+          last_sync_created: dealsCreated,
+          last_sync_updated: dealsUpdated,
           total_deals_synced: {
-            increment: syncedDeals.length
+            increment: dealsCreated  // Only increment total by NEW deals
           }
         }
       });
 
-      console.log(`Synced ${syncedDeals.length} deals, skipped ${skippedDeals.length} deals based on filters`);
+      console.log(`Synced ${syncedDeals.length} deals (${dealsCreated} created, ${dealsUpdated} updated), skipped ${skippedDeals.length} deals based on filters`);
 
       return {
         success: true,
         deals_synced: syncedDeals.length,
+        deals_created: dealsCreated,
+        deals_updated: dealsUpdated,
         deals_skipped: skippedDeals.length,
         deals: syncedDeals,
         skipped: skippedDeals,
@@ -551,7 +687,7 @@ class HubSpotService {
   }
 
   // Upsert a single deal
-  async upsertDeal(companyId, hubspotDeal, syncConfig = {}) {
+  async upsertDeal(companyId, hubspotDeal, syncConfig = {}, preloadedCompanyName = null) {
     try {
       const properties = hubspotDeal.properties;
       
@@ -561,9 +697,62 @@ class HubSpotService {
       // Find or get user mapping based on configuration
       const userId = await this.mapDealOwner(companyId, properties.hubspot_owner_id, syncConfig);
 
+      // Try to get company name from various sources
+      let companyName = 'Unknown Company';
+      
+      // First priority: Use preloaded company name from batch fetch
+      if (preloadedCompanyName) {
+        companyName = preloadedCompanyName;
+      }
+      // Second priority: Check if we have a company property directly (some deals might have it)
+      else if (properties.company && properties.company.trim() !== '') {
+        companyName = properties.company;
+      } 
+      // Last resort: Try to fetch from associations (only if not preloaded)
+      else if (hubspotDeal.id && !preloadedCompanyName) {
+        try {
+          const client = await this.getClient(companyId);
+          // Get associated companies
+          const associations = await client.crm.associations.batchApi.read('deals', 'companies', {
+            inputs: [{ id: hubspotDeal.id }]
+          });
+          
+          // Check for errors in the response
+          if (associations.errors && associations.errors.length > 0) {
+            // No association found is not an error for our purposes
+            const realErrors = associations.errors.filter(e => 
+              !e.message?.includes('No company is associated')
+            );
+            if (realErrors.length > 0) {
+              console.error(`Association errors for deal ${hubspotDeal.id}:`, realErrors);
+            }
+          }
+          
+          if (associations.results?.[0]?.to?.length > 0) {
+            const associatedCompanyId = associations.results[0].to[0].id;
+            try {
+              // Fetch company details with retry on rate limit
+              const company = await client.crm.companies.basicApi.getById(associatedCompanyId, ['name']);
+              companyName = company.properties.name || 'Unknown Company';
+              console.log(`✅ Fetched company "${companyName}" for deal "${properties.dealname}"`);
+            } catch (companyError) {
+              console.error(`Failed to fetch company ${associatedCompanyId}:`, companyError.message);
+              // Don't fail the whole sync for one company fetch error
+            }
+          } else {
+            // No company association - this is expected for some deals
+            console.log(`ℹ️ No company association for deal "${properties.dealname}"`);
+          }
+        } catch (assocError) {
+          console.error(`Could not fetch associations for deal ${hubspotDeal.id}:`, assocError.message);
+          // Continue with Unknown Company rather than failing
+        }
+      }
+
       const dealData = {
         deal_name: properties.dealname || 'Untitled Deal',
-        account_name: properties.company || 'Unknown Company',
+        // Use the company name we determined above
+        account_name: companyName,
         amount: parseFloat(properties.amount || 0),
         status: status,
         stage: properties.dealstage,
@@ -586,15 +775,30 @@ class HubSpotService {
       });
 
       let deal;
+      let isNew = false;
+      
       if (existingDeal) {
-        // Update existing deal
+        // Update existing deal - preserve user_id unless we have a reason to change it
+        // Don't change the owner just because sync config changed
+        const updateData = {
+          ...dealData,
+          updated_at: new Date()
+        };
+        
+        // Only update user_id if it's actually different in HubSpot
+        // For now, preserve existing user_id during updates
+        delete updateData.user_id;
+        
+        // We could optionally update if the HubSpot owner actually changed:
+        // if (properties.hubspot_owner_id && properties.hubspot_owner_id !== existingDeal.last_known_owner_id) {
+        //   updateData.user_id = userId;
+        // }
+        
         deal = await prisma.deals.update({
           where: { id: existingDeal.id },
-          data: {
-            ...dealData,
-            updated_at: new Date()
-          }
+          data: updateData
         });
+        isNew = false;
       } else {
         // Create new deal
         deal = await prisma.deals.create({
@@ -604,8 +808,75 @@ class HubSpotService {
             updated_at: new Date()
           }
         });
+        isNew = true;
       }
 
+      // Add metadata about whether this was a create or update
+      deal._isNew = isNew;
+      
+      // Check if deal is closed_won and calculate commission if needed
+      const normalizedStage = deal.stage?.toLowerCase().replace(/[\s_-]/g, '');
+      if (normalizedStage === 'closedwon') {
+        // Calculate commission if not already calculated
+        if (!deal.commission_amount && deal.amount > 0) {
+          const dealCommissionCalculator = (await import('./dealCommissionCalculator.js')).default;
+          deal = await dealCommissionCalculator.calculateDealCommission(deal.id);
+          console.log(`💰 Calculated commission for ${deal.deal_name}: £${deal.commission_amount}`);
+        }
+        
+        // Now create commission record if we have a commission amount
+        if (deal.commission_amount) {
+          // Check if commission record already exists
+          const existingCommission = await prisma.commissions.findUnique({
+            where: { deal_id: deal.id }
+          });
+          
+          if (!existingCommission) {
+          // Find the active target for this deal's period
+          const target = await prisma.targets.findFirst({
+            where: {
+              user_id: deal.user_id,
+              is_active: true,
+              period_start: { lte: deal.close_date },
+              period_end: { gte: deal.close_date }
+            }
+          });
+          
+          // Create commission audit record
+          try {
+            await prisma.commissions.create({
+              data: {
+                deal_id: deal.id,
+                user_id: deal.user_id,
+                company_id: deal.company_id,
+                
+                // Snapshot data
+                deal_amount: deal.amount,
+                commission_rate: deal.commission_rate || 0,
+                commission_amount: deal.commission_amount,
+                target_id: target?.id,
+                target_name: target ? `${target.period_type} Target` : 'No Target',
+                period_start: target?.period_start || deal.close_date,
+                period_end: target?.period_end || deal.close_date,
+                
+                // Workflow fields
+                status: 'calculated',
+                calculated_at: deal.commission_calculated_at || new Date(),
+                calculated_by: deal.user_id,
+                
+                // Notes
+                notes: `Auto-created from HubSpot sync for closed deal`
+              }
+            });
+            console.log(`✅ Created commission record for closed deal: ${deal.deal_name}`);
+          } catch (error) {
+            console.error(`Failed to create commission record for deal ${deal.id}:`, error);
+            // Don't fail the sync if commission record creation fails
+          }
+          }
+        }
+      }
+      
       return deal;
 
     } catch (error) {

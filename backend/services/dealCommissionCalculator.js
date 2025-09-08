@@ -24,7 +24,8 @@ class DealCommissionCalculator {
     }
 
     // Only calculate for closed_won deals (handle case variations)
-    if (deal.stage?.toLowerCase() !== 'closed won' && deal.stage?.toLowerCase() !== 'closed_won') {
+    const stage = deal.stage?.toLowerCase().replace(/[\s_-]/g, ''); // Normalize: remove spaces, underscores, hyphens
+    if (stage !== 'closedwon') {
       console.log(`Deal ${dealId} is not closed won (stage: ${deal.stage}), skipping commission calculation`);
       return deal;
     }
@@ -93,7 +94,7 @@ class DealCommissionCalculator {
     const dealsToUpdate = await prisma.deals.findMany({
       where: {
         user_id: target.user_id,
-        stage: { in: ['closed_won', 'Closed Won'] },
+        stage: { in: ['closed_won', 'Closed Won', 'closedwon'] }, // Include all variations
         close_date: {
           gte: target.period_start,
           lte: target.period_end

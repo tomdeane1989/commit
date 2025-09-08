@@ -231,6 +231,8 @@ model crm_integrations {
   ai_model_version      String?
   total_deals_synced    Int       @default(0)
   last_sync_deals_count Int       @default(0)
+  last_sync_created     Int       @default(0)
+  last_sync_updated     Int       @default(0)
   sync_errors           Json?
   created_at            DateTime  @default(now())
   updated_at            DateTime  @updatedAt

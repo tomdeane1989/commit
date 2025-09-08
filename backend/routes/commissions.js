@@ -81,7 +81,7 @@ router.get('/', async (req, res) => {
     const deals = await prisma.deals.findMany({
       where: {
         user_id: targetUserId,
-        stage: { in: ['closed_won', 'Closed Won'] },
+        stage: { in: ['closed_won', 'Closed Won', 'closedwon'] }, // Include HubSpot format
         ...dateRange
       },
       include: {
@@ -465,11 +465,11 @@ router.get('/team', async (req, res) => {
       };
     }
 
-    // Get all team deals (handle case variations)
+    // Get all team deals (handle case variations including HubSpot format)
     const teamDeals = await prisma.deals.findMany({
       where: {
         user_id: { in: teamMemberIds },
-        stage: { in: ['closed_won', 'Closed Won'] },
+        stage: { in: ['closed_won', 'Closed Won', 'closedwon'] }, // Include HubSpot format
         ...dateRange
       },
       include: {

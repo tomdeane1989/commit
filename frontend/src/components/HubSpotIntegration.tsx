@@ -224,7 +224,7 @@ const HubSpotIntegration: React.FC<HubSpotIntegrationProps> = ({ onClose, onView
               <div className="bg-gray-50 rounded-lg p-4">
                 <div className="flex items-center space-x-2 mb-2">
                   <Database className="w-4 h-4 text-gray-400" />
-                  <span className="text-sm text-gray-500">Total Deals Synced</span>
+                  <span className="text-sm text-gray-500">Total Deals</span>
                 </div>
                 <p className="text-2xl font-semibold text-gray-900">
                   {status.total_deals_synced || 0}
@@ -248,9 +248,16 @@ const HubSpotIntegration: React.FC<HubSpotIntegrationProps> = ({ onClose, onView
                   {formatDate(status.last_sync)}
                 </p>
                 {status.last_sync_deals_count !== undefined && (
-                  <p className="text-xs text-gray-500 hover:text-blue-500 mt-1 transition-colors">
-                    {status.last_sync_deals_count} deals synced
-                  </p>
+                  <div className="text-xs text-gray-500 hover:text-blue-500 mt-1 transition-colors">
+                    <p>{status.last_sync_deals_count} deals processed</p>
+                    {(status.last_sync_created > 0 || status.last_sync_updated > 0) && (
+                      <p className="mt-0.5">
+                        {status.last_sync_created > 0 && <span className="text-green-600">{status.last_sync_created} created</span>}
+                        {status.last_sync_created > 0 && status.last_sync_updated > 0 && <span className="mx-1">•</span>}
+                        {status.last_sync_updated > 0 && <span className="text-blue-600">{status.last_sync_updated} updated</span>}
+                      </p>
+                    )}
+                  </div>
                 )}
                 {onViewDeals && integrationData?.id && (
                   <div className="mt-2 flex items-center text-xs text-blue-600">

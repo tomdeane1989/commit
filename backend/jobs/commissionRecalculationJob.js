@@ -18,7 +18,7 @@ export async function runCommissionRecalculation() {
     // Find all closed_won deals without commission that have an active target
     const dealsWithoutCommission = await prisma.deals.findMany({
       where: {
-        stage: { in: ['closed_won', 'Closed Won'] },
+        stage: { in: ['closed_won', 'Closed Won', 'closedwon'] }, // Include all variations
         commission_amount: null
       },
       include: {
