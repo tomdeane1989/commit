@@ -212,6 +212,15 @@ model forecasts {
   @@index([target_id])
 }
 
+model webhook_events {
+  id           String   @id @default(cuid())
+  event_id     String   @unique
+  processed_at DateTime @default(now())
+  expires_at   DateTime // Auto-cleanup after 30 days
+  
+  @@index([expires_at])
+}
+
 model crm_integrations {
   id                    String    @id @default(cuid())
   crm_type              String
@@ -234,6 +243,12 @@ model crm_integrations {
   last_sync_created     Int       @default(0)
   last_sync_updated     Int       @default(0)
   sync_errors           Json?
+  last_modified_sync    DateTime? // Track last modified date for incremental sync
+  sync_cursor           String?   // Pagination cursor for resuming large syncs
+  sync_status           String    @default("idle") // idle, syncing, error
+  last_error_message    String?   // Last error message for debugging
+  error_count           Int       @default(0) // Error count for monitoring
+  property_mappings     Json?     // Custom property mappings
   created_at            DateTime  @default(now())
   updated_at            DateTime  @updatedAt
   company_id            String

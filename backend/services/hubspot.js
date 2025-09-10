@@ -367,6 +367,253 @@ class HubSpotService {
     }
   }
 
+  // Process sync results - common logic for both full and incremental sync
+  async processSyncResults(companyId, deals, integration) {
+    const syncConfig = integration?.sync_config || {};
+    const syncedDeals = [];
+    const skippedDeals = [];
+    let dealsCreated = 0;
+    let dealsUpdated = 0;
+    
+    // Pre-fetch company associations if needed
+    const dealCompanyMap = await this.batchFetchCompanyAssociations(deals);
+    
+    // Process each deal
+    for (const hubspotDeal of deals) {
+      // Apply filters based on configuration
+      const shouldSync = this.shouldSyncDeal(hubspotDeal, syncConfig);
+      
+      if (shouldSync) {
+        // Pass the pre-fetched company name if available
+        const preloadedCompanyName = dealCompanyMap.get(hubspotDeal.id);
+        const syncedDeal = await this.upsertDeal(companyId, hubspotDeal, syncConfig, preloadedCompanyName);
+        
+        // Track creates vs updates
+        if (syncedDeal._isNew) {
+          dealsCreated++;
+        } else {
+          dealsUpdated++;
+        }
+        
+        // Remove the temporary flag before adding to results
+        delete syncedDeal._isNew;
+        syncedDeals.push(syncedDeal);
+      } else {
+        skippedDeals.push({
+          id: hubspotDeal.properties.hs_object_id,
+          name: hubspotDeal.properties.dealname,
+          reason: 'Filtered by sync configuration'
+        });
+      }
+    }
+    
+    return {
+      success: true,
+      deals_synced: syncedDeals.length,
+      deals_created: dealsCreated,
+      deals_updated: dealsUpdated,
+      deals_skipped: skippedDeals.length,
+      deals: syncedDeals,
+      skipped: skippedDeals
+    };
+  }
+  
+  // Batch fetch company associations for performance
+  async batchFetchCompanyAssociations(deals) {
+    const dealCompanyMap = new Map();
+    
+    if (deals.length === 0) return dealCompanyMap;
+    
+    try {
+      const client = await this.getClient(deals[0].companyId);
+      const dealIds = deals
+        .filter(deal => deal.id || deal.properties?.hs_object_id)
+        .map(deal => ({ id: String(deal.id || deal.properties.hs_object_id) }));
+      
+      if (dealIds.length === 0) return dealCompanyMap;
+      
+      // Batch fetch associations
+      const batchSize = 100;
+      for (let i = 0; i < dealIds.length; i += batchSize) {
+        const batch = dealIds.slice(i, i + batchSize);
+        
+        try {
+          const associations = await client.crm.associations.batchApi.read(
+            'deals',
+            'companies', 
+            { inputs: batch }
+          );
+          
+          // Process association results
+          for (const result of associations.results || []) {
+            const fromObj = result._from || result.from;
+            if (result && fromObj && result.to && result.to.length > 0) {
+              dealCompanyMap.set(fromObj.id, result.to[0].id);
+            }
+          }
+        } catch (batchError) {
+          console.error(`Failed to fetch associations batch:`, batchError.message);
+        }
+      }
+      
+      // Fetch company details
+      const companyIds = Array.from(dealCompanyMap.values());
+      if (companyIds.length > 0) {
+        const companyDetailsMap = new Map();
+        
+        for (let i = 0; i < companyIds.length; i += batchSize) {
+          const batch = companyIds.slice(i, i + batchSize);
+          
+          try {
+            const companiesResponse = await client.crm.companies.batchApi.read({
+              inputs: batch.map(id => ({ id })),
+              properties: ['name']
+            });
+            
+            for (const company of companiesResponse.results || []) {
+              companyDetailsMap.set(company.id, company.properties.name || 'Unknown Company');
+            }
+          } catch (batchError) {
+            console.error(`Failed to fetch companies batch:`, batchError.message);
+          }
+        }
+        
+        // Map deal IDs to company names
+        for (const [dealId, companyId] of dealCompanyMap.entries()) {
+          const companyName = companyDetailsMap.get(companyId);
+          if (companyName) {
+            dealCompanyMap.set(dealId, companyName);
+          }
+        }
+      }
+    } catch (error) {
+      console.error('Error batch fetching company associations:', error);
+    }
+    
+    return dealCompanyMap;
+  }
+
+  // Sync deals incrementally based on last modified date
+  async syncDealsIncremental(companyId, options = {}) {
+    try {
+      const client = await this.getClient(companyId);
+      
+      // Get integration configuration
+      const integration = await prisma.crm_integrations.findFirst({
+        where: { 
+          company_id: companyId, 
+          crm_type: 'hubspot', 
+          is_active: true 
+        }
+      });
+      
+      if (!integration) {
+        throw new Error('HubSpot integration not found');
+      }
+      
+      // Determine the starting point for incremental sync
+      const lastModifiedSync = options.since || integration.last_modified_sync || 
+        new Date(Date.now() - 24 * 60 * 60 * 1000); // Default to 24 hours ago
+      
+      // Build search request for modified deals
+      const searchRequest = {
+        filterGroups: [{
+          filters: [{
+            propertyName: 'hs_lastmodifieddate',
+            operator: 'GTE',
+            value: lastModifiedSync.getTime().toString()
+          }]
+        }],
+        properties: [
+          'dealname',
+          'amount',
+          'dealstage',
+          'closedate',
+          'createdate',
+          'hs_object_id',
+          'pipeline',
+          'hubspot_owner_id',
+          'hs_lastmodifieddate'
+        ],
+        sorts: [{ propertyName: 'hs_lastmodifieddate', direction: 'ASCENDING' }],
+        limit: options.limit || 100,
+        after: options.after || integration.sync_cursor || '0'
+      };
+      
+      // Add custom properties if configured
+      if (integration.property_mappings) {
+        const customProps = Object.keys(integration.property_mappings);
+        searchRequest.properties.push(...customProps);
+      }
+      
+      console.log(`🔄 Incremental sync: fetching deals modified since ${lastModifiedSync.toISOString()}`);
+      
+      // Search for modified deals
+      const response = await client.crm.deals.searchApi.doSearch(searchRequest);
+      
+      // Process results using existing sync logic
+      const syncResult = await this.processSyncResults(
+        companyId, 
+        response.results || [], 
+        integration
+      );
+      
+      // Update sync tracking
+      let newLastModified = lastModifiedSync;
+      if (response.results && response.results.length > 0) {
+        const lastDeal = response.results[response.results.length - 1];
+        if (lastDeal.properties.hs_lastmodifieddate) {
+          newLastModified = new Date(parseInt(lastDeal.properties.hs_lastmodifieddate));
+        }
+      }
+      
+      // Update integration record
+      await prisma.crm_integrations.update({
+        where: { id: integration.id },
+        data: {
+          last_sync: new Date(),
+          last_modified_sync: newLastModified,
+          sync_cursor: response.paging?.next?.after || null,
+          last_sync_deals_count: syncResult.deals_synced,
+          last_sync_created: syncResult.deals_created,
+          last_sync_updated: syncResult.deals_updated,
+          total_deals_synced: {
+            increment: syncResult.deals_created
+          },
+          sync_status: 'idle',
+          error_count: 0
+        }
+      });
+      
+      console.log(`✅ Incremental sync complete: ${syncResult.deals_synced} deals processed`);
+      
+      return {
+        ...syncResult,
+        has_more: response.paging?.next?.after ? true : false,
+        next_cursor: response.paging?.next?.after,
+        last_modified: newLastModified
+      };
+      
+    } catch (error) {
+      console.error('Error in incremental sync:', error);
+      
+      // Update error status
+      await prisma.crm_integrations.updateMany({
+        where: {
+          company_id: companyId,
+          crm_type: 'hubspot'
+        },
+        data: {
+          sync_status: 'error',
+          last_error_message: error.message,
+          error_count: { increment: 1 }
+        }
+      });
+      
+      throw error;
+    }
+  }
+
   // Sync deals from HubSpot
   async syncDeals(companyId, options = {}) {
     try {

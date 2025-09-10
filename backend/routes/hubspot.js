@@ -5,6 +5,7 @@ import Joi from 'joi';
 import HubSpotService from '../services/hubspot.js';
 import { attachPermissions, requireAdmin } from '../middleware/permissions.js';
 import { authenticateToken } from '../middleware/secureAuth.js';
+import { validateHubSpotSignature, checkWebhookEventDuplicate } from '../middleware/hubspotWebhook.js';
 
 const router = express.Router();
 const prisma = new PrismaClient();
@@ -13,7 +14,9 @@ const prisma = new PrismaClient();
 const syncOptionsSchema = Joi.object({
   limit: Joi.number().min(1).max(100).optional(),
   after: Joi.string().optional(),
-  customProperties: Joi.array().items(Joi.string()).optional()
+  customProperties: Joi.array().items(Joi.string()).optional(),
+  fullSync: Joi.boolean().optional().default(false), // Use incremental by default
+  since: Joi.date().optional() // Override last modified date for sync
 });
 
 /**
@@ -156,8 +159,21 @@ router.post('/sync', authenticateToken, attachPermissions, requireAdmin, async (
       return res.status(400).json({ error: 'HubSpot integration not configured' });
     }
 
-    // Perform sync
-    const result = await HubSpotService.syncDeals(req.user.company_id, value);
+    // Mark integration as syncing
+    await prisma.crm_integrations.update({
+      where: { id: integration.id },
+      data: { sync_status: 'syncing' }
+    });
+
+    // Perform sync - use incremental by default unless fullSync is requested
+    let result;
+    if (value.fullSync) {
+      console.log('🔄 Performing full sync...');
+      result = await HubSpotService.syncDeals(req.user.company_id, value);
+    } else {
+      console.log('🔄 Performing incremental sync...');
+      result = await HubSpotService.syncDealsIncremental(req.user.company_id, value);
+    }
 
     // Log sync activity
     await prisma.activity_log.create({
@@ -490,6 +506,164 @@ router.put('/field-mapping', authenticateToken, attachPermissions, requireAdmin,
   } catch (error) {
     console.error('Error updating field mapping:', error);
     res.status(500).json({ error: 'Failed to update field mapping' });
+  }
+});
+
+/**
+ * POST /api/integrations/hubspot/sync/trigger
+ * Manually trigger sync job (admin only)
+ */
+router.post('/sync/trigger', authenticateToken, attachPermissions, requireAdmin, async (req, res) => {
+  try {
+    const { companyId } = req.body;
+    
+    // Import the sync job module dynamically
+    const { triggerManualSync } = await import('../jobs/hubspotSyncJob.js');
+    
+    // Trigger sync for specific company or all
+    const result = await triggerManualSync(companyId || req.user.company_id);
+    
+    res.json({
+      success: true,
+      message: 'Sync job triggered successfully',
+      result
+    });
+    
+  } catch (error) {
+    console.error('Error triggering sync:', error);
+    res.status(500).json({ 
+      error: 'Failed to trigger sync',
+      message: error.message
+    });
+  }
+});
+
+/**
+ * GET /api/integrations/hubspot/sync/status
+ * Get sync job status (admin only)
+ */
+router.get('/sync/status', authenticateToken, attachPermissions, requireAdmin, async (req, res) => {
+  try {
+    // Import the sync job module dynamically
+    const { getSyncJobStatus } = await import('../jobs/hubspotSyncJob.js');
+    
+    const status = await getSyncJobStatus();
+    
+    res.json({
+      success: true,
+      status
+    });
+    
+  } catch (error) {
+    console.error('Error getting sync status:', error);
+    res.status(500).json({ 
+      error: 'Failed to get sync status',
+      message: error.message
+    });
+  }
+});
+
+/**
+ * POST /api/integrations/hubspot/webhook
+ * Process HubSpot webhook events (with signature validation)
+ */
+router.post('/webhook', validateHubSpotSignature, async (req, res) => {
+  try {
+    const events = req.body;
+    
+    // HubSpot sends an array of events
+    if (!Array.isArray(events)) {
+      return res.status(400).json({ error: 'Invalid webhook payload' });
+    }
+    
+    console.log(`📨 Received ${events.length} webhook events from HubSpot`);
+    
+    // Process each event
+    for (const event of events) {
+      try {
+        // Check for duplicate events
+        if (event.eventId) {
+          const isDuplicate = await checkWebhookEventDuplicate(event.eventId, prisma);
+          if (isDuplicate) {
+            console.log(`Skipping duplicate event: ${event.eventId}`);
+            continue;
+          }
+        }
+        
+        // Extract event details
+        const { subscriptionType, objectId, propertyName, propertyValue, changeSource } = event;
+        
+        console.log(`Processing webhook: ${subscriptionType} for deal ${objectId}`);
+        
+        // Find the company associated with this webhook
+        // For now, we'll process for all active integrations
+        const integrations = await prisma.crm_integrations.findMany({
+          where: {
+            crm_type: 'hubspot',
+            is_active: true
+          }
+        });
+        
+        for (const integration of integrations) {
+          try {
+            switch (subscriptionType) {
+              case 'deal.creation':
+                // New deal created - sync it
+                console.log(`New deal created: ${objectId}`);
+                await HubSpotService.syncSingleDeal(integration.company_id, objectId);
+                break;
+                
+              case 'deal.propertyChange':
+                // Deal property changed - update it
+                console.log(`Deal property changed: ${propertyName} = ${propertyValue}`);
+                await HubSpotService.syncSingleDeal(integration.company_id, objectId);
+                break;
+                
+              case 'deal.deletion':
+                // Deal deleted - mark as deleted
+                console.log(`Deal deleted: ${objectId}`);
+                await prisma.deals.updateMany({
+                  where: {
+                    crm_id: objectId,
+                    company_id: integration.company_id
+                  },
+                  data: {
+                    status: 'deleted',
+                    updated_at: new Date()
+                  }
+                });
+                break;
+                
+              default:
+                console.log(`Unknown subscription type: ${subscriptionType}`);
+            }
+          } catch (integrationError) {
+            console.error(`Error processing webhook for company ${integration.company_id}:`, integrationError);
+            // Continue processing for other companies
+          }
+        }
+        
+      } catch (eventError) {
+        console.error(`Error processing event ${event.eventId}:`, eventError);
+        // Continue processing other events
+      }
+    }
+    
+    // Return success to HubSpot
+    res.status(200).json({ 
+      success: true,
+      processed: events.length
+    });
+    
+  } catch (error) {
+    console.error('Webhook processing error:', error);
+    // Return 200 to prevent HubSpot from retrying
+    // Log the error for investigation
+    res.status(200).json({ 
+      success: false,
+      error: 'Internal processing error',
+      message: 'Event received but processing failed'
+    });
   }
 });
 
