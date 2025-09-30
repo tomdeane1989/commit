@@ -429,7 +429,8 @@ router.post('/', async (req, res) => {
       data: {
         ...value,
         user_id: req.user.id,
-        company_id: req.user.company_id
+        company_id: req.user.company_id,
+        created_date: value.created_date || new Date()
       }
     });
 
