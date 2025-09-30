@@ -364,7 +364,8 @@ const SetupModal = ({ onClose, onSuccess }: { onClose: () => void; onSuccess: ()
     name: '',
     spreadsheet_url: '',
     sheet_name: 'Sheet1',
-    column_mapping: {}
+    column_mapping: {},
+    autoCreateUsers: false
   });
   const [previewData, setPreviewData] = useState<any>(null);
   const [isLoading, setIsLoading] = useState(false);
@@ -404,7 +405,9 @@ const SetupModal = ({ onClose, onSuccess }: { onClose: () => void; onSuccess: ()
     stage: 'Stage',
     close_date: 'Close Date',
     created_date: 'Created Date',
-    owned_by: 'Owned By'
+    owned_by: 'Owned By',
+    first_name: 'First Name',
+    last_name: 'Last Name'
   };
 
   const testConnection = async () => {
@@ -454,7 +457,10 @@ const SetupModal = ({ onClose, onSuccess }: { onClose: () => void; onSuccess: ()
         name: formData.name || `${selectedType} Integration`,
         spreadsheet_url: formData.spreadsheet_url,
         sheet_name: formData.sheet_name,
-        column_mapping: formData.column_mapping
+        column_mapping: formData.column_mapping,
+        sync_config: {
+          autoCreateUsers: formData.autoCreateUsers
+        }
       });
 
       if (response.success) {
@@ -581,8 +587,9 @@ const SetupModal = ({ onClose, onSuccess }: { onClose: () => void; onSuccess: ()
                     </p>
                     
                     <div className="text-xs text-blue-600 mb-3">
-                      <div className="mb-1"><strong>Expected columns:</strong> Deal Name, Account Name, Amount, Probability (%), Status, Stage, Close Date, Created Date, Owned By</div>
+                      <div className="mb-1"><strong>Expected columns:</strong> Deal ID, Deal Name, Account Name, Amount, Probability (%), Status, Stage, Close Date, Created Date, Owned By, First Name (optional), Last Name (optional)</div>
                       <div><strong>Data formats:</strong> Amount (number), Probability (0-100), Status (Open/Closed Won/Closed Lost), Dates (YYYY-MM-DD), Owned By (email)</div>
+                      <div className="mt-1"><strong>Note:</strong> First Name and Last Name are optional but recommended for auto-creating users</div>
                     </div>
                     
                     <button
@@ -688,37 +695,63 @@ const SetupModal = ({ onClose, onSuccess }: { onClose: () => void; onSuccess: ()
             <div>
               <h4 className="font-medium text-gray-900 mb-4">Field Mapping</h4>
               <div className="space-y-3">
-                {Object.entries(formData.column_mapping).map(([field, mappedColumn]) => (
-                  <div key={field} className="flex items-center space-x-4">
-                    <div className="w-32">
-                      <span className="text-sm font-medium text-gray-700">
-                        {field.replace('_', ' ')} {['deal_name', 'account_name', 'amount', 'close_date', 'owned_by'].includes(field) && '*'}
-                      </span>
+                {Object.entries(formData.column_mapping).map(([field, mappedColumn]) => {
+                  const isRequired = ['deal_name', 'account_name', 'amount', 'close_date', 'owned_by'].includes(field);
+                  const isOptional = ['first_name', 'last_name'].includes(field);
+
+                  return (
+                    <div key={field} className="flex items-center space-x-4">
+                      <div className="w-32">
+                        <span className="text-sm font-medium text-gray-700">
+                          {field.replace(/_/g, ' ')} {isRequired && '*'} {isOptional && <span className="text-gray-400 text-xs">(optional)</span>}
+                        </span>
+                      </div>
+                      <div className="flex-1">
+                        <select
+                          value={mappedColumn as string}
+                          onChange={(e) => setFormData(prev => ({
+                            ...prev,
+                            column_mapping: {
+                              ...prev.column_mapping,
+                              [field]: e.target.value
+                            }
+                          }))}
+                          className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:border-transparent"
+                          style={{ '--tw-ring-color': '#82a365' } as any}
+                        >
+                          <option value="">Select column...</option>
+                          {previewData.headers.map((header: string) => (
+                            <option key={header} value={header}>
+                              {header}
+                            </option>
+                          ))}
+                        </select>
+                      </div>
                     </div>
-                    <div className="flex-1">
-                      <select
-                        value={mappedColumn as string}
-                        onChange={(e) => setFormData(prev => ({
-                          ...prev,
-                          column_mapping: {
-                            ...prev.column_mapping,
-                            [field]: e.target.value
-                          }
-                        }))}
-                        className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:border-transparent"
-                        style={{ '--tw-ring-color': '#82a365' } as any}
-                      >
-                        <option value="">Select column...</option>
-                        {previewData.headers.map((header: string) => (
-                          <option key={header} value={header}>
-                            {header}
-                          </option>
-                        ))}
-                      </select>
-                    </div>
-                  </div>
-                ))}
+                  );
+                })}
               </div>
+            </div>
+
+            {/* Auto-Create Users Option */}
+            <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
+              <label className="flex items-start space-x-3 cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={formData.autoCreateUsers}
+                  onChange={(e) => setFormData(prev => ({ ...prev, autoCreateUsers: e.target.checked }))}
+                  className="mt-1 h-4 w-4 text-green-600 focus:ring-green-500 border-gray-300 rounded"
+                />
+                <div className="flex-1">
+                  <div className="text-sm font-medium text-blue-900">
+                    Auto-create users from spreadsheet
+                  </div>
+                  <div className="text-xs text-blue-700 mt-1">
+                    Automatically create new users in Commit when a deal owner email doesn't exist.
+                    First Name and Last Name columns must be mapped for this feature to work properly.
+                  </div>
+                </div>
+              </label>
             </div>
 
             <div className="flex justify-between">

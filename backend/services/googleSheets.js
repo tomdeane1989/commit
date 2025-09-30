@@ -184,14 +184,15 @@ class GoogleSheetsService {
     // Check if this appears to be a sheet with Deal ID as first column (new format)
     const hasNewDealIdColumn = headers[0] === 'Deal ID';
     const hasDealIdMapping = columnMapping.deal_id;
-    
+
     // For new format sheets, Deal ID is required
-    const requiredFields = hasNewDealIdColumn 
+    // Note: first_name and last_name are optional (for auto-create users feature)
+    const requiredFields = hasNewDealIdColumn
       ? ['deal_id', 'deal_name', 'account_name', 'amount', 'close_date', 'owned_by']
       : ['deal_name', 'account_name', 'amount', 'close_date', 'owned_by']; // Legacy format
-    
+
     const missingFields = [];
-    
+
     // Check if we can map all required fields
     for (const field of requiredFields) {
       const mappedColumn = columnMapping[field];
@@ -225,7 +226,7 @@ class GoogleSheetsService {
       isValid: missingFields.length === 0,
       missingFields,
       availableColumns: headers,
-      message: missingFields.length === 0 
+      message: missingFields.length === 0
         ? 'Sheet structure is valid for deal import'
         : `Missing required fields: ${missingFields.join(', ')}`
     };
@@ -330,6 +331,14 @@ class GoogleSheetsService {
       case 'owned_by':
         // Store the owner email for later user lookup
         deal._owner_email = String(value || '').trim();
+        break;
+      case 'first_name':
+        // Store first name for user auto-creation
+        deal._owner_first_name = String(value || '').trim();
+        break;
+      case 'last_name':
+        // Store last name for user auto-creation
+        deal._owner_last_name = String(value || '').trim();
         break;
     }
   }
@@ -493,8 +502,8 @@ class GoogleSheetsService {
     return {
       success: true,
       headers: [
-        'Deal ID', 'Deal Name', 'Account Name', 'Amount', 'Probability', 
-        'Status', 'Stage', 'Close Date', 'Created Date', 'Owned By'
+        'Deal ID', 'Deal Name', 'Account Name', 'Amount', 'Probability',
+        'Status', 'Stage', 'Close Date', 'Created Date', 'Owned By', 'First Name', 'Last Name'
       ],
       data: [
         {
@@ -508,7 +517,9 @@ class GoogleSheetsService {
           'Stage': 'Proposal Submitted',
           'Close Date': '2025-08-15',
           'Created Date': '2025-06-01',
-          'Owned By': 'john.smith@company.com'
+          'Owned By': 'john.smith@company.com',
+          'First Name': 'John',
+          'Last Name': 'Smith'
         },
         {
           _rowNumber: 3,
@@ -521,7 +532,9 @@ class GoogleSheetsService {
           'Stage': 'Contract Review',
           'Close Date': '2025-07-30',
           'Created Date': '2025-05-15',
-          'Owned By': 'sarah.jones@company.com'
+          'Owned By': 'sarah.jones@company.com',
+          'First Name': 'Sarah',
+          'Last Name': 'Jones'
         },
         {
           _rowNumber: 4,
@@ -534,7 +547,9 @@ class GoogleSheetsService {
           'Stage': 'Closed Won',
           'Close Date': '2025-07-12',
           'Created Date': '2025-04-20',
-          'Owned By': 'test@company.com'
+          'Owned By': 'test@company.com',
+          'First Name': 'Test',
+          'Last Name': 'User'
         }
       ],
       totalRows: 3,
