@@ -1,6 +1,7 @@
 import { PrismaClient } from '@prisma/client';
 import CommissionEngine from './CommissionEngine.js';
 import { Decimal } from 'decimal.js';
+import notificationService from './notificationService.js';
 
 const prisma = new PrismaClient();
 
@@ -118,15 +119,44 @@ class EnhancedCommissionCalculator {
         calculationResult,
         activeTarget
       );
-      
+
       // Auto-approve small commissions (configurable)
-      if (commissionAmount.lte(1000) && deal.company.subscription !== 'trial') {
+      const wasAutoApproved = commissionAmount.lte(1000) && deal.company.subscription !== 'trial';
+      if (wasAutoApproved) {
         await CommissionEngine.processApproval(
           commissionRecord.id,
           'approve',
           'system',
           'Auto-approved: Below threshold'
         );
+      }
+
+      // Notify managers about new commission requiring approval (unless auto-approved)
+      if (!wasAutoApproved) {
+        try {
+          const managers = await prisma.users.findMany({
+            where: {
+              company_id: deal.company_id,
+              OR: [{ is_manager: true }, { is_admin: true }]
+            },
+            select: { id: true }
+          });
+
+          if (managers.length > 0) {
+            await notificationService.notifyCommissionPendingApproval({
+              commission: commissionRecord,
+              deal: {
+                ...updatedDeal,
+                user: deal.user
+              },
+              targetManagers: managers.map(m => m.id),
+              company_id: deal.company_id
+            });
+          }
+        } catch (notifError) {
+          console.error('Failed to send commission pending notification:', notifError);
+          // Don't fail the commission calculation if notification fails
+        }
       }
     }
 

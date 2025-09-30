@@ -7,6 +7,7 @@ import { Decimal } from 'decimal.js';
 
 // Only import enhancedCommissionCalculator since it already imports CommissionEngine internally
 import enhancedCommissionCalculator from '../services/enhancedCommissionCalculator.js';
+import notificationService from '../services/notificationService.js';
 
 // Get CommissionEngine from the calculator's import
 const CommissionEngine = enhancedCommissionCalculator.CommissionEngine;
@@ -362,13 +363,32 @@ router.post('/:id/action', requireManager, async (req, res) => {
       }
     });
 
-    // Send notifications (implement based on your notification system)
-    if (action === 'approve' || action === 'adjust_and_approve') {
-      // Notify user their commission was approved
-      console.log(`Commission approved for ${commission.user.email}: £${finalAmount}`);
-    } else if (action === 'reject') {
-      // Notify user their commission was rejected
-      console.log(`Commission rejected for ${commission.user.email}: ${notes}`);
+    // Send notifications
+    try {
+      if (action === 'approve' || action === 'adjust_and_approve') {
+        // Notify user their commission was approved
+        await notificationService.notifyCommissionApproved({
+          commission: {
+            ...commission,
+            commission_amount: finalAmount
+          },
+          deal: commission.deal,
+          targetUser: commission.user_id,
+          company_id: req.user.company_id
+        });
+      } else if (action === 'reject') {
+        // Notify user their commission was rejected
+        await notificationService.notifyCommissionRejected({
+          commission,
+          deal: commission.deal,
+          reason: notes || 'No reason provided',
+          targetUser: commission.user_id,
+          company_id: req.user.company_id
+        });
+      }
+    } catch (notifError) {
+      console.error('Failed to send commission notification:', notifError);
+      // Don't fail the approval if notification fails
     }
 
     // Log activity

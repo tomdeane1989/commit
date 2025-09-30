@@ -6,6 +6,7 @@ import HubSpotService from '../services/hubspot.js';
 import Joi from 'joi';
 import { requireIntegrationManagement, attachPermissions } from '../middleware/permissions.js';
 import enhancedCommissionCalculator from '../services/enhancedCommissionCalculator.js';
+import notificationService from '../services/notificationService.js';
 
 const router = express.Router();
 const prisma = new PrismaClient();
@@ -576,6 +577,25 @@ async function syncGoogleSheets(integration, user) {
         success: true
       }
     });
+
+    // Send notification about sync completion
+    try {
+      await notificationService.notifyIntegrationSync({
+        integration,
+        syncResult: {
+          deals_synced: createdCount + updatedCount,
+          deals_created: createdCount,
+          deals_updated: updatedCount,
+          errors: errors.length + dealErrors.length,
+          sync_type: 'manual'
+        },
+        targetUsers: [user.id],
+        company_id: user.company_id
+      });
+    } catch (notifError) {
+      console.error('Failed to send sync notification:', notifError);
+      // Don't fail the sync if notification fails
+    }
 
     return {
       message: 'Sync completed successfully',

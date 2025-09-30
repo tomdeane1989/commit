@@ -27,6 +27,7 @@ model companies {
   users                   users[]
   commissions             commissions[]
   commission_rules        commission_rules[]
+  notifications           notifications[]
 }
 
 model users {
@@ -71,6 +72,7 @@ model users {
   approved_commissions commissions[]          @relation("ApprovedByUser")
   commission_approvals commission_approvals[]
   refresh_tokens       refresh_tokens[]
+  notifications        notifications[]
 
   @@index([company_id])
   @@index([manager_id])
@@ -467,11 +469,36 @@ model refresh_tokens {
   revoked_at DateTime?
   user_agent String?
   ip_address String?
-  
+
   // Relations
   user       users     @relation(fields: [user_id], references: [id], onDelete: Cascade)
-  
+
   @@index([user_id])
   @@index([expires_at])
   @@index([revoked])
+}
+
+model notifications {
+  id          String    @id @default(cuid())
+  user_id     String
+  company_id  String
+  type        String    // 'integration_sync', 'deal_moved', 'commission_pending', 'commission_approved'
+  title       String
+  message     String
+  priority    String    @default("normal") // 'low', 'normal', 'high', 'urgent'
+  read        Boolean   @default(false)
+  read_at     DateTime?
+  action_url  String?
+  metadata    Json?
+  created_at  DateTime  @default(now())
+  expires_at  DateTime?
+
+  // Relations
+  user        users     @relation(fields: [user_id], references: [id], onDelete: Cascade)
+  company     companies @relation(fields: [company_id], references: [id], onDelete: Cascade)
+
+  @@index([user_id, read, created_at])
+  @@index([company_id, created_at])
+  @@index([expires_at])
+  @@index([type])
 }

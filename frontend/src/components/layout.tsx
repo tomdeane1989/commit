@@ -3,11 +3,12 @@ import React from 'react';
 import { useRouter } from 'next/router';
 import { useAuth } from '@/hooks/useAuth';
 import VersionDisplay from './VersionDisplay';
-import { 
-  Home, 
-  BarChart3, 
-  PoundSterling, 
-  Users, 
+import NotificationBell from './NotificationBell';
+import {
+  Home,
+  BarChart3,
+  PoundSterling,
+  Users,
   Settings,
   LogOut,
   ChevronRight,
@@ -237,14 +238,11 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
             </div>
             <div className="flex items-center space-x-2 lg:space-x-4">
               {/* Notifications */}
-              <button className="relative p-3 text-gray-400 hover:text-gray-600 hover:bg-gray-50 rounded-xl transition-all duration-300">
-                <Bell className="w-5 h-5" />
-                <span className="absolute top-1 right-1 w-2 h-2 bg-red-500 rounded-full"></span>
-              </button>
-              
+              <NotificationBell />
+
               {/* Divider - hidden on mobile */}
               <div className="hidden lg:block h-8 w-px bg-gray-200"></div>
-              
+
               {/* Date display - hidden on mobile */}
               <div className="hidden lg:flex items-center space-x-3 px-4 py-2 bg-gray-50 rounded-xl">
                 <div className="text-sm font-medium text-gray-700">

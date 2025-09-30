@@ -6,6 +6,7 @@ import { attachPermissions, requireOwnerOrManager } from '../middleware/permissi
 import { canManageTeam } from '../middleware/roleHelpers.js';
 import dealCommissionCalculator from '../services/dealCommissionCalculator.js';
 import enhancedCommissionCalculator from '../services/enhancedCommissionCalculator.js';
+import notificationService from '../services/notificationService.js';
 
 const router = express.Router();
 const prisma = new PrismaClient();
@@ -672,11 +673,40 @@ router.patch('/:dealId/categorize', async (req, res) => {
       email: deal.user.email
     } : null;
 
-    res.json({ 
+    // Send notification to managers if someone moved a deal
+    // Only notify if it's a meaningful category change (not just moving to pipeline)
+    if (deal_type !== 'pipeline' && previous_category !== deal_type) {
+      try {
+        const managers = await prisma.users.findMany({
+          where: {
+            company_id: req.user.company_id,
+            OR: [{ is_manager: true }, { is_admin: true }],
+            id: { not: req.user.id } // Don't notify the person who made the change
+          },
+          select: { id: true }
+        });
+
+        if (managers.length > 0) {
+          await notificationService.notifyDealMoved({
+            deal,
+            fromCategory: previous_category,
+            toCategory: deal_type,
+            categorizedBy: req.user,
+            targetManagers: managers.map(m => m.id),
+            company_id: req.user.company_id
+          });
+        }
+      } catch (notifError) {
+        console.error('Failed to send deal movement notification:', notifError);
+        // Don't fail the categorization if notification fails
+      }
+    }
+
+    res.json({
       id: dealId,
       current_category: deal_type,
       previous_category,
-      message: isManagerAction 
+      message: isManagerAction
         ? `Deal categorization updated successfully by manager for ${dealOwnerInfo?.first_name} ${dealOwnerInfo?.last_name}`
         : 'Deal categorization updated successfully',
       manager_action: isManagerAction,
