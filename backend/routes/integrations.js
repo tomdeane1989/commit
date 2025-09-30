@@ -395,7 +395,7 @@ async function syncGoogleSheets(integration, user) {
                   email: deal._owner_email,
                   first_name: firstName,
                   last_name: lastName,
-                  password: 'temp_password_' + Math.random().toString(36), // They'll need to reset
+                  password: 'test1234', // Default password for testing
                   company_id: user.company_id,
                   role: 'sales_rep',
                   is_active: true,
