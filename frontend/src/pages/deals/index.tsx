@@ -5,10 +5,10 @@ import { useAuth } from '../../hooks/useAuth';
 import api from '../../lib/api';
 import { Deal } from '../../types';
 import { sumMoney, formatLargeCurrency, formatLargeNumber, roundToPenny } from '../../utils/money';
-import { 
-  Star, 
-  Zap, 
-  CheckCircle, 
+import {
+  Star,
+  Zap,
+  CheckCircle,
   Search,
   TrendingUp,
   Calendar,
@@ -28,7 +28,9 @@ import {
   ChevronDown,
   ChevronUp,
   Filter,
-  Info
+  Info,
+  Plus,
+  X
 } from 'lucide-react';
 
 const DealsPage = () => {
@@ -41,6 +43,15 @@ const DealsPage = () => {
   });
   const [draggedDeal, setDraggedDeal] = useState<Deal | null>(null);
   const [showAddDeal, setShowAddDeal] = useState(false);
+  const [newDeal, setNewDeal] = useState({
+    deal_name: '',
+    account_name: '',
+    amount: '',
+    close_date: '',
+    probability: '50',
+    stage: '',
+    crm_type: 'manual'
+  });
   const [expandedDeals, setExpandedDeals] = useState<Set<string>>(new Set());
   const [quotaPeriod, setQuotaPeriod] = useState<'weekly' | 'monthly' | 'quarterly' | 'annual'>('quarterly');
   const [filtersExpanded, setFiltersExpanded] = useState(false);
@@ -348,6 +359,27 @@ const DealsPage = () => {
         console.log(`✅ Manager Action: Deal categorized for ${data.deal_owner.first_name} ${data.deal_owner.last_name} - ${data.message}`);
         // TODO: In future, trigger notification to deal owner here
       }
+    }
+  });
+
+  const createDealMutation = useMutation({
+    mutationFn: async (dealData: any) => {
+      const response = await api.post('/deals', dealData);
+      return response.data;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['deals', user?.id] });
+      queryClient.invalidateQueries({ queryKey: ['dashboard', user?.id] });
+      setShowAddDeal(false);
+      setNewDeal({
+        deal_name: '',
+        account_name: '',
+        amount: '',
+        close_date: '',
+        probability: '50',
+        stage: '',
+        crm_type: 'manual'
+      });
     }
   });
 
@@ -1321,6 +1353,13 @@ const DealsPage = () => {
               Drag deals into confidence buckets to see your projected earnings and track quota attainment
             </p>
           </div>
+          <button
+            onClick={() => setShowAddDeal(true)}
+            className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg flex items-center gap-2 transition-colors shadow-sm"
+          >
+            <Plus className="w-5 h-5" />
+            Add Deal
+          </button>
         </div>
 
         {/* Consolidated Filtering Controls */}
@@ -1762,7 +1801,7 @@ const DealsPage = () => {
                 Categorize Team Member's Deal
               </h3>
             </div>
-            
+
             <div className="mb-6">
               <p className="text-gray-700 mb-3">
                 You're about to categorize a deal that belongs to{' '}
@@ -1770,7 +1809,7 @@ const DealsPage = () => {
                   {pendingCategorization.deal.user?.first_name} {pendingCategorization.deal.user?.last_name}
                 </span>
               </p>
-              
+
               <div className="bg-gray-50 rounded-lg p-4 mb-4">
                 <h4 className="font-medium text-gray-900 mb-2">Deal Details:</h4>
                 <p className="text-sm text-gray-700">
@@ -1780,7 +1819,7 @@ const DealsPage = () => {
                   {formatLargeCurrency(pendingCategorization.deal.amount)}
                 </p>
               </div>
-              
+
               <div className="bg-blue-50 rounded-lg p-4">
                 <p className="text-sm text-blue-800">
                   <strong>Action:</strong> Moving from{' '}
@@ -1793,12 +1832,12 @@ const DealsPage = () => {
                   </span>
                 </p>
               </div>
-              
+
               <p className="text-sm text-gray-600 mt-3">
                 This action will be logged for future notification features.
               </p>
             </div>
-            
+
             <div className="flex space-x-3">
               <button
                 onClick={handleCancelCategorization}
@@ -1814,6 +1853,134 @@ const DealsPage = () => {
                 {updateDealCategoryMutation.isPending ? 'Updating...' : 'Confirm & Categorize'}
               </button>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* Add Deal Modal */}
+      {showAddDeal && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+          <div className="bg-white rounded-xl p-6 max-w-lg w-full mx-4 shadow-2xl">
+            <div className="flex items-center justify-between mb-6">
+              <h3 className="text-xl font-semibold text-gray-900">Add New Deal</h3>
+              <button
+                onClick={() => setShowAddDeal(false)}
+                className="text-gray-400 hover:text-gray-600 transition-colors"
+              >
+                <X className="w-6 h-6" />
+              </button>
+            </div>
+
+            <form onSubmit={(e) => {
+              e.preventDefault();
+              createDealMutation.mutate({
+                deal_name: newDeal.deal_name,
+                account_name: newDeal.account_name,
+                amount: parseFloat(newDeal.amount),
+                close_date: newDeal.close_date,
+                probability: parseInt(newDeal.probability),
+                stage: newDeal.stage || undefined,
+                crm_type: newDeal.crm_type,
+                status: 'open'
+              });
+            }} className="space-y-4">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Deal Name *
+                </label>
+                <input
+                  type="text"
+                  value={newDeal.deal_name}
+                  onChange={(e) => setNewDeal({ ...newDeal, deal_name: e.target.value })}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                  required
+                />
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Account Name *
+                </label>
+                <input
+                  type="text"
+                  value={newDeal.account_name}
+                  onChange={(e) => setNewDeal({ ...newDeal, account_name: e.target.value })}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                  required
+                />
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Amount (£) *
+                </label>
+                <input
+                  type="number"
+                  step="0.01"
+                  value={newDeal.amount}
+                  onChange={(e) => setNewDeal({ ...newDeal, amount: e.target.value })}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                  required
+                />
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Expected Close Date *
+                </label>
+                <input
+                  type="date"
+                  value={newDeal.close_date}
+                  onChange={(e) => setNewDeal({ ...newDeal, close_date: e.target.value })}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                  required
+                />
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Probability (%)
+                </label>
+                <input
+                  type="number"
+                  min="0"
+                  max="100"
+                  value={newDeal.probability}
+                  onChange={(e) => setNewDeal({ ...newDeal, probability: e.target.value })}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                />
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Stage
+                </label>
+                <input
+                  type="text"
+                  value={newDeal.stage}
+                  onChange={(e) => setNewDeal({ ...newDeal, stage: e.target.value })}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                  placeholder="e.g., Prospecting, Qualification, etc."
+                />
+              </div>
+
+              <div className="flex gap-3 pt-4">
+                <button
+                  type="button"
+                  onClick={() => setShowAddDeal(false)}
+                  className="flex-1 px-4 py-2 text-gray-700 bg-gray-100 hover:bg-gray-200 rounded-lg transition-colors"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={createDealMutation.isPending}
+                  className="flex-1 px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  {createDealMutation.isPending ? 'Creating...' : 'Create Deal'}
+                </button>
+              </div>
+            </form>
           </div>
         </div>
       )}

@@ -22,10 +22,13 @@ const createIntegrationSchema = Joi.object({
   }),
   sheet_name: Joi.string().default('Sheet1'),
   column_mapping: Joi.object().when('crm_type', {
-    is: 'sheets', 
+    is: 'sheets',
     then: Joi.required(),
     otherwise: Joi.optional()
-  })
+  }),
+  sync_config: Joi.object({
+    autoCreateUsers: Joi.boolean().default(false)
+  }).optional().default({ autoCreateUsers: false })
 });
 
 // GET /api/integrations - List all integrations for the user's company
@@ -147,16 +150,19 @@ router.post('/preview-data', requireIntegrationManagement, async (req, res) => {
 // POST /api/integrations - Create new integration
 router.post('/', requireIntegrationManagement, async (req, res) => {
   try {
+    console.log('📥 Received request body:', JSON.stringify(req.body, null, 2));
+
     // Validate input
     const { error, value } = createIntegrationSchema.validate(req.body);
     if (error) {
+      console.error('❌ Validation error:', error.details);
       return res.status(400).json({
         success: false,
         error: error.details[0].message
       });
     }
 
-    const { crm_type, name, spreadsheet_url, sheet_name, column_mapping } = value;
+    const { crm_type, name, spreadsheet_url, sheet_name, column_mapping, sync_config } = value;
 
     // For sheets, extract spreadsheet ID and validate structure
     let integrationData = {
@@ -169,10 +175,19 @@ router.post('/', requireIntegrationManagement, async (req, res) => {
       // Extract and validate spreadsheet
       const spreadsheetId = sheetsService.extractSpreadsheetId(spreadsheet_url);
       const sheetData = await sheetsService.readSheetData(spreadsheetId, sheet_name);
-      
+
+      // Filter out empty column mappings (optional fields that weren't mapped)
+      const filteredColumnMapping = Object.fromEntries(
+        Object.entries(column_mapping).filter(([key, value]) => value && value !== '')
+      );
+
+      console.log('📋 Column mapping before filter:', column_mapping);
+      console.log('📋 Column mapping after filter:', filteredColumnMapping);
+
       // Validate column mapping
-      const validation = sheetsService.validateSheetStructure(sheetData.headers, column_mapping);
+      const validation = sheetsService.validateSheetStructure(sheetData.headers, filteredColumnMapping);
       if (!validation.isValid) {
+        console.error('❌ Validation failed:', validation);
         return res.status(400).json({
           success: false,
           error: `Sheet validation failed: ${validation.message}`,
@@ -187,7 +202,8 @@ router.post('/', requireIntegrationManagement, async (req, res) => {
         ...integrationData,
         spreadsheet_id: spreadsheetId,
         sheet_name,
-        column_mapping
+        column_mapping: filteredColumnMapping,
+        sync_config
       };
     }
 
@@ -219,9 +235,11 @@ router.post('/', requireIntegrationManagement, async (req, res) => {
     });
   } catch (error) {
     console.error('Create integration error:', error);
+    console.error('Error stack:', error.stack);
     res.status(500).json({
       success: false,
-      error: 'Failed to create integration'
+      error: error.message || 'Failed to create integration',
+      details: process.env.NODE_ENV === 'development' ? error.stack : undefined
     });
   }
 });
@@ -325,49 +343,89 @@ async function syncGoogleSheets(integration, user) {
     const deals = [];
     const errors = [];
 
+    // Check if auto-create users is enabled in sync config
+    const syncConfig = integration.sync_config || {};
+    const autoCreateUsers = syncConfig.autoCreateUsers || false;
+
     // Transform each row to a deal
     for (const row of sheetData.data) {
       try {
         let deal;
-        
+
         if (useLegacyMatching) {
           // Legacy mode: use row number for crm_id (backward compatibility)
           deal = await sheetsService.transformRowToDealLegacy(
-            row, 
-            columnMapping, 
-            user.company_id, 
+            row,
+            columnMapping,
+            user.company_id,
             user.id
           );
         } else {
           // New mode: use Deal ID for crm_id
           deal = await sheetsService.transformRowToDeal(
-            row, 
-            columnMapping, 
-            user.company_id, 
+            row,
+            columnMapping,
+            user.company_id,
             user.id
           );
         }
-        
-        // If deal has an owner email, look up the user
+
+        // If deal has an owner email, look up or create the user
         if (deal._owner_email) {
-          const owner = await prisma.users.findFirst({
+          let owner = await prisma.users.findFirst({
             where: {
               email: deal._owner_email,
               company_id: user.company_id
             }
           });
-          
+
+          // If user not found and auto-create is enabled, create the user
+          if (!owner && autoCreateUsers) {
+            const firstName = deal._owner_first_name || 'Sheet';
+            const lastName = deal._owner_last_name || 'User';
+
+            try {
+              // Generate unique ID for the new user
+              const userId = 'usr_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9);
+
+              owner = await prisma.users.create({
+                data: {
+                  id: userId,
+                  email: deal._owner_email,
+                  first_name: firstName,
+                  last_name: lastName,
+                  password: 'temp_password_' + Math.random().toString(36), // They'll need to reset
+                  company_id: user.company_id,
+                  role: 'sales_rep',
+                  is_active: true,
+                  created_at: new Date(),
+                  updated_at: new Date()
+                }
+              });
+
+              console.log(`✨ Auto-created user from Google Sheets: ${deal._owner_email} (${firstName} ${lastName})`);
+            } catch (createError) {
+              console.error(`Failed to auto-create user ${deal._owner_email}:`, createError);
+              // Continue without creating user - will fall through to error handling below
+            }
+          }
+
           if (owner) {
             deal.user_id = owner.id;
-            // Remove the temporary field
+            // Remove the temporary fields
             delete deal._owner_email;
+            delete deal._owner_first_name;
+            delete deal._owner_last_name;
             deals.push(deal);
           } else {
-            // User not found - log error instead of defaulting to sync user
-            console.warn(`⚠️ User not found for email ${deal._owner_email} - skipping deal ${deal.deal_name}`);
+            // User not found and auto-create is disabled or failed
+            const errorMsg = autoCreateUsers
+              ? `Owner not found: ${deal._owner_email}. Auto-create failed or names not provided.`
+              : `Owner not found: ${deal._owner_email}. Please ensure this user exists or enable auto-create users.`;
+            console.warn(`⚠️ ${errorMsg} - skipping deal ${deal.deal_name}`);
             errors.push({
               row: row._rowNumber,
-              error: `Owner not found: ${deal._owner_email}. Please ensure this user exists in the system.`,
+              error: errorMsg,
               data: row
             });
           }
@@ -757,10 +815,10 @@ router.get('/template/:type', async (req, res) => {
 
     // CSV template data
     const csvData = [
-      'Deal ID,Deal Name,Account Name,Amount,Probability,Status,Stage,Close Date,Created Date,Owned By',
-      'DEAL-2025-001,Enterprise Software License,TechCorp Industries,45000,75,Open,Proposal Submitted,2025-08-15,2025-06-01,john.smith@company.com',
-      'DEAL-2025-002,Annual Support Contract,DataFlow Solutions,28000,90,Open,Contract Review,2025-07-30,2025-05-15,sarah.jones@company.com',
-      'DEAL-2025-003,Cloud Migration Services,RetailPlus Ltd,67000,100,Closed Won,Closed Won,2025-07-12,2025-04-20,test@company.com'
+      'Deal ID,Deal Name,Account Name,Amount,Probability,Status,Stage,Close Date,Created Date,Owned By,First Name,Last Name',
+      'DEAL-2025-001,Enterprise Software License,TechCorp Industries,45000,75,Open,Proposal Submitted,2025-08-15,2025-06-01,john.smith@company.com,John,Smith',
+      'DEAL-2025-002,Annual Support Contract,DataFlow Solutions,28000,90,Open,Contract Review,2025-07-30,2025-05-15,sarah.jones@company.com,Sarah,Jones',
+      'DEAL-2025-003,Cloud Migration Services,RetailPlus Ltd,67000,100,Closed Won,Closed Won,2025-07-12,2025-04-20,test@company.com,Test,User'
     ].join('\n');
 
     if (format === 'csv') {
