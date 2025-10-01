@@ -121,6 +121,17 @@ const LoginPage = () => {
             </div>
           </div>
 
+          {/* Forgot Password Link */}
+          <div className="flex justify-end">
+            <Link
+              href="/forgot-password"
+              className="text-sm font-medium hover:opacity-80 transition"
+              style={{ color: '#82a365' }}
+            >
+              Forgot password?
+            </Link>
+          </div>
+
           {/* Submit */}
           <div>
             <button

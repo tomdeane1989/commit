@@ -354,8 +354,9 @@ router.post('/forgot-password', authRateLimit, async (req, res) => {
       });
     }
 
-    // Generate reset token (32 random bytes)
-    const resetToken = generateSecureToken();
+    // Generate reset token (32 random bytes as hex string)
+    const crypto = await import('crypto');
+    const resetToken = crypto.randomBytes(32).toString('hex');
     const resetExpires = new Date(Date.now() + 3600000); // 1 hour from now
 
     // Save token to database
