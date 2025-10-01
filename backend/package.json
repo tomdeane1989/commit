@@ -37,6 +37,7 @@
     "googleapis": "^153.0.0",
     "helmet": "^7.2.0",
     "hpp": "^0.2.3",
+    "ioredis": "^5.7.0",
     "joi": "^17.11.0",
     "json-rules-engine": "^7.3.1",
     "json2csv": "^6.0.0-alpha.2",

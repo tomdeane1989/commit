@@ -25,7 +25,8 @@ import commissionExportRoutes from './routes/commission-export.js';
 import gdprRoutes from './routes/gdpr.js';
 
 // Import scheduled jobs
-import { scheduleCommissionRecalculation, scheduleHubSpotSync, runHubSpotSync } from './jobs/commissionRecalculationJob.js';
+import { scheduleCommissionRecalculation } from './jobs/commissionRecalculationJob.js';
+import { scheduleHubSpotSync } from './jobs/hubspotSyncJob.js';
 
 
 
@@ -147,8 +148,12 @@ app.use(cookieParser());
 // Rate limiting (disabled for development)
 // app.use(apiRateLimit);
 
-// Body parsing
-app.use(express.json({ limit: '10mb' }));
+// Body parsing with raw body capture for webhook signature validation
+import { captureRawBody } from './middleware/hubspotWebhook.js';
+app.use(express.json({ 
+  limit: '10mb',
+  verify: captureRawBody // Capture raw body for webhook signature validation
+}));
 app.use(express.urlencoded({ extended: true }));
 
 // CSRF protection (disabled for development)

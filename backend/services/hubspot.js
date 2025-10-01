@@ -3,21 +3,18 @@ import { Client } from '@hubspot/api-client';
 import { PrismaClient } from '@prisma/client';
 import crypto from 'crypto';
 import dotenv from 'dotenv';
+import stateStore from './stateStore.js';
+import tokenEncryption from './tokenEncryption.js';
 
 dotenv.config();
 
 const prisma = new PrismaClient();
-
-// Global state store for OAuth states (in production, use Redis)
-const stateStore = new Map();
 
 class HubSpotService {
   constructor() {
     this.clientId = process.env.HUBSPOT_CLIENT_ID;
     this.clientSecret = process.env.HUBSPOT_CLIENT_SECRET;
     this.redirectUri = process.env.HUBSPOT_REDIRECT_URI || 'http://localhost:3002/api/integrations/hubspot/callback';
-    // Use the global state store
-    this.stateStore = stateStore;
     // Use the exact scopes configured in the HubSpot app
     this.scopes = [
       'crm.objects.companies.read',
@@ -32,24 +29,11 @@ class HubSpotService {
   }
 
   // Generate OAuth URL for user authorization
-  getAuthorizationUrl(companyId) {
+  async getAuthorizationUrl(companyId) {
     const state = crypto.randomBytes(16).toString('hex');
     
-    // Store state in memory (in production, use Redis or a proper session store)
-    if (!this.stateStore) {
-      this.stateStore = new Map();
-    }
-    this.stateStore.set(state, {
-      companyId,
-      timestamp: Date.now()
-    });
-    
-    // Clean up old states (older than 10 minutes)
-    for (const [key, value] of this.stateStore.entries()) {
-      if (Date.now() - value.timestamp > 10 * 60 * 1000) {
-        this.stateStore.delete(key);
-      }
-    }
+    // Store state with TTL (10 minutes)
+    await stateStore.setOAuthState(state, companyId, 600);
 
     // Use EU domain for European accounts
     const hubspotDomain = process.env.HUBSPOT_REGION === 'EU' ? 
@@ -74,36 +58,12 @@ class HubSpotService {
   // Exchange authorization code for access token
   async exchangeCodeForToken(code, state) {
     try {
-      // Verify state from memory store
-      if (!this.stateStore || !this.stateStore.has(state)) {
-        console.error(`State validation failed. Looking for state: ${state}`);
-        console.error(`Available states in store: ${this.stateStore ? Array.from(this.stateStore.keys()).join(', ') : 'No state store'}`);
-        
-        // For development, temporarily bypass state validation if we have a valid EU code
-        if (code && code.startsWith('eu1-')) {
-          console.warn('⚠️ Bypassing state validation for development - EU code detected');
-          // Try to get the most recent company_id from database
-          const recentIntegration = await prisma.crm_integrations.findFirst({
-            where: { crm_type: 'hubspot' },
-            orderBy: { created_at: 'desc' }
-          });
-          
-          // If no integration exists, use the first company
-          const companyId = recentIntegration?.company_id || 
-            (await prisma.companies.findFirst())?.id ||
-            'cmetthu6s0002ut773qq83cwq'; // Tom's company ID as fallback
-            
-          console.log(`Using company_id: ${companyId} for OAuth callback`);
-          
-          // Create a temporary state entry
-          this.stateStore.set(state, { companyId, timestamp: Date.now() });
-        } else {
-          throw new Error('Invalid or expired state parameter');
-        }
+      // Verify state from store
+      const stateData = await stateStore.getOAuthState(state);
+      if (!stateData) {
+        console.error(`State validation failed. State not found: ${state}`);
+        throw new Error('Invalid or expired state parameter. Please restart the authorization process.');
       }
-      
-      const stateData = this.stateStore.get(state);
-      this.stateStore.delete(state); // Use state only once
       
       const companyId = stateData.companyId;
 
@@ -138,13 +98,19 @@ class HubSpotService {
         }
       });
 
+      // Encrypt tokens before storing
+      const encryptedTokens = tokenEncryption.encryptTokens(
+        tokenData.access_token,
+        tokenData.refresh_token
+      );
+
       if (integration) {
         // Update existing integration
         integration = await prisma.crm_integrations.update({
           where: { id: integration.id },
           data: {
-            access_token: tokenData.access_token,
-            refresh_token: tokenData.refresh_token,
+            access_token: encryptedTokens.access_token,
+            refresh_token: encryptedTokens.refresh_token,
             is_active: true,
             last_sync: null,
             instance_url: `https://app.hubspot.com/contacts/${tokenData.hub_id}`,
@@ -157,8 +123,8 @@ class HubSpotService {
           data: {
             company_id: companyId,
             crm_type: 'hubspot',
-            access_token: tokenData.access_token,
-            refresh_token: tokenData.refresh_token,
+            access_token: encryptedTokens.access_token,
+            refresh_token: encryptedTokens.refresh_token,
             is_active: true,
             instance_url: `https://app.hubspot.com/contacts/${tokenData.hub_id}`,
             created_at: new Date(),
@@ -213,6 +179,12 @@ class HubSpotService {
         throw new Error('Integration not found or refresh token missing');
       }
 
+      // Decrypt the refresh token
+      const { refreshToken } = tokenEncryption.decryptTokens(
+        integration.access_token,
+        integration.refresh_token
+      );
+
       const tokenUrl = 'https://api.hubapi.com/oauth/v1/token';
       const response = await fetch(tokenUrl, {
         method: 'POST',
@@ -223,7 +195,7 @@ class HubSpotService {
           grant_type: 'refresh_token',
           client_id: this.clientId,
           client_secret: this.clientSecret,
-          refresh_token: integration.refresh_token
+          refresh_token: refreshToken
         })
       });
 
@@ -235,12 +207,17 @@ class HubSpotService {
 
       const tokenData = await response.json();
 
-      // Update tokens
+      // Encrypt and update tokens
+      const encryptedTokens = tokenEncryption.encryptTokens(
+        tokenData.access_token,
+        tokenData.refresh_token
+      );
+
       await prisma.crm_integrations.update({
         where: { id: integrationId },
         data: {
-          access_token: tokenData.access_token,
-          refresh_token: tokenData.refresh_token,
+          access_token: encryptedTokens.access_token,
+          refresh_token: encryptedTokens.refresh_token,
           updated_at: new Date()
         }
       });
@@ -267,7 +244,13 @@ class HubSpotService {
       throw new Error('HubSpot integration not found for this company');
     }
 
-    return new Client({ accessToken: integration.access_token });
+    // Decrypt the access token
+    const { accessToken } = tokenEncryption.decryptTokens(
+      integration.access_token,
+      integration.refresh_token
+    );
+
+    return new Client({ accessToken });
   }
 
   // Get account information
@@ -511,6 +494,32 @@ class HubSpotService {
         throw new Error('HubSpot integration not found');
       }
       
+      // Parse sync configuration
+      const syncConfig = integration.sync_config || {};
+      const syncOptions = syncConfig.syncOptions || {};
+      
+      // Fetch HubSpot users for auto-creation if enabled
+      if (syncOptions.autoCreateUsers) {
+        try {
+          const allUsers = await this.getUsers(companyId);
+          let hubspotUsers = allUsers;
+          
+          // Filter users if specific users are selected
+          if (syncConfig.users && syncConfig.users.length > 0) {
+            hubspotUsers = allUsers.filter(u => 
+              syncConfig.users.includes(u.id.toString()) ||
+              syncConfig.users.includes(u.userId?.toString())
+            );
+          }
+          
+          // Add the fetched users to syncConfig for use in mapDealOwner
+          syncConfig.hubspotUsers = hubspotUsers;
+          console.log(`Auto-creating users: fetched ${hubspotUsers.length} users from HubSpot for incremental sync`);
+        } catch (error) {
+          console.error('Failed to fetch HubSpot users for incremental sync, continuing without auto-create:', error);
+        }
+      }
+      
       // Determine the starting point for incremental sync
       const lastModifiedSync = options.since || integration.last_modified_sync || 
         new Date(Date.now() - 24 * 60 * 60 * 1000); // Default to 24 hours ago
@@ -551,11 +560,11 @@ class HubSpotService {
       // Search for modified deals
       const response = await client.crm.deals.searchApi.doSearch(searchRequest);
       
-      // Process results using existing sync logic
+      // Process results using existing sync logic with enhanced syncConfig
       const syncResult = await this.processSyncResults(
         companyId, 
         response.results || [], 
-        integration
+        { ...integration, sync_config: syncConfig }
       );
       
       // Update sync tracking
@@ -597,7 +606,28 @@ class HubSpotService {
     } catch (error) {
       console.error('Error in incremental sync:', error);
       
-      // Update error status
+      // Check if token needs refresh (HubSpot API returns 401 in different formats)
+      const isTokenExpired = 
+        error.response?.status === 401 ||
+        error.code === 401 ||
+        error.body?.category === 'EXPIRED_AUTHENTICATION' ||
+        error.message?.includes('401') ||
+        error.message?.includes('expired');
+        
+      if (isTokenExpired) {
+        const integration = await prisma.crm_integrations.findFirst({
+          where: { company_id: companyId, crm_type: 'hubspot', is_active: true }
+        });
+        
+        if (integration && integration.refresh_token) {
+          console.log('Token expired during incremental sync, attempting to refresh...');
+          await this.refreshAccessToken(integration.id);
+          // Retry incremental sync
+          return this.syncDealsIncremental(companyId, options);
+        }
+      }
+      
+      // Update error status only if not a token issue that we can recover from
       await prisma.crm_integrations.updateMany({
         where: {
           company_id: companyId,
@@ -1056,6 +1086,27 @@ class HubSpotService {
           }
         });
         isNew = true;
+        
+        // Auto-categorize new deals
+        const normalizedStageForCategory = deal.stage?.toLowerCase().replace(/[\s_-]/g, '');
+        const defaultCategory = normalizedStageForCategory === 'closedwon' ? 'closed_won' : 'pipeline';
+        
+        try {
+          const { randomUUID } = await import('crypto');
+          await prisma.deal_categorizations.create({
+            data: {
+              id: randomUUID(),
+              deal_id: deal.id,
+              user_id: deal.user_id,
+              category: defaultCategory,
+              created_at: new Date()
+            }
+          });
+          console.log(`📊 Auto-categorized new deal "${deal.deal_name}" as ${defaultCategory}`);
+        } catch (catError) {
+          console.error(`Failed to auto-categorize deal ${deal.id}:`, catError.message);
+          // Don't fail the sync if categorization fails
+        }
       }
 
       // Add metadata about whether this was a create or update
