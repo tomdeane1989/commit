@@ -237,9 +237,13 @@ export function scheduleHubSpotSync(schedule = '*/30 * * * *') {
   
   // Schedule the job
   const job = cron.schedule(syncSchedule, runHubSpotSyncJob, {
-    scheduled: true,
+    scheduled: false, // Start manually to ensure it's running
     timezone: process.env.TZ || 'UTC'
   });
+  
+  // Start the cron job
+  job.start();
+  console.log('✅ HubSpot sync cron job started');
   
   // Run immediately on startup if configured
   if (process.env.HUBSPOT_SYNC_ON_STARTUP === 'true') {

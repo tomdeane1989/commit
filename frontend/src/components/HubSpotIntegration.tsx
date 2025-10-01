@@ -103,6 +103,8 @@ const HubSpotIntegration: React.FC<HubSpotIntegrationProps> = ({ onClose, onView
     mutationFn: async () => {
       const response = await api.post('/integrations/hubspot/sync', {
         limit: 100
+      }, {
+        timeout: 60000 // Increase timeout to 60 seconds for large syncs
       });
       return response.data;
     },
@@ -114,7 +116,12 @@ const HubSpotIntegration: React.FC<HubSpotIntegrationProps> = ({ onClose, onView
     },
     onError: (error: any) => {
       setSyncInProgress(false);
-      alert(error.response?.data?.error || 'Failed to sync deals');
+      // Handle timeout specifically
+      if (error.code === 'ECONNABORTED' || error.message?.includes('timeout')) {
+        alert('Sync is taking longer than expected. It will continue in the background. Please refresh the page in a minute to see the results.');
+      } else {
+        alert(error.response?.data?.error || 'Failed to sync deals');
+      }
     }
   });
 
@@ -304,6 +311,24 @@ const HubSpotIntegration: React.FC<HubSpotIntegrationProps> = ({ onClose, onView
                 <span>Field Mapping</span>
               </button>
             </div>
+
+            {/* Sync Progress Indicator */}
+            {(syncInProgress || syncMutation.isPending) && (
+              <div className="mt-4 p-4 bg-blue-50 rounded-lg border border-blue-200">
+                <div className="flex items-center space-x-3">
+                  <RefreshCw className="w-5 h-5 text-blue-600 animate-spin" />
+                  <div className="flex-1">
+                    <p className="text-sm font-medium text-blue-800">Sync in Progress</p>
+                    <p className="text-xs text-blue-600 mt-1">
+                      This may take a minute for large datasets. The sync will continue in the background even if this page times out.
+                    </p>
+                  </div>
+                </div>
+                <div className="mt-3 w-full bg-blue-200 rounded-full h-2">
+                  <div className="bg-blue-600 h-2 rounded-full animate-pulse" style={{ width: '100%' }}></div>
+                </div>
+              </div>
+            )}
 
             {/* Field Mapping (if shown) */}
             {showFieldMapping && (
