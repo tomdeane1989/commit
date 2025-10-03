@@ -258,19 +258,26 @@ const getQuartersInPeriod = (startDate, endDate) => {
 const targetSchema = Joi.object({
   user_id: Joi.string().optional(),
   company_id: Joi.string().optional(),
+  name: Joi.string().optional(),  // Target name/title for identification
+  target_type: Joi.string().valid('revenue', 'product', 'category', 'custom').default('revenue'),
   period_type: Joi.string().valid('monthly', 'quarterly', 'annual').required(),
   period_start: Joi.date().required(),
   period_end: Joi.date().required(),
   quota_amount: Joi.number().positive().required(),
   commission_rate: Joi.number().min(0).max(1).required(),
+  currency_code: Joi.string().default('GBP'),
+  commission_structure: Joi.object().optional(), // Advanced commission rules
+  performance_gates: Joi.object().optional(), // Performance gate conditions
+  product_category_id: Joi.string().optional(), // For product/category targets
   role: Joi.string().allow(null).optional(),
   team_target: Joi.boolean().optional()
 });
 
 // Get all targets - users can see their own, managers can see all
+// Now supports multiple concurrent targets per user
 router.get('/', async (req, res) => {
   try {
-    const { user_id, active_only = 'false', view = 'management' } = req.query;
+    const { user_id, active_only = 'false', view = 'management', include_overlapping = 'false' } = req.query;
     
     // Auth already checked by parent middleware
     
@@ -551,6 +558,12 @@ router.post('/', requireTargetManagement, async (req, res) => {
       user_id, 
       role, 
       team_id,
+      name,  // Target name/title
+      target_category_type = 'revenue',  // revenue, product, category, custom
+      currency_code = 'GBP',
+      commission_structure,  // Advanced commission rules
+      performance_gates,  // Performance gate conditions  
+      product_category_id,  // For product/category targets
       period_type, 
       period_start, 
       period_end, 
@@ -562,7 +575,8 @@ router.post('/', requireTargetManagement, async (req, res) => {
       seasonal_allocation_method,
       seasonal_allocations,
       custom_breakdown,
-      wizard_data 
+      wizard_data,
+      allow_overlapping = false  // Allow multiple concurrent targets
     } = req.body;
 
     console.log('Create target request data:', JSON.stringify(req.body, null, 2));
@@ -705,29 +719,12 @@ router.post('/', requireTargetManagement, async (req, res) => {
         continue;
       }
 
-      // Only deactivate targets that actually overlap with the new period
-      // This allows historical targets alongside current targets
-      console.log(`Checking for overlapping targets for user ${targetUser.email}`);
-      console.log(`New target period: ${period_start} to ${period_end}`);
-      
-      const overlappingTargets = await prisma.targets.findMany({
-        where: {
-          user_id: targetUser.id,
-          is_active: true,
-          AND: [
-            { period_start: { lte: new Date(period_end) } },
-            { period_end: { gte: new Date(period_start) } }
-          ]
-        }
-      });
-      
-      console.log(`Found ${overlappingTargets.length} overlapping targets for ${targetUser.email}:`);
-      overlappingTargets.forEach(target => {
-        console.log(`  - Target ${target.id}: ${target.period_start.toISOString().split('T')[0]} to ${target.period_end.toISOString().split('T')[0]}`);
-      });
-      
-      if (overlappingTargets.length > 0) {
-        await prisma.targets.updateMany({
+      // Only deactivate overlapping targets if allow_overlapping is false
+      if (!allow_overlapping) {
+        console.log(`Checking for overlapping targets for user ${targetUser.email}`);
+        console.log(`New target period: ${period_start} to ${period_end}`);
+        
+        const overlappingTargets = await prisma.targets.findMany({
           where: {
             user_id: targetUser.id,
             is_active: true,
@@ -735,14 +732,34 @@ router.post('/', requireTargetManagement, async (req, res) => {
               { period_start: { lte: new Date(period_end) } },
               { period_end: { gte: new Date(period_start) } }
             ]
-          },
-          data: {
-            is_active: false
           }
         });
-        console.log(`Deactivated ${overlappingTargets.length} overlapping targets for ${targetUser.email}`);
+        
+        console.log(`Found ${overlappingTargets.length} overlapping targets for ${targetUser.email}:`);
+        overlappingTargets.forEach(target => {
+          console.log(`  - Target ${target.id}: ${target.period_start.toISOString().split('T')[0]} to ${target.period_end.toISOString().split('T')[0]}`);
+        });
+        
+        if (overlappingTargets.length > 0) {
+          await prisma.targets.updateMany({
+            where: {
+              user_id: targetUser.id,
+              is_active: true,
+              AND: [
+                { period_start: { lte: new Date(period_end) } },
+                { period_end: { gte: new Date(period_start) } }
+              ]
+            },
+            data: {
+              is_active: false
+            }
+          });
+          console.log(`Deactivated ${overlappingTargets.length} overlapping targets for ${targetUser.email}`);
+        } else {
+          console.log(`No overlapping targets found for ${targetUser.email} - keeping existing targets active`);
+        }
       } else {
-        console.log(`No overlapping targets found for ${targetUser.email} - keeping existing targets active`);
+        console.log(`Allowing overlapping targets for ${targetUser.email} as requested`);
       }
 
       // Get distribution breakdown for this user's quota
@@ -803,6 +820,12 @@ router.post('/', requireTargetManagement, async (req, res) => {
         data: {
           user_id: targetUser.id,
           company_id: req.user.company_id,
+          name: name || `${period_type} Target ${period_start} - ${period_end}`,  // Default name if not provided
+          target_type: target_category_type,
+          currency_code,
+          commission_structure,
+          performance_gates,
+          product_category_id,
           period_type: period_type,
           period_start: new Date(period_start),
           period_end: new Date(period_end),
@@ -853,10 +876,20 @@ router.post('/', requireTargetManagement, async (req, res) => {
         }
 
           // Create child target for this period
+          const periodName = quotaPeriod.period_type === 'quarterly' ? 
+            `Q${Math.ceil((new Date(quotaPeriod.period_start).getMonth() + 1) / 3)}` : 
+            new Date(quotaPeriod.period_start).toLocaleDateString('en-GB', { month: 'short' });
+          
           const childTarget = await prisma.targets.create({
             data: {
               user_id: targetUser.id,
               company_id: req.user.company_id,
+              name: name ? `${name} - ${periodName}` : `${parentTarget.name} - ${periodName}`,  // Inherit parent name with period
+              target_type: target_category_type,
+              currency_code,
+              commission_structure,
+              performance_gates,
+              product_category_id,
               period_type: quotaPeriod.period_type,
               period_start: new Date(quotaPeriod.period_start),
               period_end: new Date(quotaPeriod.period_end),
@@ -872,9 +905,7 @@ router.post('/', requireTargetManagement, async (req, res) => {
               distribution_method: 'child',
               distribution_config: {
                 parent_id: parentTarget.id,
-                period_name: quotaPeriod.period_type === 'quarterly' ? 
-                  `Q${Math.ceil((new Date(quotaPeriod.period_start).getMonth() + 1) / 3)}` : 
-                  new Date(quotaPeriod.period_start).toLocaleDateString('en-GB', { month: 'short' }),
+                period_name: periodName,
                 original_parent_quota: quota_amount,
                 ...(proRatedInfo && { pro_rated_info: proRatedInfo })
               }

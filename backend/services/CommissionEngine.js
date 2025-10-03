@@ -306,16 +306,21 @@ class CommissionEngine {
    */
   async createCommissionRecord(deal, calculationResult, target) {
     try {
-      // Generate standardized target name
+      // Use target's name if available, otherwise generate one
       let targetName = null;
       if (target) {
-        // Get user details if not included in deal
-        const user = deal.user || await prisma.users.findUnique({
-          where: { id: deal.user_id },
-          select: { first_name: true, last_name: true }
-        });
-        
-        targetName = generateTargetName(user, target.period_type, target.period_start, target.period_end);
+        // Use the target's name field if it exists
+        if (target.name) {
+          targetName = target.name;
+        } else {
+          // Fall back to generating a name
+          const user = deal.user || await prisma.users.findUnique({
+            where: { id: deal.user_id },
+            select: { first_name: true, last_name: true }
+          });
+          
+          targetName = generateTargetName(user, target.period_type, target.period_start, target.period_end);
+        }
       }
       
       const commission = await prisma.commissions.create({

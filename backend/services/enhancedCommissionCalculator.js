@@ -171,9 +171,11 @@ class EnhancedCommissionCalculator {
 
   /**
    * Find active target for a deal
+   * Now supports multiple concurrent targets - returns most specific match
    */
   async findActiveTarget(deal) {
-    return await prisma.targets.findFirst({
+    // Get all active targets that match the deal's close date
+    const targets = await prisma.targets.findMany({
       where: {
         user_id: deal.user_id,
         is_active: true,
@@ -185,6 +187,21 @@ class EnhancedCommissionCalculator {
         { created_at: 'desc' }
       ]
     });
+
+    if (targets.length === 0) {
+      return null;
+    }
+
+    // If deal has a product_category_id, prefer targets matching that category
+    if (deal.product_category_id) {
+      const productTarget = targets.find(t => t.product_category_id === deal.product_category_id);
+      if (productTarget) {
+        return productTarget;
+      }
+    }
+
+    // Return the most recent/specific target
+    return targets[0];
   }
 
   /**
