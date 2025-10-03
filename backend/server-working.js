@@ -164,6 +164,15 @@ app.use(express.urlencoded({ extended: true }));
 // CSRF token endpoint (disabled for development)
 // app.get('/api/csrf-token', csrfTokenHandler);
 
+// Health check endpoint for monitoring services (Render, etc.)
+app.get('/', (req, res) => {
+  res.status(200).json({ 
+    status: 'healthy',
+    service: 'sales-commission-api',
+    timestamp: new Date().toISOString()
+  });
+});
+
 // Use secure authentication routes (no auth required)
 app.use('/api/auth', authRoutes);
 
