@@ -28,6 +28,8 @@ model companies {
   commissions             commissions[]
   commission_rules        commission_rules[]
   notifications           notifications[]
+  product_categories      product_categories[]
+  currency_exchange_rates currency_exchange_rates[]
 }
 
 model users {
@@ -106,6 +108,8 @@ model deals {
   commission_amount    Decimal?               @db.Decimal(12, 2)
   commission_rate      Decimal?               @db.Decimal(5, 4)
   commission_calculated_at DateTime?
+  target_id            String?                // Track which target this deal's commission is associated with
+  product_category_id  String?                // Link to product category for category-based targets
   created_at           DateTime               @default(now())
   updated_at           DateTime               @updatedAt
   user_id              String
@@ -113,6 +117,8 @@ model deals {
   deal_categorizations deal_categorizations[]
   company              companies              @relation(fields: [company_id], references: [id])
   user                 users                  @relation(fields: [user_id], references: [id])
+  target               targets?               @relation(fields: [target_id], references: [id])
+  product_category     product_categories?    @relation(fields: [product_category_id], references: [id])
   commission           commissions?
 
   @@unique([crm_id, company_id], name: "unique_crm_deal_per_company")
@@ -152,11 +158,15 @@ model deal_categorizations {
 
 model targets {
   id                          String        @id @default(cuid())
+  name                        String?       // Target name/title for UI display
+  target_type                 String        @default("revenue") // revenue, product, category, custom
   period_type                 String
   period_start                DateTime
   period_end                  DateTime
   quota_amount                Decimal       @db.Decimal(12, 2)
+  currency_code               String        @default("GBP")
   commission_rate             Decimal       @db.Decimal(5, 4)
+  commission_structure        Json?         // Advanced commission rules (accelerators, gates, etc)
   commission_payment_schedule String        @default("monthly")
   is_active                   Boolean       @default(true)
   role                        String?
@@ -165,6 +175,8 @@ model targets {
   distribution_method         String?
   distribution_config         Json?
   parent_target_id            String?
+  product_category_id         String?       // Link to product categories
+  performance_gates           Json?         // Performance gate conditions
   ai_forecast_amount          Decimal?      @db.Decimal(12, 2)
   ai_confidence               Decimal?      @db.Decimal(5, 2)
   ai_updated_at               DateTime?
@@ -173,10 +185,12 @@ model targets {
   user_id                     String
   company_id                  String
   forecasts                   forecasts[]
-  company                     companies     @relation(fields: [company_id], references: [id])
-  team                        teams?        @relation(fields: [team_id], references: [id])
-  user                        users         @relation(fields: [user_id], references: [id])
+  company                     companies          @relation(fields: [company_id], references: [id])
+  team                        teams?             @relation(fields: [team_id], references: [id])
+  user                        users              @relation(fields: [user_id], references: [id])
+  product_category            product_categories? @relation(fields: [product_category_id], references: [id])
   commissions                 commissions[]
+  deals                       deals[]
 
   @@index([user_id])
   @@index([period_start, period_end])
@@ -501,4 +515,47 @@ model notifications {
   @@index([company_id, created_at])
   @@index([expires_at])
   @@index([type])
+}
+
+model product_categories {
+  id          String    @id @default(cuid())
+  name        String
+  code        String    // Unique identifier for the category
+  description String?
+  parent_id   String?   // For hierarchical categories
+  is_active   Boolean   @default(true)
+  metadata    Json?     // Additional properties for flexibility
+  company_id  String
+  created_at  DateTime  @default(now())
+  updated_at  DateTime  @updatedAt
+
+  // Relations
+  company     companies @relation(fields: [company_id], references: [id])
+  targets     targets[]
+  deals       deals[]
+
+  @@unique([company_id, code])
+  @@index([company_id, is_active])
+  @@index([parent_id])
+}
+
+model currency_exchange_rates {
+  id              String    @id @default(cuid())
+  from_currency   String
+  to_currency     String
+  exchange_rate   Decimal   @db.Decimal(12, 6)
+  effective_date  DateTime
+  expires_date    DateTime?
+  source          String    @default("manual") // manual, api, integration
+  is_active       Boolean   @default(true)
+  company_id      String
+  created_at      DateTime  @default(now())
+  updated_at      DateTime  @updatedAt
+
+  // Relations  
+  company         companies @relation(fields: [company_id], references: [id])
+
+  @@unique([company_id, from_currency, to_currency, effective_date])
+  @@index([company_id, is_active])
+  @@index([effective_date, expires_date])
 }
