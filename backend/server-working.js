@@ -24,6 +24,7 @@ import commissionReportsRoutes from './routes/commission-reports.js';
 import commissionExportRoutes from './routes/commission-export.js';
 import gdprRoutes from './routes/gdpr.js';
 import notificationsRoutes from './routes/notifications.js';
+// import productCategoriesRoutes from './routes/product-categories.js'; // Temporarily disabled
 
 // Import scheduled jobs
 import { scheduleCommissionRecalculation } from './jobs/commissionRecalculationJob.js';
@@ -239,6 +240,7 @@ app.use('/api/commission-rules', authMiddleware, commissionRulesRoutes);
 app.use('/api/commission-reports', authMiddleware, commissionReportsRoutes);
 app.use('/api/gdpr', authMiddleware, gdprRoutes);
 app.use('/api/notifications', authMiddleware, notificationsRoutes);
+// app.use('/api/product-categories', authMiddleware, productCategoriesRoutes); // Temporarily disabled
 
 // Dashboard routes
 app.get('/api/dashboard/sales-rep', authMiddleware, async (req, res) => {

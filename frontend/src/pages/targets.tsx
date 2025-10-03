@@ -12,6 +12,7 @@ import { Target, Settings, TrendingUp, Plus, ChevronRight, Edit, Trash2, Chevron
 
 interface TargetData {
   id: string;
+  name?: string | null;
   user_id: string;
   role: string | null;
   team_target: boolean;
@@ -477,7 +478,7 @@ const TargetsPage = () => {
                               </div>
                               <div className="flex-1 min-w-0">
                                 <p className="text-sm font-medium text-gray-900">
-                                  Individual Target
+                                  {target.name || 'Individual Target'}
                                   {target.user && ` - ${target.user.first_name} ${target.user.last_name}`}
                                 </p>
                                 <p className="text-sm text-gray-500">
@@ -542,7 +543,7 @@ const TargetsPage = () => {
                                 </div>
                                 <div className="flex-1 min-w-0">
                                   <p className="text-sm font-medium text-gray-600">
-                                    Individual Target
+                                    {target.name || 'Individual Target'}
                                     {target.user && ` - ${target.user.first_name} ${target.user.last_name}`}
                                     <span className="ml-2 px-2 py-1 text-xs font-medium bg-gray-200 text-gray-600 rounded">
                                       Historical

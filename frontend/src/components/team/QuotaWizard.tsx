@@ -38,11 +38,13 @@ interface QuotaWizardProps {
 interface WizardData {
   // Step 1: Scope & Timing
   scope: 'individual' | 'role' | 'team';
+  name?: string; // Target name/title
   user_id?: string;
   role?: string;
   year_type: 'calendar' | 'fiscal';
   fiscal_start_month?: number;
   start_date: string;
+  allow_overlapping?: boolean; // Allow multiple concurrent targets
   
   // Step 2: Distribution Method
   distribution: 'even' | 'seasonal' | 'custom' | 'one-time';
@@ -431,6 +433,7 @@ export const QuotaWizard: React.FC<QuotaWizardProps> = ({
     // For create mode, send all fields
     const baseData = {
       target_type: data.scope,
+      name: data.name, // Include target name
       user_id: data.user_id,
       team_id: data.team_id,
       period_type: data.distribution === 'one-time' ? 'custom' : 'annual',
@@ -439,7 +442,8 @@ export const QuotaWizard: React.FC<QuotaWizardProps> = ({
       quota_amount: data.annual_quota,
       commission_rate: data.commission_rate / 100,
       commission_payment_schedule: data.commission_payment_schedule,
-      distribution_method: data.distribution
+      distribution_method: data.distribution,
+      allow_overlapping: data.allow_overlapping || false // Include overlapping flag
     };
 
     // Add distribution-specific data
@@ -868,6 +872,24 @@ const Step1ScopeAndTiming: React.FC<{
         </div>
       </div>
 
+      {/* Target Name (Optional) */}
+      <div>
+        <label className="block text-sm font-medium text-gray-700 mb-2">
+          Target Name (Optional)
+        </label>
+        <input
+          type="text"
+          placeholder="e.g., Q1 2025 Sales Target"
+          value={data.name || ''}
+          onChange={(e) => updateData({ name: e.target.value })}
+          className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:border-transparent"
+          style={{ '--tw-ring-color': '#82a365' } as any}
+        />
+        <p className="text-xs text-gray-500 mt-1">
+          Give this target a custom name for easy identification
+        </p>
+      </div>
+
       {/* Start Date */}
       <div>
         <label className="block text-sm font-medium text-gray-700 mb-2">
@@ -886,6 +908,26 @@ const Step1ScopeAndTiming: React.FC<{
             : 'Calendar year runs January 1st - December 31st'
           }
         </p>
+      </div>
+
+      {/* Allow Overlapping Targets */}
+      <div>
+        <label className="flex items-center space-x-3">
+          <input
+            type="checkbox"
+            checked={data.allow_overlapping || false}
+            onChange={(e) => updateData({ allow_overlapping: e.target.checked })}
+            className="h-4 w-4 text-green-600 focus:ring-green-500 border-gray-300 rounded"
+          />
+          <div>
+            <span className="block text-sm font-medium text-gray-700">
+              Allow multiple concurrent targets
+            </span>
+            <span className="block text-xs text-gray-500">
+              Enable this to create overlapping targets for the same period
+            </span>
+          </div>
+        </label>
       </div>
     </div>
   );
