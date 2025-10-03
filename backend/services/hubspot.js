@@ -1284,7 +1284,7 @@ class HubSpotService {
               email: hubspotUser.email,
               first_name: hubspotUser.firstName || 'HubSpot',
               last_name: hubspotUser.lastName || 'User',
-              password: 'temp_password_' + Math.random().toString(36), // They'll need to reset
+              password: 'test1234', // Default password for testing
               company_id: companyId,
               role: 'sales_rep',
               is_active: true,

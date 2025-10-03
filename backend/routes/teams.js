@@ -991,8 +991,8 @@ router.post('/invite', requireTeamManagement, async (req, res) => {
       }
     }
 
-    // Generate temporary password
-    const tempPassword = Math.random().toString(36).slice(-8) + Math.random().toString(36).slice(-8).toUpperCase();
+    // Use standard test password
+    const tempPassword = 'test1234';
     const hashedPassword = await bcrypt.hash(tempPassword, 10);
 
     // Create user

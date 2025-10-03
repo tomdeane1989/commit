@@ -2,6 +2,7 @@
 import cron from 'node-cron';
 import { PrismaClient } from '@prisma/client';
 import HubSpotService from '../services/hubspot.js';
+import notificationService from '../services/notificationService.js';
 
 const prisma = new PrismaClient();
 
@@ -74,7 +75,36 @@ async function syncIntegration(integration) {
         }
       }
     });
-    
+
+    // Send notification to all managers about scheduled sync
+    try {
+      const managers = await prisma.users.findMany({
+        where: {
+          company_id: integration.company_id,
+          OR: [{ is_manager: true }, { is_admin: true }]
+        },
+        select: { id: true }
+      });
+
+      if (managers.length > 0) {
+        await notificationService.notifyIntegrationSync({
+          integration,
+          syncResult: {
+            deals_synced: totalSynced,
+            deals_created: result.deals_created || 0,
+            deals_updated: result.deals_updated || 0,
+            errors: 0,
+            sync_type: 'scheduled'
+          },
+          targetUsers: managers.map(m => m.id),
+          company_id: integration.company_id
+        });
+      }
+    } catch (notifError) {
+      console.error('Failed to send sync notification:', notifError);
+      // Don't fail the sync if notification fails
+    }
+
     return { success: true, deals_synced: totalSynced };
     
   } catch (error) {
