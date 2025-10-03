@@ -28,13 +28,15 @@ export const TargetModal: React.FC<TargetModalProps> = ({
   editingTarget
 }) => {
   const [formData, setFormData] = useState({
+    name: '',  // Target name/title
     user_id: '',
     role: '',
     period_type: 'quarterly',
     period_start: '',
     period_end: '',
     quota_amount: '',
-    commission_rate: '3'
+    commission_rate: '3',
+    allow_overlapping: false  // Allow multiple concurrent targets
   });
 
   const [targetType, setTargetType] = useState<'individual' | 'role'>('individual');
@@ -43,13 +45,15 @@ export const TargetModal: React.FC<TargetModalProps> = ({
   useEffect(() => {
     if (editingTarget) {
       setFormData({
+        name: editingTarget.name || '',
         user_id: editingTarget.user_id || '',
         role: editingTarget.role || '',
         period_type: editingTarget.period_type,
         period_start: editingTarget.period_start?.split('T')[0] || '',
         period_end: editingTarget.period_end?.split('T')[0] || '',
         quota_amount: editingTarget.quota_amount.toString(),
-        commission_rate: (editingTarget.commission_rate * 100).toString() // Convert to percentage
+        commission_rate: (editingTarget.commission_rate * 100).toString(), // Convert to percentage
+        allow_overlapping: false
       });
       
       // Set target type based on existing target
@@ -63,13 +67,15 @@ export const TargetModal: React.FC<TargetModalProps> = ({
     } else {
       // Reset form for new target
       setFormData({
+        name: '',
         user_id: '',
         role: '',
         period_type: 'quarterly',
         period_start: '',
         period_end: '',
         quota_amount: '',
-        commission_rate: '3'
+        commission_rate: '3',
+        allow_overlapping: false
       });
       setTargetType('individual');
     }
@@ -80,11 +86,13 @@ export const TargetModal: React.FC<TargetModalProps> = ({
     
     // Build data object with only the fields the backend expects
     const data: any = {
+      name: formData.name || undefined, // Optional field
       period_type: formData.period_type,
       period_start: formData.period_start,
       period_end: formData.period_end,
       quota_amount: parseFloat(formData.quota_amount),
       commission_rate: parseFloat(formData.commission_rate) / 100, // Convert percentage to decimal
+      allow_overlapping: formData.allow_overlapping
     };
     
     // Only include user_id for new targets (not when editing)
@@ -97,26 +105,30 @@ export const TargetModal: React.FC<TargetModalProps> = ({
     
     // Reset form
     setFormData({
+      name: '',
       user_id: '',
       role: '',
       period_type: 'quarterly',
       period_start: '',
       period_end: '',
       quota_amount: '',
-      commission_rate: '3'
+      commission_rate: '3',
+      allow_overlapping: false
     });
     setTargetType('individual');
   };
 
   const handleClose = () => {
     setFormData({
+      name: '',
       user_id: '',
       role: '',
       period_type: 'quarterly',
       period_start: '',
       period_end: '',
       quota_amount: '',
-      commission_rate: '3'
+      commission_rate: '3',
+      allow_overlapping: false
     });
     setTargetType('individual');
     onClose();
@@ -168,6 +180,28 @@ export const TargetModal: React.FC<TargetModalProps> = ({
 
         {/* Form */}
         <form onSubmit={handleSubmit} className="p-6 space-y-4">
+          {/* Target Name */}
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">
+              Target Name (Optional)
+            </label>
+            <div className="relative">
+              <Target className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-4 h-4" />
+              <input
+                type="text"
+                value={formData.name}
+                onChange={(e) => setFormData({ ...formData, name: e.target.value })}
+                className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:border-transparent"
+                style={{ '--tw-ring-color': '#82a365' } as any}
+                placeholder="e.g., Q1 2025 Sales Target"
+                disabled={loading}
+              />
+            </div>
+            <p className="mt-1 text-xs text-gray-500">
+              Give this target a custom name for easy identification
+            </p>
+          </div>
+
           {/* Target Type */}
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-2">
@@ -351,6 +385,23 @@ export const TargetModal: React.FC<TargetModalProps> = ({
               />
             </div>
           </div>
+
+          {/* Allow Overlapping Targets */}
+          {!editingTarget && (
+            <div className="flex items-center">
+              <input
+                type="checkbox"
+                id="allow_overlapping"
+                checked={formData.allow_overlapping}
+                onChange={(e) => setFormData({ ...formData, allow_overlapping: e.target.checked })}
+                className="h-4 w-4 text-green-600 focus:ring-green-500 border-gray-300 rounded"
+                disabled={loading}
+              />
+              <label htmlFor="allow_overlapping" className="ml-2 block text-sm text-gray-700">
+                Allow multiple concurrent targets for this period
+              </label>
+            </div>
+          )}
 
           {/* Actions */}
           <div className="flex space-x-3 pt-4">
