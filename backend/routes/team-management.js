@@ -2,6 +2,7 @@
 import express from 'express';
 import { PrismaClient } from '@prisma/client';
 import { requireTeamManagement, requireTeamView, requireManager, attachPermissions } from '../middleware/permissions.js';
+import { emailService } from '../services/email/emailService.js';
 
 const router = express.Router();
 const prisma = new PrismaClient();
@@ -507,6 +508,33 @@ router.post('/:teamId/members', requireTeamManagement, async (req, res) => {
         success: true
       }
     });
+
+    // Send team invitation emails to new members (don't block response)
+    const company = await prisma.companies.findUnique({
+      where: { id: req.user.company_id }
+    });
+
+    for (const userId of newUserIds) {
+      const user = users.find(u => u.id === userId);
+      if (user) {
+        emailService.sendTeamInvitationEmail({
+          user: {
+            id: user.id,
+            email: user.email,
+            first_name: user.first_name,
+            company_id: user.company_id
+          },
+          teamName: team.team_name,
+          invitedBy: {
+            first_name: req.user.first_name,
+            last_name: req.user.last_name
+          },
+          companyName: company.name
+        }).catch(err => {
+          console.error(`Failed to send team invitation email to ${user.email}:`, err);
+        });
+      }
+    }
 
     res.status(201).json({
       added_count: newUserIds.length,

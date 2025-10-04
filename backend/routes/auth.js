@@ -4,7 +4,7 @@ import bcrypt from 'bcrypt';
 import jwt from 'jsonwebtoken';
 import { PrismaClient } from '@prisma/client';
 import Joi from 'joi';
-import { 
+import {
   authRateLimit,
   authCheckRateLimit,
   generateSecureToken,
@@ -14,12 +14,13 @@ import {
   clearAuthCookies,
   authenticateToken
 } from '../middleware/secureAuth.js';
-import { 
+import {
   generateAccessToken,
   generateRefreshToken as generateEnhancedRefreshToken,
   handleTokenRefresh
 } from '../middleware/auth-enhanced.js';
 import { refreshTokenRateLimit } from '../middleware/rate-limiter.js';
+import { emailService } from '../services/email/emailService.js';
 
 const router = express.Router();
 const prisma = new PrismaClient();
@@ -136,6 +137,21 @@ router.post('/register', async (req, res) => {
         { expiresIn: '7d' }
       );
     }
+
+    // Send welcome email (don't block response on email sending)
+    emailService.sendWelcomeEmail({
+      user: {
+        id: user.id,
+        email: user.email,
+        first_name: user.first_name,
+        last_name: user.last_name,
+        company_id: user.company_id
+      },
+      companyName: company.name
+    }).catch(err => {
+      console.error('Failed to send welcome email:', err);
+      // Continue even if email fails
+    });
 
     res.status(201).json({
       success: true,
@@ -314,5 +330,116 @@ router.post('/logout', authenticateToken, async (req, res) => {
 
 // Token refresh endpoint
 router.post('/refresh', refreshTokenRateLimit, handleTokenRefresh);
+
+// Password reset request
+router.post('/forgot-password', authRateLimit, async (req, res) => {
+  try {
+    const { email } = req.body;
+
+    if (!email) {
+      return res.status(400).json({ error: 'Email is required' });
+    }
+
+    // Find user
+    const user = await prisma.users.findUnique({
+      where: { email: email.toLowerCase() },
+      include: { company: true }
+    });
+
+    // Always return success to prevent email enumeration attacks
+    if (!user || !user.is_active) {
+      return res.json({
+        success: true,
+        message: 'If an account exists with that email, a password reset link has been sent.'
+      });
+    }
+
+    // Generate reset token (32 random bytes as hex string)
+    const crypto = await import('crypto');
+    const resetToken = crypto.randomBytes(32).toString('hex');
+    const resetExpires = new Date(Date.now() + 3600000); // 1 hour from now
+
+    // Save token to database
+    await prisma.users.update({
+      where: { id: user.id },
+      data: {
+        password_reset_token: resetToken,
+        password_reset_expires: resetExpires
+      }
+    });
+
+    // Send password reset email (don't block response)
+    emailService.sendPasswordResetEmail({
+      user: {
+        id: user.id,
+        email: user.email,
+        first_name: user.first_name,
+        company_id: user.company_id
+      },
+      resetToken
+    }).catch(err => {
+      console.error('Failed to send password reset email:', err);
+    });
+
+    res.json({
+      success: true,
+      message: 'If an account exists with that email, a password reset link has been sent.'
+    });
+  } catch (error) {
+    console.error('Forgot password error:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// Reset password with token
+router.post('/reset-password', authRateLimit, async (req, res) => {
+  try {
+    const { token, newPassword } = req.body;
+
+    if (!token || !newPassword) {
+      return res.status(400).json({ error: 'Token and new password are required' });
+    }
+
+    if (newPassword.length < 8) {
+      return res.status(400).json({ error: 'Password must be at least 8 characters long' });
+    }
+
+    // Find user with valid token
+    const user = await prisma.users.findFirst({
+      where: {
+        password_reset_token: token,
+        password_reset_expires: {
+          gte: new Date() // Token not expired
+        },
+        is_active: true
+      }
+    });
+
+    if (!user) {
+      return res.status(400).json({ error: 'Invalid or expired reset token' });
+    }
+
+    // Hash new password
+    const passwordHash = await bcrypt.hash(newPassword, 10);
+
+    // Update password and clear reset token
+    await prisma.users.update({
+      where: { id: user.id },
+      data: {
+        password: passwordHash,
+        password_reset_token: null,
+        password_reset_expires: null
+      }
+    });
+
+    res.json({
+      success: true,
+      message: 'Password has been reset successfully'
+    });
+  } catch (error) {
+    console.error('Reset password error:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
 
 export default router;

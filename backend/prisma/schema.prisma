@@ -73,6 +73,7 @@ model users {
   commission_approvals commission_approvals[]
   refresh_tokens       refresh_tokens[]
   notifications        notifications[]
+  email_preferences    email_preferences?
 
   @@index([company_id])
   @@index([manager_id])
@@ -501,4 +502,41 @@ model notifications {
   @@index([company_id, created_at])
   @@index([expires_at])
   @@index([type])
+}
+
+model email_logs {
+  id              String    @id @default(cuid())
+  user_id         String?
+  company_id      String?
+  email_type      String    // 'welcome', 'password_reset', 'team_invitation'
+  recipient_email String
+  subject         String
+  status          String    // 'sent', 'failed', 'queued'
+  provider_id     String?   // Mailjet message ID
+  error_message   String?
+  metadata        Json?     // Store template data for debugging
+  sent_at         DateTime?
+  created_at      DateTime  @default(now())
+
+  @@index([user_id])
+  @@index([company_id])
+  @@index([email_type])
+  @@index([status])
+  @@index([created_at])
+}
+
+model email_preferences {
+  id                        String   @id @default(cuid())
+  user_id                   String   @unique
+  welcome_emails            Boolean  @default(true)
+  password_reset_emails     Boolean  @default(true)
+  team_invitation_emails    Boolean  @default(true)
+  system_notifications      Boolean  @default(true)
+  marketing_emails          Boolean  @default(false)
+  created_at                DateTime @default(now())
+  updated_at                DateTime @updatedAt
+
+  user users @relation(fields: [user_id], references: [id], onDelete: Cascade)
+
+  @@index([user_id])
 }
