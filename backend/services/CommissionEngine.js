@@ -96,16 +96,45 @@ class CommissionEngine {
     this.registerPlugin('accelerator', {
       name: 'Accelerator',
       calculate: async (context) => {
-        const { baseCommission, config, attainmentPercentage } = context;
-        
-        if (attainmentPercentage >= config.threshold) {
-          const multiplier = new Decimal(config.multiplier || 1.5);
-          return new Decimal(baseCommission).mul(multiplier).toFixed(2);
+        const { deal, config, attainmentPercentage, userSalesTotal } = context;
+        const dealAmount = new Decimal(deal.amount);
+        const baseRate = new Decimal(config.base_rate || config.rate || 0.05);
+
+        // Find applicable accelerator tier
+        let applicableMultiplier = new Decimal(1);
+
+        if (config.accelerators && Array.isArray(config.accelerators)) {
+          // Sort accelerators by threshold descending
+          const sortedAccelerators = config.accelerators
+            .sort((a, b) => b.threshold - a.threshold);
+
+          // Find highest tier met
+          for (const acc of sortedAccelerators) {
+            if (attainmentPercentage >= acc.threshold) {
+              applicableMultiplier = new Decimal(acc.multiplier);
+              console.log(`📈 Accelerator applied: ${attainmentPercentage}% attainment >= ${acc.threshold}% threshold = ${acc.multiplier}x multiplier`);
+              break;
+            }
+          }
+        } else if (config.threshold && config.multiplier) {
+          // Legacy format support
+          if (attainmentPercentage >= config.threshold) {
+            applicableMultiplier = new Decimal(config.multiplier);
+          }
         }
-        
-        return baseCommission;
+
+        // Calculate commission with accelerator
+        const baseCommission = dealAmount.mul(baseRate);
+        const acceleratedCommission = baseCommission.mul(applicableMultiplier);
+
+        return acceleratedCommission.toFixed(2);
       },
       validate: (config) => {
+        if (config.accelerators) {
+          return Array.isArray(config.accelerators) && config.accelerators.every(a =>
+            a.threshold >= 0 && a.multiplier >= 1
+          );
+        }
         return config.threshold >= 0 && config.multiplier >= 1;
       }
     });
@@ -115,25 +144,209 @@ class CommissionEngine {
       name: 'Product Specific Rate',
       calculate: async (context) => {
         const { deal, config } = context;
-        
+
         // Find matching product configuration
-        const productConfig = config.products.find(p => 
-          deal.product_type === p.product_type || 
-          deal.product_category === p.category
+        const productConfig = config.products.find(p =>
+          deal.product_type === p.product_type ||
+          deal.product_category === p.category ||
+          deal.product_category_id === p.product_category_id
         );
-        
+
         if (productConfig) {
           const rate = new Decimal(productConfig.rate);
           const amount = new Decimal(deal.amount);
+          console.log(`🏷️ Product rate applied: ${productConfig.rate * 100}% for product category`);
           return amount.mul(rate).toFixed(2);
         }
-        
+
         // Fall back to default rate
         const defaultRate = new Decimal(config.default_rate || 0.05);
         return new Decimal(deal.amount).mul(defaultRate).toFixed(2);
       },
       validate: (config) => {
         return config.products && Array.isArray(config.products);
+      }
+    });
+
+    // Decelerator plugin (reduce commission for underperformance)
+    this.registerPlugin('decelerator', {
+      name: 'Decelerator',
+      calculate: async (context) => {
+        const { deal, config, attainmentPercentage } = context;
+        const dealAmount = new Decimal(deal.amount);
+        const baseRate = new Decimal(config.base_rate || config.rate || 0.05);
+
+        // Find applicable decelerator tier
+        let applicableMultiplier = new Decimal(1);
+
+        if (config.decelerators && Array.isArray(config.decelerators)) {
+          // Sort decelerators by threshold ascending
+          const sortedDecelerators = config.decelerators
+            .sort((a, b) => a.threshold - b.threshold);
+
+          // Find lowest tier met (highest penalty)
+          for (const dec of sortedDecelerators) {
+            if (attainmentPercentage < dec.threshold) {
+              applicableMultiplier = new Decimal(dec.multiplier);
+              console.log(`📉 Decelerator applied: ${attainmentPercentage}% attainment < ${dec.threshold}% threshold = ${dec.multiplier}x multiplier`);
+            }
+          }
+        } else if (config.threshold && config.multiplier) {
+          // Legacy format support
+          if (attainmentPercentage < config.threshold) {
+            applicableMultiplier = new Decimal(config.multiplier);
+          }
+        }
+
+        // Calculate commission with decelerator
+        const baseCommission = dealAmount.mul(baseRate);
+        const deceleratedCommission = baseCommission.mul(applicableMultiplier);
+
+        return deceleratedCommission.toFixed(2);
+      },
+      validate: (config) => {
+        if (config.decelerators) {
+          return Array.isArray(config.decelerators) && config.decelerators.every(d =>
+            d.threshold >= 0 && d.multiplier > 0 && d.multiplier <= 1
+          );
+        }
+        return config.threshold >= 0 && config.multiplier > 0 && config.multiplier <= 1;
+      }
+    });
+
+    // Performance gate plugin (minimum thresholds)
+    this.registerPlugin('performance_gate', {
+      name: 'Performance Gate',
+      calculate: async (context) => {
+        const { deal, config, attainmentPercentage, userSalesTotal, baseCommission } = context;
+
+        if (!config.gates || !Array.isArray(config.gates)) {
+          return baseCommission || '0';
+        }
+
+        let passedGates = [];
+        let failedGates = [];
+        let totalPenalty = new Decimal(0);
+        let penaltyMultiplier = new Decimal(1);
+
+        for (const gate of config.gates) {
+          let passed = false;
+          let actualValue = 0;
+
+          // Evaluate gate metric
+          switch (gate.metric) {
+            case 'quota_attainment':
+              actualValue = attainmentPercentage;
+              break;
+            case 'total_sales':
+              actualValue = userSalesTotal;
+              break;
+            case 'deal_count':
+              actualValue = context.dealCount || 0;
+              break;
+            case 'average_deal_size':
+              actualValue = context.averageDealSize || 0;
+              break;
+            default:
+              console.warn(`Unknown gate metric: ${gate.metric}`);
+              continue;
+          }
+
+          // Evaluate gate condition
+          switch (gate.operator) {
+            case '>=':
+              passed = actualValue >= gate.value;
+              break;
+            case '>':
+              passed = actualValue > gate.value;
+              break;
+            case '<=':
+              passed = actualValue <= gate.value;
+              break;
+            case '<':
+              passed = actualValue < gate.value;
+              break;
+            case '==':
+              passed = actualValue === gate.value;
+              break;
+            default:
+              console.warn(`Unknown gate operator: ${gate.operator}`);
+              continue;
+          }
+
+          if (passed) {
+            passedGates.push(gate);
+          } else {
+            failedGates.push(gate);
+
+            // Apply penalty based on enforcement
+            if (gate.enforcement === 'hard') {
+              if (gate.penalty_type === 'zero_commission') {
+                console.log(`🚫 Performance gate failed (HARD): ${gate.name} - Zero commission`);
+                return '0';  // Immediate zero commission
+              } else if (gate.penalty_type === 'percentage_reduction') {
+                const reductionPercent = new Decimal(gate.penalty_value || 0).div(100);
+                penaltyMultiplier = penaltyMultiplier.minus(reductionPercent);
+                console.log(`⚠️ Performance gate failed (HARD): ${gate.name} - ${gate.penalty_value}% reduction`);
+              }
+            } else if (gate.enforcement === 'soft') {
+              console.log(`⚠️ Performance gate failed (SOFT): ${gate.name} - Warning only`);
+              // Soft gates only warn, don't affect commission
+            }
+          }
+        }
+
+        // Apply penalty multiplier to base commission
+        const commission = new Decimal(baseCommission || 0).mul(Decimal.max(penaltyMultiplier, 0));
+
+        return commission.toFixed(2);
+      },
+      validate: (config) => {
+        return config.gates && Array.isArray(config.gates) && config.gates.every(g =>
+          g.metric && g.operator && g.value !== undefined
+        );
+      }
+    });
+
+    // Team split plugin
+    this.registerPlugin('team_split', {
+      name: 'Team Split',
+      calculate: async (context) => {
+        const { deal, config, baseCommission } = context;
+        const totalCommission = new Decimal(baseCommission || 0);
+
+        if (!config.splits || !Array.isArray(config.splits)) {
+          return totalCommission.toFixed(2);
+        }
+
+        // Validate splits total 100%
+        const totalPercentage = config.splits.reduce((sum, split) => sum + (split.percentage || 0), 0);
+        if (Math.abs(totalPercentage - 100) > 0.01) {
+          console.warn(`Team split percentages don't total 100%: ${totalPercentage}%`);
+        }
+
+        // Calculate splits
+        const splits = config.splits.map(split => {
+          const splitAmount = totalCommission.mul(new Decimal(split.percentage).div(100));
+          return {
+            user_id: split.user_id,
+            role: split.role,
+            percentage: split.percentage,
+            amount: splitAmount.toFixed(2),
+            description: split.description
+          };
+        });
+
+        console.log(`🤝 Team split calculated: ${splits.length} recipients`);
+
+        // Return the primary split amount (first in array)
+        // Full split details should be stored in commission metadata
+        return splits[0]?.amount || '0';
+      },
+      validate: (config) => {
+        return config.splits && Array.isArray(config.splits) && config.splits.every(s =>
+          s.user_id && s.percentage >= 0 && s.percentage <= 100
+        );
       }
     });
   }
