@@ -38,6 +38,9 @@ const app = express();
 const PORT = process.env.PORT || 3002;
 const prisma = new PrismaClient();
 
+// Trust proxy - required for Render deployment and rate limiting
+app.set('trust proxy', 1);
+
 // Helper function to calculate deal behavior analytics
 function calculateDealAnalytics(allCategorizations, closedDeals) {
   // Group categorizations by deal
