@@ -40,7 +40,7 @@ const TargetsPage = () => {
   
   // Period filter - default to quarterly
   const [periodFilter, setPeriodFilter] = useState<'monthly' | 'quarterly' | 'yearly'>('quarterly');
-  
+
   // Modal states
   const [quotaWizardOpen, setQuotaWizardOpen] = useState(false);
   const [showTargetModal, setShowTargetModal] = useState(false);
@@ -49,6 +49,11 @@ const TargetsPage = () => {
   const [distributionData, setDistributionData] = useState<any>(null);
   const [expandedTeamTarget, setExpandedTeamTarget] = useState(false);
   const [showHistoricalTargets, setShowHistoricalTargets] = useState(false);
+
+  // New UI enhancement states
+  const [groupByUser, setGroupByUser] = useState(true);
+  const [expandedUsers, setExpandedUsers] = useState<Set<string>>(new Set());
+  const [searchQuery, setSearchQuery] = useState('');
 
   // Check if user has admin/manager permissions using flags
   const canManageTargets = user?.is_admin === true || user?.is_manager === true;
@@ -100,11 +105,21 @@ const TargetsPage = () => {
   const { data: teamMembersData } = useQuery({
     queryKey: ['team-members'],
     queryFn: async () => {
-      const response = await teamApi.getTeam({ 
+      const response = await teamApi.getTeam({
         period: periodFilter,
         show_inactive: 'false'
       });
       return response.team_members || [];
+    },
+    enabled: canManageTargets
+  });
+
+  // Fetch product categories for QuotaWizard
+  const { data: productCategoriesData } = useQuery({
+    queryKey: ['product-categories'],
+    queryFn: async () => {
+      const response = await api.get('/product-categories');
+      return response.data.categories || [];
     },
     enabled: canManageTargets
   });
@@ -257,7 +272,71 @@ const TargetsPage = () => {
   
   // Don't filter here - we'll display them in separate sections
   const individualTargets = currentTargets;
-  
+
+  // Filter targets by search query
+  const filteredTargets = individualTargets.filter((target: TargetData) => {
+    if (!searchQuery) return true;
+    const query = searchQuery.toLowerCase();
+    const targetName = (target.name || '').toLowerCase();
+    const userName = target.user ? `${target.user.first_name} ${target.user.last_name}`.toLowerCase() : '';
+    return targetName.includes(query) || userName.includes(query);
+  });
+
+  // Group targets by user
+  const targetsByUser = React.useMemo(() => {
+    const groups = new Map<string, { user: TargetData['user']; targets: TargetData[] }>();
+
+    filteredTargets.forEach((target: TargetData) => {
+      const userId = target.user_id;
+      if (!groups.has(userId)) {
+        groups.set(userId, { user: target.user, targets: [] });
+      }
+      groups.get(userId)!.targets.push(target);
+    });
+
+    // Sort targets within each group by period_start (newest first)
+    groups.forEach(group => {
+      group.targets.sort((a, b) => new Date(b.period_start).getTime() - new Date(a.period_start).getTime());
+    });
+
+    return Array.from(groups.entries()).sort((a, b) => {
+      const nameA = a[1].user ? `${a[1].user.first_name} ${a[1].user.last_name}` : '';
+      const nameB = b[1].user ? `${b[1].user.first_name} ${b[1].user.last_name}` : '';
+      return nameA.localeCompare(nameB);
+    });
+  }, [filteredTargets]);
+
+  // Helper function to toggle user expansion
+  const toggleUserExpansion = (userId: string) => {
+    setExpandedUsers(prev => {
+      const newSet = new Set(prev);
+      if (newSet.has(userId)) {
+        newSet.delete(userId);
+      } else {
+        newSet.add(userId);
+      }
+      return newSet;
+    });
+  };
+
+  // Check for overlapping targets
+  const hasOverlappingPeriods = (targets: TargetData[]) => {
+    if (targets.length < 2) return false;
+    for (let i = 0; i < targets.length; i++) {
+      for (let j = i + 1; j < targets.length; j++) {
+        const start1 = new Date(targets[i].period_start);
+        const end1 = new Date(targets[i].period_end);
+        const start2 = new Date(targets[j].period_start);
+        const end2 = new Date(targets[j].period_end);
+
+        if (start1 <= end2 && start2 <= end1) {
+          return true;
+        }
+      }
+    }
+    return false;
+  };
+
   // Get current period's team aggregate
   // Find the aggregate that contains the current date
   const currentTeamAggregate = teamAggregateData?.team_aggregates?.find(agg => {
@@ -306,39 +385,63 @@ const TargetsPage = () => {
         </div>
 
         {/* Filters and Controls */}
-        <div className="flex items-center justify-between">
+        <div className="space-y-4">
+          {/* Search Bar */}
           <div className="flex items-center space-x-4">
-            <label className="text-sm font-medium text-gray-700">Period:</label>
-            <select
-              value={periodFilter}
-              onChange={(e) => setPeriodFilter(e.target.value as 'monthly' | 'quarterly' | 'yearly')}
-              className="px-3 py-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
-            >
-              <option value="monthly">Monthly</option>
-              <option value="quarterly">Quarterly</option>
-              <option value="yearly">Yearly</option>
-            </select>
+            <div className="flex-1 max-w-md">
+              <input
+                type="text"
+                placeholder="Search by target name or team member..."
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                className="w-full px-4 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
+              />
+            </div>
+            <label className="inline-flex items-center cursor-pointer">
+              <input
+                type="checkbox"
+                checked={groupByUser}
+                onChange={(e) => setGroupByUser(e.target.checked)}
+                className="rounded border-gray-300 text-indigo-600 focus:ring-indigo-500"
+              />
+              <span className="ml-2 text-sm font-medium text-gray-700">Group by user</span>
+            </label>
           </div>
-          
-          {/* Historical Targets Toggle */}
-          {historicalTargets.length > 0 && (
-            <button
-              onClick={() => setShowHistoricalTargets(!showHistoricalTargets)}
-              className="inline-flex items-center px-3 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-md hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-indigo-500"
-            >
-              {showHistoricalTargets ? (
-                <>
-                  <EyeOff className="w-4 h-4 mr-2" />
-                  Hide historical targets
-                </>
-              ) : (
-                <>
-                  <Eye className="w-4 h-4 mr-2" />
-                  Show targets for previous periods ({historicalTargets.length})
-                </>
-              )}
-            </button>
-          )}
+
+          <div className="flex items-center justify-between">
+            <div className="flex items-center space-x-4">
+              <label className="text-sm font-medium text-gray-700">Period:</label>
+              <select
+                value={periodFilter}
+                onChange={(e) => setPeriodFilter(e.target.value as 'monthly' | 'quarterly' | 'yearly')}
+                className="px-3 py-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
+              >
+                <option value="monthly">Monthly</option>
+                <option value="quarterly">Quarterly</option>
+                <option value="yearly">Yearly</option>
+              </select>
+            </div>
+
+            {/* Historical Targets Toggle */}
+            {historicalTargets.length > 0 && (
+              <button
+                onClick={() => setShowHistoricalTargets(!showHistoricalTargets)}
+                className="inline-flex items-center px-3 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-md hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+              >
+                {showHistoricalTargets ? (
+                  <>
+                    <EyeOff className="w-4 h-4 mr-2" />
+                    Hide historical targets
+                  </>
+                ) : (
+                  <>
+                    <Eye className="w-4 h-4 mr-2" />
+                    Show targets for previous periods ({historicalTargets.length})
+                  </>
+                )}
+              </button>
+            )}
+          </div>
         </div>
 
         {/* Targets List */}
@@ -464,9 +567,109 @@ const TargetsPage = () => {
                       )}
                     </div>
                   )}
-                  
+
                   {/* Individual Targets */}
-                  {individualTargets.map((target: TargetData) => (
+                  {groupByUser ? (
+                    /* Grouped by User View */
+                    targetsByUser.map(([userId, { user, targets }]) => {
+                      const isExpanded = expandedUsers.has(userId);
+                      const hasOverlap = hasOverlappingPeriods(targets);
+
+                      return (
+                        <div key={userId} className="border-b border-gray-200">
+                          {/* User Header */}
+                          <div
+                            className="px-6 py-4 hover:bg-gray-50 cursor-pointer"
+                            onClick={() => toggleUserExpansion(userId)}
+                          >
+                            <div className="flex items-center justify-between">
+                              <div className="flex items-center space-x-4 flex-1">
+                                <div className="flex-shrink-0">
+                                  <div className="w-10 h-10 rounded-full bg-blue-100 flex items-center justify-center">
+                                    <Users className="w-5 h-5 text-blue-600" />
+                                  </div>
+                                </div>
+                                <div className="flex-1 min-w-0">
+                                  <p className="text-sm font-medium text-gray-900 flex items-center gap-2">
+                                    {user ? `${user.first_name} ${user.last_name}` : 'Unknown User'}
+                                    <span className="px-2 py-1 rounded-full text-xs font-medium bg-blue-100 text-blue-600">
+                                      {targets.length} {targets.length === 1 ? 'target' : 'targets'}
+                                    </span>
+                                    {hasOverlap && (
+                                      <span className="px-2 py-1 rounded-full text-xs font-medium bg-amber-100 text-amber-600">
+                                        Overlapping periods
+                                      </span>
+                                    )}
+                                  </p>
+                                  <p className="text-xs text-gray-500">
+                                    Total quota: {formatLargeCurrency(targets.reduce((sum, t) => sum + t.quota_amount, 0))}
+                                  </p>
+                                </div>
+                              </div>
+                              <div className="flex items-center">
+                                {isExpanded ? (
+                                  <ChevronUp className="w-5 h-5 text-gray-400" />
+                                ) : (
+                                  <ChevronDown className="w-5 h-5 text-gray-400" />
+                                )}
+                              </div>
+                            </div>
+                          </div>
+
+                          {/* User's Targets (Expanded) */}
+                          {isExpanded && (
+                            <div className="bg-gray-50 px-6 py-2">
+                              {targets.map((target: TargetData, index: number) => (
+                                <div
+                                  key={target.id}
+                                  className={`py-3 ${index !== targets.length - 1 ? 'border-b border-gray-200' : ''}`}
+                                >
+                                  <div className="flex items-center justify-between ml-10">
+                                    <div className="flex-1">
+                                      <p className="text-sm font-medium text-gray-900">
+                                        {target.name || 'Unnamed Target'}
+                                      </p>
+                                      <p className="text-sm text-gray-500">
+                                        {target.period_type.charAt(0).toUpperCase() + target.period_type.slice(1)} •
+                                        {formatLargeCurrency(target.quota_amount)} •
+                                        {(target.commission_rate * 100).toFixed(1)}% commission
+                                      </p>
+                                      <p className="text-xs text-gray-400">
+                                        {new Date(target.period_start).toLocaleDateString()} - {new Date(target.period_end).toLocaleDateString()}
+                                      </p>
+                                    </div>
+                                    <div className="flex items-center space-x-2">
+                                      <button
+                                        onClick={() => handleDistribution(target)}
+                                        className="inline-flex items-center px-2 py-1 border border-gray-300 text-xs font-medium rounded text-gray-700 bg-white hover:bg-gray-50"
+                                      >
+                                        <TrendingUp className="w-3 h-3 mr-1" />
+                                        Distribute
+                                      </button>
+                                      <button
+                                        onClick={() => handleTargetEdit(target)}
+                                        className="inline-flex items-center px-2 py-1 border border-gray-300 text-xs font-medium rounded text-gray-700 bg-white hover:bg-gray-50"
+                                      >
+                                        <Edit className="w-3 h-3" />
+                                      </button>
+                                      <button
+                                        onClick={() => handleTargetDelete(target.id)}
+                                        className="inline-flex items-center px-2 py-1 border border-gray-300 text-xs font-medium rounded text-red-600 bg-white hover:bg-red-50"
+                                      >
+                                        <Trash2 className="w-3 h-3" />
+                                      </button>
+                                    </div>
+                                  </div>
+                                </div>
+                              ))}
+                            </div>
+                          )}
+                        </div>
+                      );
+                    })
+                  ) : (
+                    /* List View */
+                    filteredTargets.map((target: TargetData) => (
                       <div key={target.id} className="px-6 py-4 border-b border-gray-200 hover:bg-gray-50">
                         <div className="flex items-center justify-between">
                           <div className="flex-1">
@@ -482,8 +685,8 @@ const TargetsPage = () => {
                                   {target.user && ` - ${target.user.first_name} ${target.user.last_name}`}
                                 </p>
                                 <p className="text-sm text-gray-500">
-                                  {target.period_type.charAt(0).toUpperCase() + target.period_type.slice(1)} • 
-                                  {formatLargeCurrency(target.quota_amount)} • 
+                                  {target.period_type.charAt(0).toUpperCase() + target.period_type.slice(1)} •
+                                  {formatLargeCurrency(target.quota_amount)} •
                                   {(target.commission_rate * 100).toFixed(1)}% commission
                                 </p>
                                 <p className="text-xs text-gray-400">
@@ -517,7 +720,8 @@ const TargetsPage = () => {
                           </div>
                         </div>
                       </div>
-                  ))}
+                    ))
+                  )}
                   
                   {/* Historical Targets Section */}
                   {showHistoricalTargets && historicalTargets.length > 0 && (
@@ -618,6 +822,7 @@ const TargetsPage = () => {
           loading={createTargetMutation.isPending || resolveConflictsMutation.isPending}
           teams={teamsData?.teams || []}
           teamMembers={teamMembersData || []}
+          productCategories={productCategoriesData || []}
         />
       )}
 
@@ -634,6 +839,7 @@ const TargetsPage = () => {
           loading={updateTargetMutation.isPending}
           teams={teamsData?.teams || []}
           teamMembers={teamMembersData || []}
+          productCategories={productCategoriesData || []}
           editMode={true}
           editingTarget={editingTarget}
         />

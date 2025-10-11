@@ -156,6 +156,7 @@ router.get('/', async (req, res) => {
           commission_earned: 0,
           commission_rate: periodTarget?.commission_rate || 0,
           target_id: periodTarget?.id || null,
+          target_name: periodTarget?.name || null,
           deals_count: 0,
           deals_with_commission: 0,
           deals_without_commission: 0
@@ -257,6 +258,7 @@ router.get('/', async (req, res) => {
             commission_earned: 0,
             commission_rate: target.commission_rate || 0,
             target_id: target.id || null,
+            target_name: target.name || null,
             deals_count: 0,
             deals_with_commission: 0,
             deals_without_commission: 0

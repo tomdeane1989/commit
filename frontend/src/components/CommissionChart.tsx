@@ -21,6 +21,7 @@ interface Commission {
   commission_type?: string;
   status?: string;
   target_id?: string;
+  target_name?: string;
   deals_count?: number;
   deals_with_commission?: number;
   deals_without_commission?: number;
@@ -699,6 +700,16 @@ const CommissionChart: React.FC<CommissionChartProps> = ({
                         {formatLargeCurrency(modalData.commission.base_commission || modalData.commission.commission_earned)}
                       </div>
                     </div>
+                    {modalData.commission.target_name && (
+                      <div className="col-span-2 md:col-span-3">
+                        <span className="font-medium text-gray-700">Associated Target:</span>
+                        <div className="text-gray-900 flex items-center gap-2">
+                          <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-sm font-medium bg-blue-100 text-blue-800">
+                            {modalData.commission.target_name}
+                          </span>
+                        </div>
+                      </div>
+                    )}
                   </div>
                 ) : null}
               </div>

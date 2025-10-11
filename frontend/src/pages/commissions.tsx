@@ -62,6 +62,7 @@ interface Commission {
   commission_type: string;
   status: string;
   target_id?: string;
+  target_name?: string;
   deals_count: number;
   deals_with_commission: number;
   deals_without_commission: number;

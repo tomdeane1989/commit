@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { X, ChevronRight, ChevronLeft, Calendar, Users, Target, CheckCircle, AlertCircle } from 'lucide-react';
+import { X, ChevronRight, ChevronLeft, Calendar, Users, Target, CheckCircle, AlertCircle, Package } from 'lucide-react';
 import { ConflictResolutionModal } from './ConflictResolutionModal';
 import { formatLargeCurrency } from '../../utils/money';
 
@@ -20,6 +20,16 @@ interface Team {
   };
 }
 
+interface ProductCategory {
+  id: string;
+  name: string;
+  code: string;
+  description?: string;
+  parent_id?: string | null;
+  is_active: boolean;
+  children?: ProductCategory[];
+}
+
 interface QuotaWizardProps {
   isOpen: boolean;
   onClose: () => void;
@@ -27,6 +37,7 @@ interface QuotaWizardProps {
   onResolveConflicts: (data: any) => void;
   teamMembers?: TeamMember[];
   teams?: Team[];
+  productCategories?: ProductCategory[];
   loading: boolean;
   onConflictDetected?: (conflicts: any[]) => void;
   mutationError?: any;
@@ -41,21 +52,23 @@ interface WizardData {
   name?: string; // Target name/title
   user_id?: string;
   role?: string;
+  team_id?: string;
   year_type: 'calendar' | 'fiscal';
   fiscal_start_month?: number;
   start_date: string;
   allow_overlapping?: boolean; // Allow multiple concurrent targets
-  
+  product_category_id?: string; // Product category for this target
+
   // Step 2: Distribution Method
   distribution: 'even' | 'seasonal' | 'custom' | 'one-time';
-  
+
   // Step 2a: Seasonal distribution settings
   seasonal_granularity?: 'quarterly' | 'monthly';
   seasonal_allocation_method?: 'revenue' | 'percentage';
   seasonal_allocations?: {
     [key: string]: number; // e.g., 'Q1': 50000 or 'Jan': 25000 or 'Q1': 25 (percentage)
   };
-  
+
   // Step 2b: Custom breakdown (for custom distribution)
   custom_breakdown?: Array<{
     period_start: string;
@@ -63,16 +76,16 @@ interface WizardData {
     quota_amount: number;
     period_type: 'monthly' | 'quarterly' | 'custom';
   }>;
-  
+
   // Step 2c: One-time target settings
   one_time_period_start?: string;
   one_time_period_end?: string;
-  
+
   // Step 3: Set Amounts
   annual_quota: number;
   commission_rate: number;
   commission_payment_schedule: 'monthly' | 'quarterly';
-  
+
   // Step 4: Preview data
   breakdown?: any[];
   conflicts?: any[];
@@ -140,6 +153,7 @@ export const QuotaWizard: React.FC<QuotaWizardProps> = ({
   onResolveConflicts,
   teamMembers = [],
   teams = [],
+  productCategories = [],
   loading,
   onConflictDetected,
   mutationError,
@@ -436,6 +450,7 @@ export const QuotaWizard: React.FC<QuotaWizardProps> = ({
       name: data.name, // Include target name
       user_id: data.user_id,
       team_id: data.team_id,
+      product_category_id: data.product_category_id || null, // Include product category
       period_type: data.distribution === 'one-time' ? 'custom' : 'annual',
       period_start: data.distribution === 'one-time' ? data.one_time_period_start : data.start_date,
       period_end: data.distribution === 'one-time' ? data.one_time_period_end : calculateEndDate(data.start_date, data.year_type, data.fiscal_start_month),
@@ -617,11 +632,12 @@ export const QuotaWizard: React.FC<QuotaWizardProps> = ({
         {/* Step Content */}
         <div className="p-6">
           {currentStep === 1 && !editMode && (
-            <Step1ScopeAndTiming 
-              data={wizardData} 
+            <Step1ScopeAndTiming
+              data={wizardData}
               updateData={updateWizardData}
               teamMembers={teamMembers}
               teams={teams}
+              productCategories={productCategories}
             />
           )}
           {currentStep === 2 && (
@@ -728,9 +744,32 @@ const Step1ScopeAndTiming: React.FC<{
   updateData: (updates: Partial<WizardData>) => void;
   teamMembers?: TeamMember[];
   teams?: Team[];
-}> = ({ data, updateData, teamMembers = [], teams = [] }) => {
+  productCategories?: ProductCategory[];
+}> = ({ data, updateData, teamMembers = [], teams = [], productCategories = [] }) => {
   const activeMembers = teamMembers.filter(m => m.is_active);
   const uniqueRoles = [...new Set(activeMembers.map(m => m.role))];
+
+  // Flatten hierarchical categories for dropdown display
+  const flattenCategories = (categories: ProductCategory[], level = 0): Array<ProductCategory & { displayName: string; level: number }> => {
+    const result: Array<ProductCategory & { displayName: string; level: number }> = [];
+
+    categories.forEach(cat => {
+      const prefix = level > 0 ? '└─ '.repeat(level) : '';
+      result.push({
+        ...cat,
+        displayName: `${prefix}${cat.name}`,
+        level
+      });
+
+      if (cat.children && cat.children.length > 0) {
+        result.push(...flattenCategories(cat.children, level + 1));
+      }
+    });
+
+    return result;
+  };
+
+  const flattenedCategories = flattenCategories(productCategories);
 
   // Helper function to suggest appropriate start dates
   const getSuggestedStartDate = (yearType: string) => {
@@ -928,6 +967,34 @@ const Step1ScopeAndTiming: React.FC<{
             </span>
           </div>
         </label>
+      </div>
+
+      {/* Product Category Selection */}
+      <div>
+        <label className="block text-sm font-medium text-gray-700 mb-2">
+          <div className="flex items-center">
+            <Package className="w-4 h-4 mr-2" style={{ color: '#82a365' }} />
+            Product Category (Optional)
+          </div>
+        </label>
+        <select
+          value={data.product_category_id || ''}
+          onChange={(e) => updateData({ product_category_id: e.target.value || undefined })}
+          className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:border-transparent"
+          style={{ '--tw-ring-color': '#82a365' } as any}
+        >
+          <option value="">All Products (No specific category)</option>
+          {flattenedCategories
+            .filter(cat => cat.is_active)
+            .map(category => (
+              <option key={category.id} value={category.id}>
+                {category.displayName} ({category.code})
+              </option>
+            ))}
+        </select>
+        <p className="text-xs text-gray-500 mt-1">
+          Link this target to a specific product category for category-based commission tracking
+        </p>
       </div>
     </div>
   );

@@ -16,7 +16,8 @@ import {
   Search,
   Menu,
   X,
-  Link
+  Link,
+  Package
 } from 'lucide-react';
 
 interface LayoutProps {
@@ -60,6 +61,7 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
     { name: 'Commissions', href: '/commissions', icon: PoundSterling },
     { name: 'Targets', href: '/targets', icon: BarChart3, adminOnly: true },
     { name: 'Team', href: '/team', icon: Users, adminOnly: true },
+    { name: 'Products', href: '/products', icon: Package, adminOnly: true },
     { name: 'Forecasting', href: '/deals', icon: BarChart3 },
     { name: 'Dashboard', href: '/dashboard', icon: Home },
     { name: 'Integrations', href: '/integrations', icon: Link, adminOnly: true },

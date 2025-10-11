@@ -677,53 +677,54 @@ router.post('/', requireTargetManagement, async (req, res) => {
 
     // Create targets for each user
     for (const targetUser of targetUsers) {
-      // Check for overlapping periods
-      const overlapping = await prisma.targets.findFirst({
-        where: {
-          user_id: targetUser.id,
-          is_active: true,
-          OR: [
-            {
-              period_start: { lte: new Date(period_end) },
-              period_end: { gte: new Date(period_start) }
-            }
-          ]
-        }
-      });
-
-      if (overlapping) {
-        console.log(`Skipping overlapping target for user ${targetUser.first_name} ${targetUser.last_name}`);
-        skippedUsers.push({
-          user_id: targetUser.id,
-          name: `${targetUser.first_name} ${targetUser.last_name}`,
-          email: targetUser.email,
-          role: targetUser.role,
-          existing_target: {
-            id: overlapping.id,
-            period_start: overlapping.period_start.toISOString().split('T')[0],
-            period_end: overlapping.period_end.toISOString().split('T')[0],
-            quota_amount: overlapping.quota_amount,
-            commission_rate: overlapping.commission_rate,
-            period_type: overlapping.period_type
-          },
-          proposed_target: {
-            period_start: period_start,
-            period_end: period_end,
-            quota_amount: quota_amount,
-            commission_rate: commission_rate,
-            period_type: period_type,
-            role: target_type === 'role' ? role : null
+      // Only check for overlapping periods and skip if allow_overlapping is false
+      if (!allow_overlapping) {
+        // Check for overlapping periods
+        const overlapping = await prisma.targets.findFirst({
+          where: {
+            user_id: targetUser.id,
+            is_active: true,
+            OR: [
+              {
+                period_start: { lte: new Date(period_end) },
+                period_end: { gte: new Date(period_start) }
+              }
+            ]
           }
         });
-        console.log(`Added to skippedUsers array. Total skipped: ${skippedUsers.length}`);
-        continue;
-      }
 
-      // Only deactivate overlapping targets if allow_overlapping is false
-      if (!allow_overlapping) {
-        console.log(`Checking for overlapping targets for user ${targetUser.email}`);
+        if (overlapping) {
+          console.log(`Skipping overlapping target for user ${targetUser.first_name} ${targetUser.last_name}`);
+          skippedUsers.push({
+            user_id: targetUser.id,
+            name: `${targetUser.first_name} ${targetUser.last_name}`,
+            email: targetUser.email,
+            role: targetUser.role,
+            existing_target: {
+              id: overlapping.id,
+              period_start: overlapping.period_start.toISOString().split('T')[0],
+              period_end: overlapping.period_end.toISOString().split('T')[0],
+              quota_amount: overlapping.quota_amount,
+              commission_rate: overlapping.commission_rate,
+              period_type: overlapping.period_type
+            },
+            proposed_target: {
+              period_start: period_start,
+              period_end: period_end,
+              quota_amount: quota_amount,
+              commission_rate: commission_rate,
+              period_type: period_type,
+              role: target_type === 'role' ? role : null
+            }
+          });
+          console.log(`Added to skippedUsers array. Total skipped: ${skippedUsers.length}`);
+          continue;
+        }
+
+        // Deactivate any overlapping targets before creating new one
+        console.log(`Checking for overlapping targets to deactivate for user ${targetUser.email}`);
         console.log(`New target period: ${period_start} to ${period_end}`);
-        
+
         const overlappingTargets = await prisma.targets.findMany({
           where: {
             user_id: targetUser.id,
@@ -734,12 +735,12 @@ router.post('/', requireTargetManagement, async (req, res) => {
             ]
           }
         });
-        
-        console.log(`Found ${overlappingTargets.length} overlapping targets for ${targetUser.email}:`);
+
+        console.log(`Found ${overlappingTargets.length} overlapping targets to deactivate for ${targetUser.email}:`);
         overlappingTargets.forEach(target => {
           console.log(`  - Target ${target.id}: ${target.period_start.toISOString().split('T')[0]} to ${target.period_end.toISOString().split('T')[0]}`);
         });
-        
+
         if (overlappingTargets.length > 0) {
           await prisma.targets.updateMany({
             where: {
@@ -759,7 +760,7 @@ router.post('/', requireTargetManagement, async (req, res) => {
           console.log(`No overlapping targets found for ${targetUser.email} - keeping existing targets active`);
         }
       } else {
-        console.log(`Allowing overlapping targets for ${targetUser.email} as requested`);
+        console.log(`✅ Allowing overlapping targets for ${targetUser.email} (allow_overlapping=true)`);
       }
 
       // Get distribution breakdown for this user's quota
