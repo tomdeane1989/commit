@@ -45,7 +45,7 @@ router.get('/unread-count', async (req, res) => {
 
     res.json({
       success: true,
-      count
+      unread_count: count
     });
   } catch (error) {
     console.error('Get unread count error:', error);
