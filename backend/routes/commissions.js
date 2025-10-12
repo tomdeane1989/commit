@@ -92,6 +92,15 @@ router.get('/', async (req, res) => {
             last_name: true,
             email: true
           }
+        },
+        target: {
+          select: {
+            id: true,
+            name: true,
+            commission_structure: true,
+            performance_gates: true,
+            commission_rate: true
+          }
         }
       },
       orderBy: { close_date: 'asc' }
@@ -481,6 +490,15 @@ router.get('/team', async (req, res) => {
             first_name: true,
             last_name: true,
             email: true
+          }
+        },
+        target: {
+          select: {
+            id: true,
+            name: true,
+            commission_structure: true,
+            performance_gates: true,
+            commission_rate: true
           }
         }
       }

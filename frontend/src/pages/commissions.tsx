@@ -1081,13 +1081,13 @@ const CommissionsPage = () => {
                             </div>
 
                             {/* Commission Breakdown */}
-                            {deal.commission_structure || deal.performance_gates ? (
+                            {(deal.target?.commission_structure || deal.target?.performance_gates) ? (
                               <CommissionBreakdown
                                 baseAmount={Number(deal.amount) || 0}
-                                baseRate={Number(deal.commission_rate) || (Number(deal.commission_amount) / Number(deal.amount))}
+                                baseRate={Number(deal.target?.commission_rate || deal.commission_rate) || (Number(deal.commission_amount) / Number(deal.amount))}
                                 finalAmount={Number(deal.commission_amount) || 0}
-                                structure={deal.commission_structure}
-                                performanceGates={deal.performance_gates}
+                                structure={deal.target?.commission_structure}
+                                performanceGates={deal.target?.performance_gates}
                                 metadata={deal.commission_metadata}
                                 className="mt-3"
                               />
