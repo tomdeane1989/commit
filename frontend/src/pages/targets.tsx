@@ -49,8 +49,8 @@ const TargetsPage = () => {
   const [showHistoricalTargets, setShowHistoricalTargets] = useState(false);
 
   // New UI enhancement states
-  const [groupByUser, setGroupByUser] = useState(true);
-  const [expandedUsers, setExpandedUsers] = useState<Set<string>>(new Set());
+  const [viewMode, setViewMode] = useState<'by-user' | 'by-configuration' | 'flat'>('by-user');
+  const [expandedGroups, setExpandedGroups] = useState<Set<string>>(new Set());
   const [searchQuery, setSearchQuery] = useState('');
 
   // Check if user has admin/manager permissions using flags
@@ -306,18 +306,76 @@ const TargetsPage = () => {
     });
   }, [filteredTargets]);
 
-  // Helper function to toggle user expansion
-  const toggleUserExpansion = (userId: string) => {
-    setExpandedUsers(prev => {
+  // Helper function to toggle group expansion
+  const toggleGroupExpansion = (groupId: string) => {
+    setExpandedGroups(prev => {
       const newSet = new Set(prev);
-      if (newSet.has(userId)) {
-        newSet.delete(userId);
+      if (newSet.has(groupId)) {
+        newSet.delete(groupId);
       } else {
-        newSet.add(userId);
+        newSet.add(groupId);
       }
       return newSet;
     });
   };
+
+  // Group targets by configuration (parent_target_id + period + quota + commission)
+  const targetsByConfiguration = React.useMemo(() => {
+    const groups = new Map<string, {
+      configKey: string;
+      name: string;
+      targets: TargetData[];
+      period_type: string;
+      period_start: string;
+      period_end: string;
+      quota_amount: number;
+      commission_rate: number;
+      commission_structure?: any;
+      parent_target_id?: string | null;
+    }>();
+
+    filteredTargets.forEach((target: TargetData) => {
+      // Create a unique key based on configuration
+      // Priority 1: Use parent_target_id if it exists (team targets created together)
+      // Priority 2: Match by period + quota + commission (coincidentally identical targets)
+      let configKey: string;
+      if (target.parent_target_id) {
+        configKey = `parent:${target.parent_target_id}`;
+      } else {
+        configKey = `config:${target.period_start}|${target.period_end}|${target.quota_amount}|${target.commission_rate}|${target.name || 'unnamed'}`;
+      }
+
+      if (!groups.has(configKey)) {
+        groups.set(configKey, {
+          configKey,
+          name: target.name || 'Unnamed Target',
+          targets: [],
+          period_type: target.period_type,
+          period_start: target.period_start,
+          period_end: target.period_end,
+          quota_amount: target.quota_amount,
+          commission_rate: target.commission_rate,
+          commission_structure: (target as any).commission_structure,
+          parent_target_id: target.parent_target_id
+        });
+      }
+      groups.get(configKey)!.targets.push(target);
+    });
+
+    // Sort targets within each group by user name
+    groups.forEach(group => {
+      group.targets.sort((a, b) => {
+        const nameA = a.user ? `${a.user.first_name} ${a.user.last_name}` : '';
+        const nameB = b.user ? `${b.user.first_name} ${b.user.last_name}` : '';
+        return nameA.localeCompare(nameB);
+      });
+    });
+
+    // Convert to array and sort by period_start (newest first)
+    return Array.from(groups.values()).sort((a, b) =>
+      new Date(b.period_start).getTime() - new Date(a.period_start).getTime()
+    );
+  }, [filteredTargets]);
 
   // Check for overlapping targets
   const hasOverlappingPeriods = (targets: TargetData[]) => {
@@ -386,7 +444,7 @@ const TargetsPage = () => {
 
         {/* Filters and Controls */}
         <div className="space-y-4">
-          {/* Search Bar */}
+          {/* Search Bar and View Mode */}
           <div className="flex items-center space-x-4">
             <div className="flex-1 max-w-md">
               <input
@@ -397,15 +455,18 @@ const TargetsPage = () => {
                 className="w-full px-4 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
               />
             </div>
-            <label className="inline-flex items-center cursor-pointer">
-              <input
-                type="checkbox"
-                checked={groupByUser}
-                onChange={(e) => setGroupByUser(e.target.checked)}
-                className="rounded border-gray-300 text-indigo-600 focus:ring-indigo-500"
-              />
-              <span className="ml-2 text-sm font-medium text-gray-700">Group by user</span>
-            </label>
+            <div className="flex items-center space-x-2">
+              <label className="text-sm font-medium text-gray-700">View:</label>
+              <select
+                value={viewMode}
+                onChange={(e) => setViewMode(e.target.value as 'by-user' | 'by-configuration' | 'flat')}
+                className="px-3 py-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
+              >
+                <option value="by-user">Group by Team Member</option>
+                <option value="by-configuration">Group by Configuration</option>
+                <option value="flat">Flat List</option>
+              </select>
+            </div>
           </div>
 
           <div className="flex items-center justify-between">
@@ -569,10 +630,10 @@ const TargetsPage = () => {
                   )}
 
                   {/* Individual Targets */}
-                  {groupByUser ? (
+                  {viewMode === 'by-user' ? (
                     /* Grouped by User View */
                     targetsByUser.map(([userId, { user, targets }]) => {
-                      const isExpanded = expandedUsers.has(userId);
+                      const isExpanded = expandedGroups.has(userId);
                       const hasOverlap = hasOverlappingPeriods(targets);
 
                       return (
@@ -580,7 +641,7 @@ const TargetsPage = () => {
                           {/* User Header */}
                           <div
                             className="px-6 py-4 hover:bg-gray-50 cursor-pointer"
-                            onClick={() => toggleUserExpansion(userId)}
+                            onClick={() => toggleGroupExpansion(userId)}
                           >
                             <div className="flex items-center justify-between">
                               <div className="flex items-center space-x-4 flex-1">
@@ -667,8 +728,127 @@ const TargetsPage = () => {
                         </div>
                       );
                     })
+                  ) : viewMode === 'by-configuration' ? (
+                    /* Grouped by Configuration View */
+                    targetsByConfiguration.map((config) => {
+                      const isExpanded = expandedGroups.has(config.configKey);
+                      const totalQuota = config.targets.reduce((sum, t) => sum + t.quota_amount, 0);
+                      const isTeamTarget = config.parent_target_id !== null && config.parent_target_id !== undefined;
+
+                      return (
+                        <div key={config.configKey} className="border-b border-gray-200">
+                          {/* Configuration Header */}
+                          <div
+                            className="px-6 py-4 hover:bg-gray-50 cursor-pointer"
+                            onClick={() => toggleGroupExpansion(config.configKey)}
+                          >
+                            <div className="flex items-center justify-between">
+                              <div className="flex items-center space-x-4 flex-1">
+                                <div className="flex-shrink-0">
+                                  <div className={`w-10 h-10 rounded-full flex items-center justify-center ${
+                                    isTeamTarget ? 'bg-purple-100' : 'bg-indigo-100'
+                                  }`}>
+                                    {isTeamTarget ? (
+                                      <Users className={`w-5 h-5 ${isTeamTarget ? 'text-purple-600' : 'text-indigo-600'}`} />
+                                    ) : (
+                                      <Target className="w-5 h-5 text-indigo-600" />
+                                    )}
+                                  </div>
+                                </div>
+                                <div className="flex-1 min-w-0">
+                                  <p className="text-sm font-medium text-gray-900 flex items-center gap-2">
+                                    {config.name}
+                                    <span className={`px-2 py-1 rounded-full text-xs font-medium ${
+                                      isTeamTarget
+                                        ? 'bg-purple-100 text-purple-600'
+                                        : 'bg-indigo-100 text-indigo-600'
+                                    }`}>
+                                      {config.targets.length} {config.targets.length === 1 ? 'member' : 'members'}
+                                    </span>
+                                    {isTeamTarget && (
+                                      <span className="px-2 py-1 rounded-full text-xs font-medium bg-green-100 text-green-600">
+                                        Team Target
+                                      </span>
+                                    )}
+                                  </p>
+                                  <p className="text-sm text-gray-500">
+                                    {config.period_type.charAt(0).toUpperCase() + config.period_type.slice(1)} •
+                                    {formatLargeCurrency(totalQuota)} total •
+                                    {(config.commission_rate * 100).toFixed(1)}% commission
+                                    {config.commission_structure && (
+                                      <span className="ml-2 text-xs text-green-600">
+                                        • {config.commission_structure.type === 'accelerator' && '🚀 Accelerator'}
+                                        {config.commission_structure.type === 'decelerator' && '📉 Decelerator'}
+                                        {config.commission_structure.type === 'tiered' && '📊 Tiered'}
+                                      </span>
+                                    )}
+                                  </p>
+                                  <p className="text-xs text-gray-400">
+                                    {new Date(config.period_start).toLocaleDateString()} - {new Date(config.period_end).toLocaleDateString()}
+                                  </p>
+                                </div>
+                              </div>
+                              <div className="flex items-center">
+                                {isExpanded ? (
+                                  <ChevronUp className="w-5 h-5 text-gray-400" />
+                                ) : (
+                                  <ChevronDown className="w-5 h-5 text-gray-400" />
+                                )}
+                              </div>
+                            </div>
+                          </div>
+
+                          {/* Configuration's Targets (Expanded) */}
+                          {isExpanded && (
+                            <div className="bg-gray-50 px-6 py-2">
+                              <div className="mb-3 text-xs font-semibold text-gray-700 uppercase tracking-wider">
+                                Team Members ({config.targets.length})
+                              </div>
+                              {config.targets.map((target: TargetData, index: number) => (
+                                <div
+                                  key={target.id}
+                                  className={`py-3 ${index !== config.targets.length - 1 ? 'border-b border-gray-200' : ''}`}
+                                >
+                                  <div className="flex items-center justify-between ml-10">
+                                    <div className="flex-1">
+                                      <p className="text-sm font-medium text-gray-900">
+                                        {target.user ? `${target.user.first_name} ${target.user.last_name}` : 'Unknown User'}
+                                      </p>
+                                      <p className="text-xs text-gray-600">
+                                        Individual quota: {formatLargeCurrency(target.quota_amount)}
+                                      </p>
+                                    </div>
+                                    <div className="flex items-center space-x-2">
+                                      <button
+                                        onClick={() => handleDistribution(target)}
+                                        className="inline-flex items-center px-2 py-1 border border-gray-300 text-xs font-medium rounded text-gray-700 bg-white hover:bg-gray-50"
+                                      >
+                                        <TrendingUp className="w-3 h-3 mr-1" />
+                                        Distribute
+                                      </button>
+                                      <button
+                                        onClick={() => handleTargetEdit(target)}
+                                        className="inline-flex items-center px-2 py-1 border border-gray-300 text-xs font-medium rounded text-gray-700 bg-white hover:bg-gray-50"
+                                      >
+                                        <Edit className="w-3 h-3" />
+                                      </button>
+                                      <button
+                                        onClick={() => handleTargetDelete(target.id)}
+                                        className="inline-flex items-center px-2 py-1 border border-gray-300 text-xs font-medium rounded text-red-600 bg-white hover:bg-red-50"
+                                      >
+                                        <Trash2 className="w-3 h-3" />
+                                      </button>
+                                    </div>
+                                  </div>
+                                </div>
+                              ))}
+                            </div>
+                          )}
+                        </div>
+                      );
+                    })
                   ) : (
-                    /* List View */
+                    /* Flat List View */
                     filteredTargets.map((target: TargetData) => (
                       <div key={target.id} className="px-6 py-4 border-b border-gray-200 hover:bg-gray-50">
                         <div className="flex items-center justify-between">
