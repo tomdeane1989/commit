@@ -31,48 +31,13 @@ router.get('/', async (req, res) => {
     const targetUserId = user_id || req.user.id;
 
     // Get date range based on period view
+    // Only filter by date if explicitly provided - otherwise show ALL historical data
     let dateRange = {};
     if (start_date && end_date) {
       dateRange = {
         close_date: {
           gte: new Date(start_date),
           lte: new Date(end_date)
-        }
-      };
-    } else {
-      const now = new Date();
-      let startDate;
-      
-      if (period_view === 'quarterly') {
-        // For quarterly view, limit to 4 quarters including current
-        const currentQuarter = Math.floor(now.getMonth() / 3);
-        const currentYear = now.getFullYear();
-        
-        // Calculate 3 quarters ago
-        let targetQuarter = currentQuarter - 3;
-        let targetYear = currentYear;
-        
-        while (targetQuarter < 0) {
-          targetQuarter += 4;
-          targetYear -= 1;
-        }
-        
-        // Start of the quarter 3 quarters ago
-        startDate = new Date(Date.UTC(targetYear, targetQuarter * 3, 1));
-      } else if (period_view === 'yearly') {
-        // For yearly view, show last 3 years including current
-        startDate = new Date(Date.UTC(now.getFullYear() - 2, 0, 1));
-      } else {
-        // For monthly view, show last 12 months
-        startDate = new Date(now);
-        startDate.setMonth(now.getMonth() - 11);
-        startDate.setDate(1);
-      }
-      
-      dateRange = {
-        close_date: {
-          gte: startDate,
-          lte: now
         }
       };
     }
@@ -106,17 +71,11 @@ router.get('/', async (req, res) => {
       orderBy: { close_date: 'asc' }
     });
 
-    // Get targets for the period
+    // Get targets for the period - get ALL active targets (no date filtering)
     const targets = await prisma.targets.findMany({
       where: {
         user_id: targetUserId,
-        is_active: true,
-        OR: [
-          {
-            period_start: { lte: dateRange.close_date.lte },
-            period_end: { gte: dateRange.close_date.gte }
-          }
-        ]
+        is_active: true
       },
       orderBy: [
         { parent_target_id: 'desc' }, // Prefer child targets (non-null) over parent targets (null)
@@ -212,94 +171,8 @@ router.get('/', async (req, res) => {
       }
     }
 
-    // Now add periods from targets that don't have any deals
-    // This ensures we capture all team member quotas even if they have no deals
-    for (const target of targets) {
-      const targetStart = new Date(target.period_start);
-      const targetEnd = new Date(target.period_end);
-      
-      // Generate periods that overlap with this target
-      let currentDate = new Date(targetStart);
-      
-      while (currentDate <= targetEnd && currentDate <= dateRange.close_date.lte) {
-        let periodKey, periodStart, periodEnd;
-        
-        if (period_view === 'monthly') {
-          periodStart = new Date(Date.UTC(currentDate.getUTCFullYear(), currentDate.getUTCMonth(), 1));
-          periodEnd = new Date(Date.UTC(currentDate.getUTCFullYear(), currentDate.getUTCMonth() + 1, 0));
-          periodKey = periodStart.toISOString().substring(0, 7);
-          currentDate.setMonth(currentDate.getMonth() + 1);
-        } else if (period_view === 'quarterly') {
-          const quarter = Math.floor(currentDate.getUTCMonth() / 3);
-          periodStart = new Date(Date.UTC(currentDate.getUTCFullYear(), quarter * 3, 1));
-          periodEnd = new Date(Date.UTC(currentDate.getUTCFullYear(), quarter * 3 + 3, 0));
-          periodKey = `${currentDate.getUTCFullYear()}-Q${quarter + 1}`;
-          currentDate.setMonth(currentDate.getMonth() + 3);
-        } else if (period_view === 'yearly') {
-          periodStart = new Date(Date.UTC(currentDate.getUTCFullYear(), 0, 1));
-          periodEnd = new Date(Date.UTC(currentDate.getUTCFullYear(), 11, 31));
-          periodKey = currentDate.getUTCFullYear().toString();
-          currentDate.setFullYear(currentDate.getFullYear() + 1);
-        }
-        
-        // Only add if we don't already have this period and it's within our date range
-        if (!periodData.has(periodKey) && periodStart >= dateRange.close_date.gte && periodStart <= dateRange.close_date.lte) {
-          // Get user info
-          const userInfo = await prisma.users.findUnique({
-            where: { id: targetUserId },
-            select: {
-              id: true,
-              first_name: true,
-              last_name: true,
-              email: true
-            }
-          });
-          
-          periodData.set(periodKey, {
-            period_key: periodKey,
-            period_start: periodStart,
-            period_end: periodEnd,
-            user_id: targetUserId,
-            user: userInfo,
-            deals: [],
-            quota_amount: 0,
-            actual_amount: 0,
-            commission_earned: 0,
-            commission_rate: target.commission_rate || 0,
-            target_id: target.id || null,
-            target_name: target.name || null,
-            deals_count: 0,
-            deals_with_commission: 0,
-            deals_without_commission: 0
-          });
-          
-          // Calculate quota for this period
-          let quotaAmount = Number(target.quota_amount);
-          
-          if (target.parent_target_id) {
-            // Child targets already have their allocated amounts
-            periodData.get(periodKey).quota_amount = quotaAmount;
-          } else {
-            // Parent targets need to be divided based on view
-            if (target.period_type === 'annual') {
-              if (period_view === 'monthly') {
-                quotaAmount = quotaAmount / 12;
-              } else if (period_view === 'quarterly') {
-                quotaAmount = quotaAmount / 4;
-              }
-            } else if (target.period_type === 'quarterly' && period_view === 'monthly') {
-              quotaAmount = quotaAmount / 3;
-            }
-            periodData.get(periodKey).quota_amount = quotaAmount;
-          }
-        }
-        
-        // Break if we've gone past the end date
-        if (currentDate > dateRange.close_date.lte) {
-          break;
-        }
-      }
-    }
+    // Note: We only show periods that have actual deals
+    // Empty periods with targets but no deals are not displayed in the historical view
 
     // Convert to array and calculate attainment
     const commissionData = Array.from(periodData.values()).map(period => ({
@@ -430,48 +303,13 @@ router.get('/team', async (req, res) => {
     teamMemberIds.push(req.user.id); // Include manager
 
     // Get date range based on period view
+    // Only filter by date if explicitly provided - otherwise show ALL historical data
     let dateRange = {};
     if (start_date && end_date) {
       dateRange = {
         close_date: {
           gte: new Date(start_date),
           lte: new Date(end_date)
-        }
-      };
-    } else {
-      const now = new Date();
-      let startDate;
-      
-      if (period_view === 'quarterly') {
-        // For quarterly view, limit to 4 quarters including current
-        const currentQuarter = Math.floor(now.getMonth() / 3);
-        const currentYear = now.getFullYear();
-        
-        // Calculate 3 quarters ago
-        let targetQuarter = currentQuarter - 3;
-        let targetYear = currentYear;
-        
-        while (targetQuarter < 0) {
-          targetQuarter += 4;
-          targetYear -= 1;
-        }
-        
-        // Start of the quarter 3 quarters ago
-        startDate = new Date(Date.UTC(targetYear, targetQuarter * 3, 1));
-      } else if (period_view === 'yearly') {
-        // For yearly view, show last 3 years including current
-        startDate = new Date(Date.UTC(now.getFullYear() - 2, 0, 1));
-      } else {
-        // For monthly view, show last 12 months
-        startDate = new Date(now);
-        startDate.setMonth(now.getMonth() - 11);
-        startDate.setDate(1);
-      }
-      
-      dateRange = {
-        close_date: {
-          gte: startDate,
-          lte: now
         }
       };
     }
@@ -504,17 +342,11 @@ router.get('/team', async (req, res) => {
       }
     });
 
-    // Get team targets
+    // Get team targets - get ALL active targets (no date filtering)
     const teamTargets = await prisma.targets.findMany({
       where: {
         user_id: { in: teamMemberIds },
-        is_active: true,
-        OR: [
-          {
-            period_start: { lte: dateRange.close_date.lte },
-            period_end: { gte: dateRange.close_date.gte }
-          }
-        ]
+        is_active: true
       }
     });
 

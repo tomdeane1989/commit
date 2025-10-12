@@ -10,6 +10,10 @@ interface CommissionBreakdownProps {
   performanceGates?: any;
   metadata?: any;
   className?: string;
+  // Optional quota context
+  quotaAmount?: number;
+  totalSales?: number;
+  attainmentPercent?: number;
 }
 
 const CommissionBreakdown: React.FC<CommissionBreakdownProps> = ({
@@ -19,10 +23,14 @@ const CommissionBreakdown: React.FC<CommissionBreakdownProps> = ({
   structure,
   performanceGates,
   metadata,
-  className = ''
+  className = '',
+  quotaAmount,
+  totalSales,
+  attainmentPercent
 }) => {
   const hasStructure = !!structure;
   const hasGates = !!performanceGates?.gates?.length;
+  const hasQuotaContext = quotaAmount !== undefined && totalSales !== undefined;
 
   if (!hasStructure && !hasGates) {
     // Simple commission - just show base calculation
@@ -61,6 +69,36 @@ const CommissionBreakdown: React.FC<CommissionBreakdownProps> = ({
           <h4 className="text-sm font-semibold text-gray-900 mb-3">Advanced Commission Breakdown</h4>
 
           <div className="space-y-3">
+            {/* Quota Context */}
+            {hasQuotaContext && (
+              <div className="bg-white rounded-md p-3 border border-blue-200">
+                <div className="text-xs font-semibold text-gray-700 mb-2 flex items-center">
+                  <Target className="w-3 h-3 mr-1" />
+                  Quota Context
+                </div>
+                <div className="space-y-1 text-sm">
+                  <div className="flex justify-between">
+                    <span className="text-gray-600">Period Quota:</span>
+                    <span className="font-medium">£{quotaAmount?.toLocaleString()}</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-gray-600">Total Sales:</span>
+                    <span className="font-medium">£{totalSales?.toLocaleString()}</span>
+                  </div>
+                  <div className="flex justify-between pt-1 border-t border-gray-200">
+                    <span className="text-gray-700">Quota Attainment:</span>
+                    <span className={`font-semibold ${
+                      (attainmentPercent || 0) >= 100 ? 'text-green-600' :
+                      (attainmentPercent || 0) >= 70 ? 'text-yellow-600' :
+                      'text-red-600'
+                    }`}>
+                      {attainmentPercent?.toFixed(1)}%
+                    </span>
+                  </div>
+                </div>
+              </div>
+            )}
+
             {/* Base Calculation */}
             <div className="bg-white rounded-md p-3 border border-gray-200">
               <div className="text-xs font-semibold text-gray-700 mb-2">Base Calculation</div>

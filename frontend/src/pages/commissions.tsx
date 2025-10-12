@@ -678,18 +678,27 @@ const CommissionsPage = () => {
   }) || false;
   
   // Find current period commission (only for personal view)
-  const currentCommission = !isManager || managerView === 'personal' ? 
+  const currentCommission = !isManager || managerView === 'personal' ?
     commissions?.find(c => {
       // Use date range comparison instead of exact match to handle timezone differences
       const commissionStart = new Date(c.period_start);
       const commissionEnd = new Date(c.period_end);
       const currentStart = new Date(currentPeriod.start);
       const currentEnd = new Date(currentPeriod.end);
-      
+
       // Check if commission period overlaps with current period
       const periodsMatch = commissionStart <= currentEnd && commissionEnd >= currentStart;
       return periodsMatch && c.user_id === user?.id;
     }) : null;
+
+  // Debug logging
+  console.log('🔍 DEBUG currentCommission:', {
+    exists: !!currentCommission,
+    hasDeals: currentCommission?.deals !== undefined,
+    dealsLength: currentCommission?.deals?.length,
+    dealsArray: currentCommission?.deals,
+    fullObject: currentCommission
+  });
 
   // For historical chart, show all commissions including current period
   // The chart component handles ordering (newest to oldest)
@@ -1047,6 +1056,11 @@ const CommissionsPage = () => {
                 </div>
 
                 {/* Deal Breakdown */}
+                {console.log('🔍 BUTTON CHECK:', {
+                  hasDeals: currentCommission.deals && currentCommission.deals.length > 0,
+                  dealsLength: currentCommission.deals?.length,
+                  willRender: !!(currentCommission.deals && currentCommission.deals.length > 0)
+                })}
                 {currentCommission.deals && currentCommission.deals.length > 0 && (
                   <div className="mt-6">
                     <button
@@ -1089,6 +1103,9 @@ const CommissionsPage = () => {
                                 structure={deal.target?.commission_structure}
                                 performanceGates={deal.target?.performance_gates}
                                 metadata={deal.commission_metadata}
+                                quotaAmount={currentCommission.quota_amount}
+                                totalSales={currentCommission.actual_amount}
+                                attainmentPercent={currentCommission.attainment_pct}
                                 className="mt-3"
                               />
                             ) : (
