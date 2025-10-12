@@ -733,6 +733,8 @@ const TargetsPage = () => {
                     targetsByConfiguration.map((config) => {
                       const isExpanded = expandedGroups.has(config.configKey);
                       const totalQuota = config.targets.reduce((sum, t) => sum + t.quota_amount, 0);
+                      const perMemberQuota = config.quota_amount; // Each target has the same quota
+                      const memberCount = config.targets.length;
                       const isTeamTarget = config.parent_target_id !== null && config.parent_target_id !== undefined;
 
                       return (
@@ -773,7 +775,7 @@ const TargetsPage = () => {
                                   </p>
                                   <p className="text-sm text-gray-500">
                                     {config.period_type.charAt(0).toUpperCase() + config.period_type.slice(1)} •
-                                    {formatLargeCurrency(totalQuota)} total •
+                                    {formatLargeCurrency(perMemberQuota)} per member ({formatLargeCurrency(totalQuota)} total) •
                                     {(config.commission_rate * 100).toFixed(1)}% commission
                                     {config.commission_structure && (
                                       <span className="ml-2 text-xs text-green-600">

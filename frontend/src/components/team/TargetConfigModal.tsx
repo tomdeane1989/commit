@@ -53,6 +53,7 @@ const TargetConfigModal: React.FC<TargetConfigModalProps> = ({
     // Amounts
     quota_amount: initialData?.quota_amount || '',
     commission_rate: initialData?.commission_rate ? initialData.commission_rate * 100 : 5,
+    quota_input_mode: 'per-member' as 'total-split' | 'per-member', // How user wants to input quota
 
     // Product Category (Optional)
     product_category_id: initialData?.product_category_id || '',
@@ -170,8 +171,27 @@ const TargetConfigModal: React.FC<TargetConfigModalProps> = ({
   const getPreviewData = () => {
     const selectedTeam = teams.find(t => t.id === formData.team_id);
     const memberCount = selectedTeam?._count?.team_members || 1;
-    const totalQuota = Number(formData.quota_amount) || 0;
-    const perMemberQuota = formData.target_type === 'team' ? totalQuota / memberCount : totalQuota;
+    const inputAmount = Number(formData.quota_amount) || 0;
+
+    let totalQuota: number;
+    let perMemberQuota: number;
+
+    if (formData.target_type === 'team') {
+      if (formData.quota_input_mode === 'total-split') {
+        // User entered total team quota - divide by members
+        totalQuota = inputAmount;
+        perMemberQuota = inputAmount / memberCount;
+      } else {
+        // User entered per-member quota - multiply by members for total
+        perMemberQuota = inputAmount;
+        totalQuota = inputAmount * memberCount;
+      }
+    } else {
+      // Individual target
+      perMemberQuota = inputAmount;
+      totalQuota = inputAmount;
+    }
+
     const commissionRate = Number(formData.commission_rate) / 100;
 
     return {
@@ -198,11 +218,15 @@ const TargetConfigModal: React.FC<TargetConfigModalProps> = ({
       return;
     }
 
+    // Calculate the per-member quota amount (backend expects per-member value)
+    const preview = getPreviewData();
+    const quotaAmountForBackend = preview.perMemberQuota;
+
     // Prepare submission data
     const submissionData = {
       ...formData,
       commission_rate: formData.commission_rate / 100, // Convert back to decimal
-      quota_amount: Number(formData.quota_amount)
+      quota_amount: quotaAmountForBackend // Always send per-member quota
     };
 
     onSubmit(submissionData);
@@ -362,43 +386,99 @@ const TargetConfigModal: React.FC<TargetConfigModalProps> = ({
                 defaultOpen={isBasicValid()}
                 info="Set the quota target and base commission rate"
               >
-                <div className="grid grid-cols-2 gap-4">
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-2">
-                      Quota Amount (£) <span className="text-red-600">*</span>
-                    </label>
-                    <input
-                      type="number"
-                      value={formData.quota_amount}
-                      onChange={(e) => setFormData({ ...formData, quota_amount: e.target.value })}
-                      placeholder="e.g., 240000"
-                      className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-transparent"
-                      min="0"
-                      step="1000"
-                    />
-                    {errors.quota_amount && <p className="mt-1 text-sm text-red-600">{errors.quota_amount}</p>}
-                    {formData.target_type === 'team' && preview.memberCount > 0 && (
-                      <p className="mt-1 text-sm text-gray-600">
-                        £{preview.perMemberQuota.toLocaleString()} per member
-                      </p>
-                    )}
-                  </div>
+                <div className="space-y-4">
+                  {/* Quota Input Mode Toggle (only for team targets) */}
+                  {formData.target_type === 'team' && preview.memberCount > 0 && (
+                    <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
+                      <label className="block text-sm font-medium text-gray-700 mb-3">
+                        Quota Input Method
+                      </label>
+                      <div className="space-y-2">
+                        <label className="flex items-start cursor-pointer">
+                          <input
+                            type="radio"
+                            value="per-member"
+                            checked={formData.quota_input_mode === 'per-member'}
+                            onChange={(e) => setFormData({ ...formData, quota_input_mode: 'per-member' as 'total-split' | 'per-member' })}
+                            className="mt-0.5 mr-3 w-4 h-4 text-green-600 border-gray-300 focus:ring-green-500"
+                          />
+                          <div>
+                            <span className="text-sm font-medium text-gray-900">Per Member</span>
+                            <p className="text-xs text-gray-600">
+                              Enter the quota amount that will apply to each team member individually
+                            </p>
+                          </div>
+                        </label>
+                        <label className="flex items-start cursor-pointer">
+                          <input
+                            type="radio"
+                            value="total-split"
+                            checked={formData.quota_input_mode === 'total-split'}
+                            onChange={(e) => setFormData({ ...formData, quota_input_mode: 'total-split' as 'total-split' | 'per-member' })}
+                            className="mt-0.5 mr-3 w-4 h-4 text-green-600 border-gray-300 focus:ring-green-500"
+                          />
+                          <div>
+                            <span className="text-sm font-medium text-gray-900">Total Team (Split)</span>
+                            <p className="text-xs text-gray-600">
+                              Enter the total team quota that will be divided equally among {preview.memberCount} members
+                            </p>
+                          </div>
+                        </label>
+                      </div>
+                    </div>
+                  )}
 
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-2">
-                      Base Commission Rate (%) <span className="text-red-600">*</span>
-                    </label>
-                    <input
-                      type="number"
-                      value={formData.commission_rate}
-                      onChange={(e) => setFormData({ ...formData, commission_rate: Number(e.target.value) })}
-                      placeholder="e.g., 5"
-                      className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-transparent"
-                      min="0"
-                      max="100"
-                      step="0.1"
-                    />
-                    {errors.commission_rate && <p className="mt-1 text-sm text-red-600">{errors.commission_rate}</p>}
+                  {/* Quota and Commission Inputs */}
+                  <div className="grid grid-cols-2 gap-4">
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-2">
+                        Quota Amount (£) <span className="text-red-600">*</span>
+                      </label>
+                      <input
+                        type="number"
+                        value={formData.quota_amount}
+                        onChange={(e) => setFormData({ ...formData, quota_amount: e.target.value })}
+                        placeholder="e.g., 240000"
+                        className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-transparent"
+                        min="0"
+                        step="1000"
+                      />
+                      {errors.quota_amount && <p className="mt-1 text-sm text-red-600">{errors.quota_amount}</p>}
+
+                      {/* Dynamic help text based on mode */}
+                      {formData.target_type === 'team' && preview.memberCount > 0 && (
+                        <div className="mt-2 text-sm">
+                          {formData.quota_input_mode === 'per-member' ? (
+                            <p className="text-gray-600">
+                              Each member: <span className="font-semibold">£{preview.perMemberQuota.toLocaleString()}</span>
+                              {' '} • Total team: <span className="font-semibold">£{preview.totalQuota.toLocaleString()}</span>
+                            </p>
+                          ) : (
+                            <p className="text-gray-600">
+                              Per member: <span className="font-semibold">£{preview.perMemberQuota.toLocaleString()}</span>
+                              {' '} • Total team: <span className="font-semibold">£{preview.totalQuota.toLocaleString()}</span>
+                            </p>
+                          )}
+                        </div>
+                      )}
+                    </div>
+
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-2">
+                        Base Commission Rate (%) <span className="text-red-600">*</span>
+                      </label>
+                      <input
+                        type="number"
+                        value={formData.commission_rate}
+                        onChange={(e) => setFormData({ ...formData, commission_rate: Number(e.target.value) })}
+                        placeholder="e.g., 5"
+                        className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-transparent"
+                        min="0"
+                        max="100"
+                        step="0.1"
+                      />
+                      {errors.commission_rate && <p className="mt-1 text-sm text-red-600">{errors.commission_rate}</p>}
+                    </div>
                   </div>
                 </div>
               </SectionCollapse>
