@@ -5,8 +5,7 @@ import { useAuth } from '../hooks/useAuth';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import api, { targetsApi, teamApi } from '../lib/api';
 import { formatLargeCurrency } from '../utils/money';
-import { QuotaWizard } from '../components/team/QuotaWizard';
-// import { TargetModal } from '../components/team/TargetModal'; // Replaced with QuotaWizard edit mode
+import TargetConfigModal from '../components/team/TargetConfigModal';
 import { TargetDistributionModal } from '../components/team/TargetDistributionModal';
 import { Target, Settings, TrendingUp, Plus, ChevronRight, Edit, Trash2, ChevronUp, ChevronDown, Users, PoundSterling, Clock, Eye, EyeOff } from 'lucide-react';
 
@@ -42,8 +41,7 @@ const TargetsPage = () => {
   const [periodFilter, setPeriodFilter] = useState<'monthly' | 'quarterly' | 'yearly'>('quarterly');
 
   // Modal states
-  const [quotaWizardOpen, setQuotaWizardOpen] = useState(false);
-  const [showTargetModal, setShowTargetModal] = useState(false);
+  const [targetModalOpen, setTargetModalOpen] = useState(false);
   const [editingTarget, setEditingTarget] = useState<TargetData | null>(null);
   const [showDistributionModal, setShowDistributionModal] = useState(false);
   const [distributionData, setDistributionData] = useState<any>(null);
@@ -133,14 +131,15 @@ const TargetsPage = () => {
         console.log('Conflict response received in onSuccess:', data);
         return;
       }
-      
+
       // Invalidate all related queries to ensure fresh data
       queryClient.invalidateQueries({ queryKey: ['targets'] });
       queryClient.invalidateQueries({ queryKey: ['team-aggregate'] });
       queryClient.invalidateQueries({ queryKey: ['team'] });
       queryClient.invalidateQueries({ queryKey: ['team-members'] });
       queryClient.invalidateQueries({ queryKey: ['dashboard'] });
-      setQuotaWizardOpen(false);
+      setTargetModalOpen(false);
+      setEditingTarget(null);
       
       // Show warning if some users were skipped or pro-rated
       if (data.warning || data.pro_rated_info) {
@@ -152,9 +151,9 @@ const TargetsPage = () => {
     },
     onError: (error: any) => {
       console.error('Target creation error:', error);
-      
-      if (quotaWizardOpen && error.response?.data?.skipped_users && error.response.data.skipped_users.length > 0) {
-        console.log('Conflicts detected, wizard should handle this');
+
+      if (targetModalOpen && error.response?.data?.skipped_users && error.response.data.skipped_users.length > 0) {
+        console.log('Conflicts detected, modal should handle this');
         return;
       }
       
@@ -175,7 +174,8 @@ const TargetsPage = () => {
       queryClient.invalidateQueries({ queryKey: ['team'] });
       queryClient.invalidateQueries({ queryKey: ['team-members'] });
       queryClient.invalidateQueries({ queryKey: ['dashboard'] });
-      setQuotaWizardOpen(false);
+      setTargetModalOpen(false);
+      setEditingTarget(null);
       
       let message = data.message;
       if (data.pro_rated_info) message += `\n\nInfo: ${data.pro_rated_info}`;
@@ -201,7 +201,7 @@ const TargetsPage = () => {
       queryClient.invalidateQueries({ queryKey: ['team'] });
       queryClient.invalidateQueries({ queryKey: ['team-members'] });
       queryClient.invalidateQueries({ queryKey: ['dashboard'] });
-      setShowTargetModal(false);
+      setTargetModalOpen(false);
       setEditingTarget(null);
     }
   });
@@ -241,7 +241,7 @@ const TargetsPage = () => {
 
   const handleTargetEdit = (target: TargetData) => {
     setEditingTarget(target);
-    setShowTargetModal(true);
+    setTargetModalOpen(true);
   };
 
   const handleTargetDelete = async (targetId: string) => {
@@ -376,7 +376,7 @@ const TargetsPage = () => {
             <p className="text-gray-600 mt-1">Manage sales targets and commission quotas</p>
           </div>
           <button
-            onClick={() => setQuotaWizardOpen(true)}
+            onClick={() => setTargetModalOpen(true)}
             className="inline-flex items-center px-4 py-2 bg-indigo-600 text-white text-sm font-medium rounded-lg hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-indigo-500"
           >
             <Plus className="w-4 h-4 mr-2" />
@@ -799,7 +799,7 @@ const TargetsPage = () => {
                   <h3 className="text-lg font-medium text-gray-900 mb-2">No targets found</h3>
                   <p className="text-gray-600 mb-4">Get started by creating your first sales target.</p>
                   <button
-                    onClick={() => setQuotaWizardOpen(true)}
+                    onClick={() => setTargetModalOpen(true)}
                     className="inline-flex items-center px-4 py-2 bg-indigo-600 text-white text-sm font-medium rounded-lg hover:bg-indigo-700"
                   >
                     <Plus className="w-4 h-4 mr-2" />
@@ -812,38 +812,23 @@ const TargetsPage = () => {
         )}
       </div>
 
-      {/* Quota Wizard Modal */}
-      {quotaWizardOpen && (
-        <QuotaWizard
-          isOpen={quotaWizardOpen}
-          onClose={() => setQuotaWizardOpen(false)}
-          onSubmit={(data) => createTargetMutation.mutate(data)}
-          onResolveConflicts={(data) => resolveConflictsMutation.mutate(data)}
-          loading={createTargetMutation.isPending || resolveConflictsMutation.isPending}
-          teams={teamsData?.teams || []}
-          teamMembers={teamMembersData || []}
-          productCategories={productCategoriesData || []}
-        />
-      )}
-
-      {/* Target Edit Modal - Using QuotaWizard */}
-      {showTargetModal && editingTarget && (
-        <QuotaWizard
-          isOpen={showTargetModal}
-          onClose={() => {
-            setShowTargetModal(false);
-            setEditingTarget(null);
-          }}
-          onSubmit={(data) => updateTargetMutation.mutate({ id: editingTarget.id, data })}
-          onResolveConflicts={() => {}} // Not needed for editing
-          loading={updateTargetMutation.isPending}
-          teams={teamsData?.teams || []}
-          teamMembers={teamMembersData || []}
-          productCategories={productCategoriesData || []}
-          editMode={true}
-          editingTarget={editingTarget}
-        />
-      )}
+      {/* Target Config Modal - Create/Edit */}
+      <TargetConfigModal
+        isOpen={targetModalOpen}
+        onClose={() => {
+          setTargetModalOpen(false);
+          setEditingTarget(null);
+        }}
+        onSubmit={(data) => {
+          if (editingTarget) {
+            updateTargetMutation.mutate({ id: editingTarget.id, data });
+          } else {
+            createTargetMutation.mutate(data);
+          }
+        }}
+        editMode={!!editingTarget}
+        initialData={editingTarget || undefined}
+      />
 
       {/* Target Distribution Modal */}
       {showDistributionModal && distributionData && (
