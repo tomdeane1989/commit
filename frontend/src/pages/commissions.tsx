@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import Layout from '../components/layout';
 import CommissionChart from '../components/CommissionChart';
+import CommissionBreakdown from '../components/team/CommissionBreakdown';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useAuth } from '../hooks/useAuth';
 import api, { commissionsApi } from '../lib/api';
@@ -1059,25 +1060,47 @@ const CommissionsPage = () => {
                     </button>
                     
                     {expandedCommission === currentCommission.period_key && (
-                      <div className="mt-4 bg-gray-50 rounded-lg p-4">
-                        <div className="space-y-3">
-                          {currentCommission.deals.map((deal) => (
-                            <div key={deal.id} className="flex items-center justify-between py-2 border-b border-gray-200 last:border-b-0">
-                              <div>
-                                <p className="font-medium text-gray-900">{deal.account_name}</p>
+                      <div className="mt-4 space-y-4">
+                        {currentCommission.deals.map((deal: any) => (
+                          <div key={deal.id} className="bg-white border border-gray-200 rounded-lg p-4">
+                            {/* Deal Header */}
+                            <div className="flex items-center justify-between mb-3 pb-3 border-b border-gray-200">
+                              <div className="flex-1">
+                                <p className="font-semibold text-gray-900">{deal.account_name}</p>
                                 <p className="text-sm text-gray-600">{deal.deal_name}</p>
+                                <p className="text-xs text-gray-500 mt-1">
+                                  Closed: {new Date(deal.close_date).toLocaleDateString('en-GB')}
+                                </p>
                               </div>
                               <div className="text-right">
-                                <p className="font-medium text-gray-900">
-                                  {formatLargeCurrency(deal.commission_amount || 0)}
-                                </p>
-                                <p className="text-sm text-gray-600">
-                                  {new Date(deal.close_date).toLocaleDateString('en-GB')}
+                                <p className="text-sm text-gray-600">Deal Value</p>
+                                <p className="text-lg font-bold text-gray-900">
+                                  {formatLargeCurrency(Number(deal.amount) || 0)}
                                 </p>
                               </div>
                             </div>
-                          ))}
-                        </div>
+
+                            {/* Commission Breakdown */}
+                            {deal.commission_structure || deal.performance_gates ? (
+                              <CommissionBreakdown
+                                baseAmount={Number(deal.amount) || 0}
+                                baseRate={Number(deal.commission_rate) || (Number(deal.commission_amount) / Number(deal.amount))}
+                                finalAmount={Number(deal.commission_amount) || 0}
+                                structure={deal.commission_structure}
+                                performanceGates={deal.performance_gates}
+                                metadata={deal.commission_metadata}
+                                className="mt-3"
+                              />
+                            ) : (
+                              <div className="mt-3 flex items-center justify-between bg-gray-50 rounded-lg p-3">
+                                <span className="text-sm text-gray-600">Commission Earned:</span>
+                                <span className="text-lg font-bold text-green-600">
+                                  {formatLargeCurrency(Number(deal.commission_amount) || 0)}
+                                </span>
+                              </div>
+                            )}
+                          </div>
+                        ))}
                       </div>
                     )}
                   </div>
