@@ -58,8 +58,14 @@ router.get('/', requireTeamView, async (req, res) => {
       }
     });
 
+    // Transform team_name to name for frontend compatibility
+    const teamsWithName = teams.map(team => ({
+      ...team,
+      name: team.team_name  // Add 'name' field for frontend compatibility
+    }));
+
     res.json({
-      teams,
+      teams: teamsWithName,
       success: true
     });
   } catch (error) {
